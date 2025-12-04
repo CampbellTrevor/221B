@@ -83,6 +83,11 @@ class BeaconStrategy(HuntStrategy):
     source/destination pair to identify rhythmic machine-like traffic.
     """
     
+    # Minimum connections required for beacon detection
+    MIN_CONNECTIONS = 5
+    # Minimum beacon score to be considered suspicious
+    MIN_BEACON_SCORE = 50
+    
     def _get_name(self) -> str:
         return "Beacon Hunter (C2 Detection)"
     
@@ -117,7 +122,7 @@ class BeaconStrategy(HuntStrategy):
         results = []
         for (src_ip, dst_ip), group in df.groupby([src_col, dst_col]):
             # Require minimum connections for statistical significance
-            if len(group) < 5:
+            if len(group) < self.MIN_CONNECTIONS:
                 continue
             
             # Calculate time deltas in seconds
@@ -169,8 +174,8 @@ class BeaconStrategy(HuntStrategy):
         
         # Filter and sort by beacon score
         if not result_df.empty:
-            # Only show high-confidence beacons (score >= 50)
-            result_df = result_df[result_df['beacon_score'] >= 50]
+            # Only show high-confidence beacons
+            result_df = result_df[result_df['beacon_score'] >= self.MIN_BEACON_SCORE]
             result_df = result_df.sort_values('beacon_score', ascending=False)
         
         return result_df
@@ -194,8 +199,8 @@ class BeaconStrategy(HuntStrategy):
                 showscale=True,
                 colorbar=dict(title="Beacon<br>Score")
             ),
-            text=[f"Source: {row['source_ip']}<br>Dest: {row['dest_ip']}<br>Score: {row['beacon_score']:.0f}<br>Connections: {row['connection_count']}" 
-                  for _, row in result_df.iterrows()],
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Dest: {result_df.iloc[i]['dest_ip']}<br>Score: {result_df.iloc[i]['beacon_score']:.0f}<br>Connections: {result_df.iloc[i]['connection_count']}" 
+                  for i in range(len(result_df))],
             hovertemplate='%{text}<extra></extra>'
         ))
         
@@ -217,6 +222,9 @@ class EntropyStrategy(HuntStrategy):
     Calculates Shannon Entropy on string fields to identify
     high-entropy, long strings indicative of data exfiltration.
     """
+    
+    # Minimum suspicion score to be considered high-risk
+    MIN_SUSPICION_SCORE = 50
     
     def _get_name(self) -> str:
         return "Entropy Analyzer (DNS Tunneling)"
@@ -282,8 +290,8 @@ class EntropyStrategy(HuntStrategy):
         result_df = df[[str_col, 'string_length', 'entropy_score', 'suspicion_score']].copy()
         result_df = result_df.rename(columns={str_col: 'target_string'})
         
-        # Filter to high-suspicion items only (score >= 50)
-        result_df = result_df[result_df['suspicion_score'] >= 50]
+        # Filter to high-suspicion items only
+        result_df = result_df[result_df['suspicion_score'] >= self.MIN_SUSPICION_SCORE]
         
         # Sort by suspicion score (descending)
         result_df = result_df.sort_values('suspicion_score', ascending=False)
@@ -312,8 +320,8 @@ class EntropyStrategy(HuntStrategy):
                 showscale=True,
                 colorbar=dict(title="Suspicion<br>Score")
             ),
-            text=[f"String: {row['target_string'][:50]}{'...' if len(row['target_string']) > 50 else ''}<br>Length: {row['string_length']}<br>Entropy: {row['entropy_score']:.2f}<br>Score: {row['suspicion_score']:.0f}" 
-                  for _, row in result_df.iterrows()],
+            text=[f"String: {result_df.iloc[i]['target_string'][:50]}{'...' if len(result_df.iloc[i]['target_string']) > 50 else ''}<br>Length: {result_df.iloc[i]['string_length']}<br>Entropy: {result_df.iloc[i]['entropy_score']:.2f}<br>Score: {result_df.iloc[i]['suspicion_score']:.0f}" 
+                  for i in range(len(result_df))],
             hovertemplate='%{text}<extra></extra>'
         ))
         
@@ -338,6 +346,10 @@ class ExfilStrategy(HuntStrategy):
     
     # Constant for pure upload cases (bytes_in = 0, bytes_out > 0)
     PURE_UPLOAD_RATIO = 999999.0
+    # Minimum bytes threshold to filter noise (1KB)
+    MIN_BYTES_THRESHOLD = 1000
+    # Minimum exfiltration score to be considered suspicious
+    MIN_EXFIL_SCORE = 50
     
     def _get_name(self) -> str:
         return "Exfiltration Monitor (Producer/Consumer Ratio)"
@@ -379,9 +391,8 @@ class ExfilStrategy(HuntStrategy):
         })
         
         # Filter out rows with minimal traffic (noise reduction)
-        min_bytes_threshold = 1000  # At least 1KB of traffic
         result_df = result_df[
-            (result_df['total_bytes_out'] + result_df['total_bytes_in']) >= min_bytes_threshold
+            (result_df['total_bytes_out'] + result_df['total_bytes_in']) >= self.MIN_BYTES_THRESHOLD
         ]
         
         # Calculate ratio with better handling of edge cases
@@ -420,8 +431,8 @@ class ExfilStrategy(HuntStrategy):
         result_df.loc[result_df['total_bytes'] >= 10_000_000, 'exfil_score'] += 20  # 10MB+
         result_df.loc[(result_df['total_bytes'] >= 1_000_000) & (result_df['total_bytes'] < 10_000_000), 'exfil_score'] += 10  # 1MB+
         
-        # Filter to high-confidence exfiltration (score >= 50)
-        result_df = result_df[result_df['exfil_score'] >= 50]
+        # Filter to high-confidence exfiltration
+        result_df = result_df[result_df['exfil_score'] >= self.MIN_EXFIL_SCORE]
         
         # Sort by exfil_score (descending)
         result_df = result_df.sort_values('exfil_score', ascending=False)
@@ -451,8 +462,8 @@ class ExfilStrategy(HuntStrategy):
                 showscale=True,
                 colorbar=dict(title="Exfil<br>Score")
             ),
-            text=[f"Source: {row['source_ip']}<br>Upload: {row['bytes_out_mb']:.2f} MB<br>Download: {row['bytes_in_mb']:.2f} MB<br>Ratio: {row['exfil_ratio']:.2f}<br>Score: {row['exfil_score']:.0f}" 
-                  for _, row in result_df.iterrows()],
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Upload: {result_df.iloc[i]['bytes_out_mb']:.2f} MB<br>Download: {result_df.iloc[i]['bytes_in_mb']:.2f} MB<br>Ratio: {result_df.iloc[i]['exfil_ratio']:.2f}<br>Score: {result_df.iloc[i]['exfil_score']:.0f}" 
+                  for i in range(len(result_df))],
             hovertemplate='%{text}<extra></extra>'
         ))
         
