@@ -175,7 +175,7 @@ class WatsonDashboard:
             inputs_html = ""
             for inp, (desc, example) in input_descriptions.items():
                 inputs_html += f"""
-                <div style="margin: 10px 0; padding: 8px; background: #f8f9fa; border-left: 3px solid #007bff;">
+                <div style="margin: 10px 0; padding: 8px; background: #f8f9fa; color: #6c757d;  border-left: 3px solid #007bff;">
                     <b>{inp}:</b> {desc}<br/>
                     <i style="color: #6c757d; font-size: 0.9em;">{example}</i>
                 </div>
@@ -382,7 +382,7 @@ class WatsonDashboard:
         try:
             # Sanitize table name to prevent SQL injection
             sanitized_table = self._sanitize_identifier(table_name)
-            query = f"DESCRIBE {sanitized_table}"
+            query = f"DESCRIBE ionic.events.{sanitized_table}"
             df = isf.run_query(query)
             
             if df is not None and not df.empty:
