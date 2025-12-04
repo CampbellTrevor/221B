@@ -285,7 +285,7 @@ class WatsonDashboard:
             max_rows: Maximum number of rows to display (for performance)
         """
         # Limit rows for performance
-        display_df = df.head(max_rows) if len(df) > max_rows else df.copy()
+        display_df = df.head(max_rows) if len(df) > max_rows else df
         
         # Create sorting controls
         sort_column = widgets.Dropdown(
@@ -322,7 +322,7 @@ class WatsonDashboard:
                     sorted_df = display_df
                 
                 # Display the sorted dataframe
-                display(HTML(sorted_df.to_html(index=False, max_rows=None)))
+                display(HTML(sorted_df.to_html(index=False)))
         
         # Attach observers
         sort_column.observe(update_table, names='value')
