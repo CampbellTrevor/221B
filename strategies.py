@@ -228,9 +228,10 @@ class ExfilStrategy(HuntStrategy):
         })
         
         # Calculate ratio (avoid division by zero)
+        # Use np.inf for cases where there's no incoming traffic
         result_df['exfil_ratio'] = result_df.apply(
             lambda row: row['total_bytes_out'] / row['total_bytes_in'] 
-            if row['total_bytes_in'] > 0 else float('inf'),
+            if row['total_bytes_in'] > 0 else np.inf,
             axis=1
         )
         

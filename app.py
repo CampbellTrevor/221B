@@ -9,6 +9,7 @@ using ipywidgets.
 import ipywidgets as widgets
 from IPython.display import display, clear_output
 import pandas as pd
+import re
 from ionic_scripting_framework import isf
 from strategies import HuntStrategy
 
@@ -144,6 +145,24 @@ class WatsonDashboard:
         # Build column mapping UI
         self._build_column_mappings()
     
+    def _sanitize_identifier(self, identifier: str) -> str:
+        """
+        Sanitize SQL identifier to prevent SQL injection.
+        
+        Args:
+            identifier: Table or column name
+        
+        Returns:
+            Sanitized identifier
+        
+        Raises:
+            ValueError: If identifier contains invalid characters
+        """
+        # Allow alphanumeric, underscore, and dot (for schema.table)
+        if not re.match(r'^[a-zA-Z0-9_\.]+$', identifier):
+            raise ValueError(f"Invalid identifier: {identifier}")
+        return identifier
+    
     def _get_table_columns(self, table_name: str) -> list:
         """
         Get columns for a specific table using DESCRIBE.
@@ -155,7 +174,9 @@ class WatsonDashboard:
             List of column names
         """
         try:
-            query = f"DESCRIBE {table_name}"
+            # Sanitize table name to prevent SQL injection
+            sanitized_table = self._sanitize_identifier(table_name)
+            query = f"DESCRIBE {sanitized_table}"
             df = isf.run_query(query)
             
             if df is not None and not df.empty:
@@ -226,9 +247,16 @@ class WatsonDashboard:
         for required_input, dropdown in self.column_dropdowns.items():
             col_map[required_input] = dropdown.value
         
-        # Build SELECT query
-        columns_to_select = list(col_map.values())
-        query = f"SELECT {', '.join(columns_to_select)} FROM {self.current_table}"
+        # Build SELECT query with sanitized identifiers
+        try:
+            # Sanitize all column names and table name
+            sanitized_columns = [self._sanitize_identifier(col) for col in col_map.values()]
+            sanitized_table = self._sanitize_identifier(self.current_table)
+            query = f"SELECT {', '.join(sanitized_columns)} FROM {sanitized_table}"
+        except ValueError as e:
+            with self.output_widget:
+                print(f"❌ Invalid SQL identifier: {e}")
+            return
         
         with self.output_widget:
             print(f"🔍 Running {self.active_strategy.name}...")
