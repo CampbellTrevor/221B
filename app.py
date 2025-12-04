@@ -182,7 +182,7 @@ class WatsonDashboard:
         try:
             # Sanitize table name to prevent SQL injection
             sanitized_table = self._sanitize_identifier(table_name)
-            query = f"DESCRIBE {sanitized_table}"
+            query = f"DESCRIBE ionic.events.{sanitized_table}"
             df = isf.run_query(query)
             
             if df is not None and not df.empty:
