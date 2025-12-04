@@ -145,8 +145,9 @@ class WatsonDashboard:
         
         # Set tab titles
         for i, strategy in enumerate(self.strategies):
-            # Use first word as tab title, with fallback to full name if empty
-            tab_title = strategy.name.split()[0] if strategy.name.strip() else f"Strategy {i+1}"
+            # Use first word as tab title, with fallback if name is empty or has no words
+            name_parts = strategy.name.split()
+            tab_title = name_parts[0] if name_parts else f"Strategy {i+1}"
             self.tab_widget.set_title(i, tab_title)
         
         # Observe tab changes
@@ -241,7 +242,6 @@ class WatsonDashboard:
         try:
             # Sanitize table name to prevent SQL injection
             sanitized_table = self._sanitize_identifier(table_name)
-            # Note: Schema path is hardcoded but could be made configurable via __init__ parameter
             query = f"DESCRIBE {sanitized_table}"
             df = isf.run_query(query)
             
@@ -271,9 +271,9 @@ class WatsonDashboard:
                     expanded_columns = []
                     for i, col in enumerate(columns):
                         expanded_columns.append(col)
-                        # Check if this is a struct/row type (nested fields)
+                        # Check if this is a row type with nested fields
                         col_type = str(df.iloc[i][type_col]).lower()
-                        if 'row(' in col_type or 'struct' in col_type:
+                        if 'row(' in col_type:
                             # Extract nested field names from type definition
                             nested_fields = self._extract_nested_fields(col, col_type)
                             expanded_columns.extend(nested_fields)
@@ -306,8 +306,6 @@ class WatsonDashboard:
         if 'row(' in type_def_lower:
             # Extract content between parentheses (case-insensitive search)
             start_pos = type_def_lower.find('row(')
-            if start_pos == -1:
-                return nested_fields
             start = start_pos + 4
             depth = 1
             end = start
