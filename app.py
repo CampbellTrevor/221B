@@ -30,74 +30,22 @@ class WatsonDashboard:
             strategies: List of HuntStrategy objects to make available
         """
         self.strategies = strategies
-        self.active_strategy = None
-        self.current_table = None
-        self.available_columns = []
+        self.all_tables = []
         
-        # UI Components
-        self.output_widget = widgets.Output()
-        self.table_search = None
-        self.table_dropdown = None
-        self.column_dropdowns = {}
-        self.limit_input = None
-        self.run_button = None
-        self.column_mapping_container = None
+        # UI Components - will be created per tab
         self.tab_widget = None
-        self.strategy_tabs = {}
+        self.strategy_tab_contents = {}
         
         # Initialize UI
         self._initialize_ui()
     
     def _initialize_ui(self):
         """Set up the initial UI components."""
-        # Query available tables
-        all_tables = self._get_available_tables()
+        # Query available tables once
+        self.all_tables = self._get_available_tables()
         
-        # Create table search box for filtering
-        self.table_search = widgets.Text(
-            placeholder='Search tables...',
-            description='Filter:',
-            style={'description_width': 'initial'}
-        )
-        self.table_search.observe(self._on_table_search, names='value')
-        
-        # Create table dropdown with all tables initially
-        self.table_dropdown = widgets.Dropdown(
-            options=all_tables,
-            description='Select Table:',
-            style={'description_width': 'initial'}
-        )
-        self.table_dropdown.observe(self._on_table_change, names='value')
-        
-        # Store all tables for filtering
-        self.all_tables = all_tables
-        
-        # Container for dynamic column mappings
-        self.column_mapping_container = widgets.VBox([])
-        
-        # Create limit input
-        self.limit_input = widgets.IntText(
-            value=10000,
-            description='Row Limit:',
-            min=1,
-            max=1000000,
-            style={'description_width': 'initial'}
-        )
-        
-        # Create run button
-        self.run_button = widgets.Button(
-            description='Run Analysis',
-            button_style='success',
-            icon='search'
-        )
-        self.run_button.on_click(self._run_analysis)
-        
-        # Create tabs for strategies
+        # Create tabs for strategies with all widgets inside each tab
         self._create_strategy_tabs()
-        
-        # Set initial strategy (first one)
-        if self.strategies:
-            self.active_strategy = self.strategies[0]
     
     def _get_available_tables(self) -> list:
         """
@@ -123,22 +71,143 @@ class WatsonDashboard:
             print(f"Error fetching tables: {e}")
             return ['Error loading tables']
     
+    def _get_input_descriptions(self, strategy: HuntStrategy) -> dict:
+        """
+        Get descriptions and examples for each required input of a strategy.
+        
+        Args:
+            strategy: The hunt strategy
+            
+        Returns:
+            Dictionary mapping input names to (description, example) tuples
+        """
+        descriptions = {
+            'timestamp': (
+                "Time field for analyzing temporal patterns",
+                "Examples: ts, timestamp, event_time, @timestamp"
+            ),
+            'source_ip': (
+                "Source IP address field",
+                "Examples: id.orig_h, src_ip, source.ip, client_ip"
+            ),
+            'dest_ip': (
+                "Destination IP address field",
+                "Examples: id.resp_h, dst_ip, dest.ip, server_ip"
+            ),
+            'target_string': (
+                "String field to analyze for entropy (DNS queries, URLs, User-Agents, etc.)",
+                "Examples: query (DNS), host (HTTP), user_agent, uri, domain"
+            ),
+            'bytes_out': (
+                "Bytes sent/uploaded field",
+                "Examples: orig_bytes, bytes_sent, tx_bytes, upload_bytes"
+            ),
+            'bytes_in': (
+                "Bytes received/downloaded field",
+                "Examples: resp_bytes, bytes_received, rx_bytes, download_bytes"
+            )
+        }
+        
+        return {inp: descriptions.get(inp, ("Required field", "")) 
+                for inp in strategy.required_inputs}
+    
     def _create_strategy_tabs(self):
-        """Create tab widget for strategies."""
+        """Create tab widget for strategies with all UI elements inside each tab."""
         tab_contents = []
         
         for i, strategy in enumerate(self.strategies):
-            # Create a description for each strategy
+            # Create components for this specific tab
+            tab_data = {
+                'strategy': strategy,
+                'table_search': widgets.Text(
+                    placeholder='Search tables...',
+                    description='Filter:',
+                    style={'description_width': 'initial'}
+                ),
+                'table_dropdown': widgets.Dropdown(
+                    options=self.all_tables,
+                    description='Select Table:',
+                    style={'description_width': 'initial'}
+                ),
+                'load_table_button': widgets.Button(
+                    description='Load Table Schema',
+                    button_style='info',
+                    icon='download'
+                ),
+                'column_dropdowns': {},
+                'column_mapping_container': widgets.VBox([]),
+                'limit_input': widgets.IntText(
+                    value=10000,
+                    description='Row Limit:',
+                    min=1,
+                    max=1000000,
+                    style={'description_width': 'initial'}
+                ),
+                'run_button': widgets.Button(
+                    description='Run Analysis',
+                    button_style='success',
+                    icon='search'
+                ),
+                'output_widget': widgets.Output(),
+                'available_columns': []
+            }
+            
+            # Store tab data
+            self.strategy_tab_contents[i] = tab_data
+            
+            # Set up event handlers with proper context
+            # Use lambda with default argument to capture current index
+            tab_data['table_search'].observe(
+                lambda change, idx=i: self._on_table_search(change, idx), 
+                names='value'
+            )
+            tab_data['load_table_button'].on_click(
+                lambda btn, idx=i: self._on_load_table(btn, idx)
+            )
+            tab_data['run_button'].on_click(
+                lambda btn, idx=i: self._run_analysis(btn, idx)
+            )
+            
+            # Create strategy description with input details
+            input_descriptions = self._get_input_descriptions(strategy)
+            inputs_html = ""
+            for inp, (desc, example) in input_descriptions.items():
+                inputs_html += f"""
+                <div style="margin: 10px 0; padding: 8px; background: #f8f9fa; border-left: 3px solid #007bff;">
+                    <b>{inp}:</b> {desc}<br/>
+                    <i style="color: #6c757d; font-size: 0.9em;">{example}</i>
+                </div>
+                """
+            
             description = widgets.HTML(
                 value=f"""
                 <div style="padding: 10px;">
                     <h3>{strategy.name}</h3>
-                    <p><b>Required Inputs:</b> {', '.join(strategy.required_inputs)}</p>
+                    <p style="margin: 10px 0;"><i>{strategy.__class__.__doc__.strip()}</i></p>
+                    <h4>Required Inputs:</h4>
+                    {inputs_html}
                 </div>
                 """
             )
-            tab_contents.append(description)
-            self.strategy_tabs[i] = strategy
+            
+            # Assemble tab content
+            tab_content = widgets.VBox([
+                description,
+                widgets.HTML("<hr>"),
+                widgets.HTML("<h4>Data Source</h4>"),
+                tab_data['table_search'],
+                tab_data['table_dropdown'],
+                tab_data['load_table_button'],
+                widgets.HTML("<hr>"),
+                widgets.HTML("<h4>Column Mapping</h4>"),
+                tab_data['column_mapping_container'],
+                tab_data['limit_input'],
+                tab_data['run_button'],
+                widgets.HTML("<hr>"),
+                tab_data['output_widget']
+            ])
+            
+            tab_contents.append(tab_content)
         
         # Create Tab widget
         self.tab_widget = widgets.Tab(children=tab_contents)
@@ -149,60 +218,59 @@ class WatsonDashboard:
             name_parts = strategy.name.split()
             tab_title = name_parts[0] if name_parts else f"Strategy {i+1}"
             self.tab_widget.set_title(i, tab_title)
-        
-        # Observe tab changes
-        self.tab_widget.observe(self._on_tab_change, names='selected_index')
     
-    def _on_tab_change(self, change):
+    def _on_table_search(self, change, tab_index: int):
         """
-        Handle tab selection change.
-        
-        Args:
-            change: Change event from tab widget
-        """
-        selected_index = change['new']
-        self.active_strategy = self.strategy_tabs[selected_index]
-        
-        # Rebuild column mappings for new strategy
-        if self.current_table:
-            self._build_column_mappings()
-    
-    def _on_table_search(self, change):
-        """
-        Handle table search/filter changes.
+        Handle table search/filter changes for a specific tab.
         
         Args:
             change: Change event from search text widget
+            tab_index: Index of the tab
         """
+        tab_data = self.strategy_tab_contents[tab_index]
         search_term = change['new'].lower()
         
         if not search_term:
             # Show all tables if search is empty
-            self.table_dropdown.options = self.all_tables
+            tab_data['table_dropdown'].options = self.all_tables
         else:
             # Filter tables based on search term
             filtered_tables = [t for t in self.all_tables if search_term in t.lower()]
-            self.table_dropdown.options = filtered_tables if filtered_tables else ['No matching tables']
+            tab_data['table_dropdown'].options = filtered_tables if filtered_tables else ['No matching tables']
     
-    def _on_table_change(self, change):
+    def _on_load_table(self, button, tab_index: int):
         """
-        Handle table selection change.
-        
-        Queries the table schema and creates dropdowns for column mapping.
+        Load table schema when button is pressed.
         
         Args:
-            change: Change event from widget
+            button: Button widget that triggered this callback
+            tab_index: Index of the tab
         """
-        self.current_table = self.table_dropdown.value
+        tab_data = self.strategy_tab_contents[tab_index]
+        current_table = tab_data['table_dropdown'].value
         
-        if not self.current_table or self.current_table in ['No tables available', 'Error loading tables']:
+        if not current_table or current_table in ['No tables available', 'Error loading tables', 'No matching tables']:
+            with tab_data['output_widget']:
+                clear_output(wait=True)
+                print("⚠️ Please select a valid table.")
             return
         
         # Get column information using DESCRIBE
-        self.available_columns = self._get_table_columns(self.current_table)
+        with tab_data['output_widget']:
+            clear_output(wait=True)
+            print(f"📥 Loading schema for {current_table}...")
+        
+        tab_data['available_columns'] = self._get_table_columns(current_table)
         
         # Build column mapping UI
-        self._build_column_mappings()
+        self._build_column_mappings(tab_index)
+        
+        with tab_data['output_widget']:
+            clear_output(wait=True)
+            print(f"✅ Loaded {len(tab_data['available_columns'])} columns from {current_table}")
+            print("Configure column mappings above and click 'Run Analysis' when ready.")
+    
+
     
     def _sanitize_identifier(self, identifier: str) -> str:
         """
@@ -376,81 +444,87 @@ class WatsonDashboard:
         
         return fields
     
-    def _build_column_mappings(self):
+    def _build_column_mappings(self, tab_index: int):
         """
         Build dropdown widgets for mapping strategy inputs to table columns.
         
-        Creates one dropdown per required input of the active strategy.
+        Args:
+            tab_index: Index of the tab
         """
-        if not self.active_strategy or not self.available_columns:
-            self.column_mapping_container.children = []
+        tab_data = self.strategy_tab_contents[tab_index]
+        strategy = tab_data['strategy']
+        available_columns = tab_data['available_columns']
+        
+        if not available_columns:
+            tab_data['column_mapping_container'].children = []
             return
         
         # Create a dropdown for each required input
         dropdowns = []
-        self.column_dropdowns = {}
+        tab_data['column_dropdowns'] = {}
         
-        for required_input in self.active_strategy.required_inputs:
+        for required_input in strategy.required_inputs:
             dropdown = widgets.Dropdown(
-                options=self.available_columns,
+                options=available_columns,
                 description=f'{required_input}:',
                 style={'description_width': 'initial'}
             )
             dropdowns.append(dropdown)
-            self.column_dropdowns[required_input] = dropdown
+            tab_data['column_dropdowns'][required_input] = dropdown
         
         # Update container
-        self.column_mapping_container.children = dropdowns
+        tab_data['column_mapping_container'].children = dropdowns
     
-    def _run_analysis(self, button):
+    def _run_analysis(self, button, tab_index: int):
         """
         Execute the selected hunt strategy on the selected table.
         
         Args:
             button: Button widget that triggered this callback
+            tab_index: Index of the tab
         """
+        tab_data = self.strategy_tab_contents[tab_index]
+        strategy = tab_data['strategy']
+        current_table = tab_data['table_dropdown'].value
+        column_dropdowns = tab_data['column_dropdowns']
+        
         # Clear previous output
-        with self.output_widget:
+        with tab_data['output_widget']:
             clear_output(wait=True)
         
         # Validate selections
-        if not self.active_strategy:
-            with self.output_widget:
-                print("⚠️ Please select a hunt strategy.")
-            return
-        
-        if not self.current_table or self.current_table in ['No tables available', 'Error loading tables']:
-            with self.output_widget:
+        if not current_table or current_table in ['No tables available', 'Error loading tables', 'No matching tables']:
+            with tab_data['output_widget']:
                 print("⚠️ Please select a valid table.")
             return
         
-        if not self.column_dropdowns:
-            with self.output_widget:
-                print("⚠️ Please select a table to load column mappings.")
+        if not column_dropdowns:
+            with tab_data['output_widget']:
+                print("⚠️ Please load table schema first (click 'Load Table Schema' button).")
             return
         
         # Build column mapping
         col_map = {}
-        for required_input, dropdown in self.column_dropdowns.items():
+        for required_input, dropdown in column_dropdowns.items():
             col_map[required_input] = dropdown.value
         
         # Build SELECT query with sanitized identifiers and LIMIT
         try:
             # Sanitize all column names and table name
             sanitized_columns = [self._sanitize_identifier(col) for col in col_map.values()]
-            sanitized_table = self._sanitize_identifier(self.current_table)
+            sanitized_table = self._sanitize_identifier(current_table)
             
             # Validate and sanitize limit value (IntText widget provides basic validation)
-            limit = max(1, min(1000000, int(self.limit_input.value)))
+            limit = max(1, min(1000000, int(tab_data['limit_input'].value)))
             
             query = f"SELECT {', '.join(sanitized_columns)} FROM {sanitized_table} LIMIT {limit}"
         except ValueError as e:
-            with self.output_widget:
+            with tab_data['output_widget']:
                 print(f"❌ Invalid SQL identifier: {e}")
             return
         
-        with self.output_widget:
-            print(f"🔍 Running {self.active_strategy.name}...")
+        with tab_data['output_widget']:
+            print(f"🔍 Running {strategy.name}...")
             print(f"📊 Query: {query}")
             print()
             
@@ -462,12 +536,12 @@ class WatsonDashboard:
                     print("⚠️ Query returned no data.")
                     return
                 
-                print(f"✅ Retrieved {len(df)} rows from {self.current_table}")
+                print(f"✅ Retrieved {len(df)} rows from {current_table}")
                 print()
                 
                 # Run strategy analysis
-                print(f"🔬 Analyzing data with {self.active_strategy.name}...")
-                result_df = self.active_strategy.analyze(df, col_map)
+                print(f"🔬 Analyzing data with {strategy.name}...")
+                result_df = strategy.analyze(df, col_map)
                 
                 if result_df is None or result_df.empty:
                     print("⚠️ Analysis returned no results.")
@@ -496,42 +570,15 @@ class WatsonDashboard:
         header = widgets.HTML(
             value="""
             <h2>🔍 221B: The Analyst's Head-Up Display</h2>
-            <p>Select a hunt strategy, choose your data source, map the columns, and run your analysis.</p>
+            <p>Select a hunt strategy tab below to begin your analysis.</p>
             """
         )
         
-        # Create table selection section
-        table_section = widgets.VBox([
-            widgets.HTML("<h3>Data Source</h3>"),
-            self.table_search,
-            self.table_dropdown,
-        ])
-        
-        # Create analysis section
-        analysis_section = widgets.VBox([
-            widgets.HTML("<h3>Column Mapping</h3>"),
-            self.column_mapping_container,
-            self.limit_input,
-            self.run_button,
-        ])
-        
-        # Arrange layout with tabs for strategies
-        controls = widgets.VBox([
+        # Arrange layout with tabs
+        dashboard = widgets.VBox([
             header,
             widgets.HTML("<hr>"),
-            widgets.HTML("<h3>Hunt Strategy</h3>"),
             self.tab_widget,
-            widgets.HTML("<hr>"),
-            table_section,
-            widgets.HTML("<hr>"),
-            analysis_section,
-            widgets.HTML("<hr>"),
-        ])
-        
-        # Combine controls and output
-        dashboard = widgets.VBox([
-            controls,
-            self.output_widget
         ])
         
         # Display
