@@ -227,15 +227,28 @@ class ExfilStrategy(HuntStrategy):
             bytes_in_col: 'total_bytes_in'
         })
         
-        # Calculate ratio (avoid division by zero)
+        # Filter out rows with no traffic (both in and out are zero)
+        result_df = result_df[
+            (result_df['total_bytes_out'] > 0) | (result_df['total_bytes_in'] > 0)
+        ]
+        
+        # Calculate ratio with better handling of edge cases
         # Use vectorized operations for better performance
         result_df['exfil_ratio'] = np.where(
             result_df['total_bytes_in'] > 0,
             result_df['total_bytes_out'] / result_df['total_bytes_in'],
-            np.inf
+            # If bytes_in is 0 but bytes_out > 0, use a large but not infinite value
+            np.where(
+                result_df['total_bytes_out'] > 0,
+                999999.0,  # Large value indicating pure upload
+                0.0  # Both are zero (already filtered above, but for safety)
+            )
         )
         
-        # Sort by exfil_ratio (descending)
-        result_df = result_df.sort_values('exfil_ratio', ascending=False)
+        # Add total traffic for additional context
+        result_df['total_bytes'] = result_df['total_bytes_out'] + result_df['total_bytes_in']
+        
+        # Sort by exfil_ratio (descending), then by total_bytes_out
+        result_df = result_df.sort_values(['exfil_ratio', 'total_bytes_out'], ascending=[False, False])
         
         return result_df

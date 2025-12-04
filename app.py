@@ -13,6 +13,13 @@ import re
 from ionic_scripting_framework import isf
 from strategies import HuntStrategy
 
+# Try to import ipydatagrid for sortable tables, fallback to regular display
+try:
+    from ipydatagrid import DataGrid
+    HAS_DATAGRID = True
+except ImportError:
+    HAS_DATAGRID = False
+
 
 class WatsonDashboard:
     """
@@ -275,6 +282,37 @@ class WatsonDashboard:
             clear_output(wait=True)
             print(f"✅ Loaded {len(tab_data['available_columns'])} columns from {current_table}")
             print("Configure column mappings above and click 'Run Analysis' when ready.")
+    
+    def _display_sortable_results(self, df: pd.DataFrame, max_rows: int = 1000):
+        """
+        Display results in a sortable table widget if available.
+        
+        Args:
+            df: DataFrame to display
+            max_rows: Maximum number of rows to display (for performance)
+        """
+        # Limit rows for performance
+        display_df = df.head(max_rows) if len(df) > max_rows else df
+        
+        if HAS_DATAGRID:
+            # Use ipydatagrid for interactive, sortable display
+            grid = DataGrid(
+                display_df,
+                selection_mode='row',
+                base_row_size=30,
+                base_column_size=120,
+                layout={'height': '400px', 'width': '100%'}
+            )
+            display(grid)
+            
+            if len(df) > max_rows:
+                print(f"\n⚠️ Showing first {max_rows} of {len(df)} rows for performance.")
+        else:
+            # Fallback to standard display with note about sorting
+            print("\n💡 Note: Install ipydatagrid for interactive sortable tables:")
+            print("   pip install ipydatagrid")
+            print()
+            display(display_df.head(20))
     
     def _sanitize_identifier(self, identifier: str) -> str:
         """
@@ -553,11 +591,11 @@ class WatsonDashboard:
                 
                 print(f"✅ Analysis complete! Found {len(result_df)} results.")
                 print()
-                print("📈 Top Results:")
+                print("📈 Results (sortable by clicking column headers):")
                 print("-" * 80)
                 
-                # Display results
-                display(result_df.head(20))
+                # Display results in sortable table
+                self._display_sortable_results(result_df)
                 
             except Exception as e:
                 print(f"❌ Error during analysis: {e}")
