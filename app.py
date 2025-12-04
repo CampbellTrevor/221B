@@ -132,7 +132,7 @@ class WatsonDashboard:
                 'load_table_button': widgets.Button(
                     description='Load Table Schema',
                     button_style='info',
-                    icon='download'
+                    icon='database'
                 ),
                 'column_dropdowns': {},
                 'column_mapping_container': widgets.VBox([]),
@@ -156,17 +156,19 @@ class WatsonDashboard:
             self.strategy_tab_contents[i] = tab_data
             
             # Set up event handlers with proper context
-            # Use lambda with default argument to capture current index
-            tab_data['table_search'].observe(
-                lambda change, idx=i: self._on_table_search(change, idx), 
-                names='value'
-            )
-            tab_data['load_table_button'].on_click(
-                lambda btn, idx=i: self._on_load_table(btn, idx)
-            )
-            tab_data['run_button'].on_click(
-                lambda btn, idx=i: self._run_analysis(btn, idx)
-            )
+            # Use closures to capture the correct tab index
+            def make_table_search_handler(tab_idx):
+                return lambda change: self._on_table_search(change, tab_idx)
+            
+            def make_load_table_handler(tab_idx):
+                return lambda btn: self._on_load_table(btn, tab_idx)
+            
+            def make_run_analysis_handler(tab_idx):
+                return lambda btn: self._run_analysis(btn, tab_idx)
+            
+            tab_data['table_search'].observe(make_table_search_handler(i), names='value')
+            tab_data['load_table_button'].on_click(make_load_table_handler(i))
+            tab_data['run_button'].on_click(make_run_analysis_handler(i))
             
             # Create strategy description with input details
             input_descriptions = self._get_input_descriptions(strategy)
@@ -179,11 +181,15 @@ class WatsonDashboard:
                 </div>
                 """
             
+            # Get strategy docstring with null check
+            strategy_doc = strategy.__class__.__doc__
+            strategy_desc = strategy_doc.strip() if strategy_doc else "No description available"
+            
             description = widgets.HTML(
                 value=f"""
                 <div style="padding: 10px;">
                     <h3>{strategy.name}</h3>
-                    <p style="margin: 10px 0;"><i>{strategy.__class__.__doc__.strip()}</i></p>
+                    <p style="margin: 10px 0;"><i>{strategy_desc}</i></p>
                     <h4>Required Inputs:</h4>
                     {inputs_html}
                 </div>
@@ -269,8 +275,6 @@ class WatsonDashboard:
             clear_output(wait=True)
             print(f"✅ Loaded {len(tab_data['available_columns'])} columns from {current_table}")
             print("Configure column mappings above and click 'Run Analysis' when ready.")
-    
-
     
     def _sanitize_identifier(self, identifier: str) -> str:
         """
