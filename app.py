@@ -7,18 +7,11 @@ using ipywidgets.
 """
 
 import ipywidgets as widgets
-from IPython.display import display, clear_output
+from IPython.display import display, clear_output, HTML
 import pandas as pd
 import re
 from ionic_scripting_framework import isf
 from strategies import HuntStrategy
-
-# Try to import ipydatagrid for sortable tables, fallback to regular display
-try:
-    from ipydatagrid import DataGrid
-    HAS_DATAGRID = True
-except ImportError:
-    HAS_DATAGRID = False
 
 
 class WatsonDashboard:
@@ -283,37 +276,73 @@ class WatsonDashboard:
             print(f"✅ Loaded {len(tab_data['available_columns'])} columns from {current_table}")
             print("Configure column mappings above and click 'Run Analysis' when ready.")
     
-    def _display_sortable_results(self, df: pd.DataFrame, max_rows: int = 1000, fallback_rows: int = 20):
+    def _display_sortable_results(self, df: pd.DataFrame, max_rows: int = 100):
         """
-        Display results in a sortable table widget if available.
+        Display results with sorting controls using ipywidgets.
         
         Args:
             df: DataFrame to display
-            max_rows: Maximum number of rows to display in DataGrid (for performance)
-            fallback_rows: Number of rows to show in fallback display
+            max_rows: Maximum number of rows to display (for performance)
         """
         # Limit rows for performance
-        display_df = df.head(max_rows) if len(df) > max_rows else df
+        display_df = df.head(max_rows) if len(df) > max_rows else df.copy()
         
-        if HAS_DATAGRID:
-            # Use ipydatagrid for interactive, sortable display
-            grid = DataGrid(
-                display_df,
-                selection_mode='row',
-                base_row_size=30,
-                base_column_size=120,
-                layout={'height': '400px', 'width': '100%'}
-            )
-            display(grid)
-            
-            if len(df) > max_rows:
-                print(f"\n⚠️ Showing first {max_rows} of {len(df)} rows for performance.")
-        else:
-            # Fallback to standard display with note about sorting
-            print("\n💡 Note: Install ipydatagrid for interactive sortable tables:")
-            print("   pip install ipydatagrid")
-            print()
-            display(display_df.head(fallback_rows))
+        # Create sorting controls
+        sort_column = widgets.Dropdown(
+            options=['(unsorted)'] + list(display_df.columns),
+            value='(unsorted)',
+            description='Sort by:',
+            style={'description_width': 'initial'}
+        )
+        
+        sort_order = widgets.ToggleButtons(
+            options=['Ascending', 'Descending'],
+            value='Descending',
+            description='Order:',
+            button_style='info',
+            style={'description_width': 'initial'}
+        )
+        
+        # Create output area for the table
+        table_output = widgets.Output()
+        
+        def update_table(change=None):
+            """Update the displayed table based on sort settings."""
+            with table_output:
+                clear_output(wait=True)
+                
+                # Apply sorting
+                if sort_column.value != '(unsorted)':
+                    ascending = (sort_order.value == 'Ascending')
+                    sorted_df = display_df.sort_values(
+                        by=sort_column.value, 
+                        ascending=ascending
+                    )
+                else:
+                    sorted_df = display_df
+                
+                # Display the sorted dataframe
+                display(HTML(sorted_df.to_html(index=False, max_rows=None)))
+        
+        # Attach observers
+        sort_column.observe(update_table, names='value')
+        sort_order.observe(update_table, names='value')
+        
+        # Initial display
+        update_table()
+        
+        # Create the sortable table widget
+        sort_controls = widgets.HBox([sort_column, sort_order])
+        sortable_table = widgets.VBox([
+            widgets.HTML("<h4>📊 Results</h4>"),
+            sort_controls,
+            table_output
+        ])
+        
+        display(sortable_table)
+        
+        if len(df) > max_rows:
+            print(f"\n⚠️ Showing first {max_rows} of {len(df)} rows for performance.")
     
     def _sanitize_identifier(self, identifier: str) -> str:
         """
