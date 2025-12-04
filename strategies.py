@@ -527,6 +527,6 @@ class ExfilStrategy(HuntStrategy):
             'total_bytes_in': 'Total bytes downloaded/received by this source (in bytes)',
             'exfil_ratio': 'Upload-to-download ratio. Normal users typically download more than upload (ratio < 1). Ratios ≥2 indicate the host is uploading significantly more data than receiving, which may suggest data exfiltration',
             'total_bytes': 'Sum of uploaded and downloaded bytes, showing total network activity volume',
-            'upload_percentile': 'Percentile rank (0-100) of this source\'s upload volume compared to all sources. Values ≥90 indicate this source is in the top 10% of uploaders',
+            'upload_percentile': "Percentile rank (0-100) of this source's upload volume compared to all sources. Values ≥90 indicate this source is in the top 10% of uploaders",
             'exfil_score': 'Overall exfiltration suspiciousness score (0-100) based on ratio, upload volume, and total traffic. Higher scores indicate stronger evidence of data exfiltration. Scores ≥50 suggest potential data theft worth investigating'
         }
