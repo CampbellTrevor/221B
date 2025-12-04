@@ -621,7 +621,16 @@ class WatsonDashboard:
                 
                 print(f"✅ Analysis complete! Found {len(result_df)} results.")
                 print()
-                print("📈 Results (sortable by clicking column headers):")
+                
+                # Generate and display visualization if available
+                viz = strategy.visualize(result_df, col_map)
+                if viz is not None:
+                    print("📊 Interactive Visualization:")
+                    print("-" * 80)
+                    display(viz)
+                    print()
+                
+                print("📈 Results (sortable by selecting column):")
                 print("-" * 80)
                 
                 # Display results in sortable table
