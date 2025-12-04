@@ -188,6 +188,9 @@ class ExfilStrategy(HuntStrategy):
     behaving as "producers" rather than "consumers".
     """
     
+    # Constant for pure upload cases (bytes_in = 0, bytes_out > 0)
+    PURE_UPLOAD_RATIO = 999999.0
+    
     def _get_name(self) -> str:
         return "Exfiltration Monitor (Producer/Consumer Ratio)"
     
@@ -240,7 +243,7 @@ class ExfilStrategy(HuntStrategy):
             # If bytes_in is 0 but bytes_out > 0, use a large but not infinite value
             np.where(
                 result_df['total_bytes_out'] > 0,
-                999999.0,  # Large value indicating pure upload
+                self.PURE_UPLOAD_RATIO,  # Large value indicating pure upload
                 0.0  # Both are zero (already filtered above, but for safety)
             )
         )

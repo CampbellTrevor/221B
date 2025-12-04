@@ -283,13 +283,14 @@ class WatsonDashboard:
             print(f"✅ Loaded {len(tab_data['available_columns'])} columns from {current_table}")
             print("Configure column mappings above and click 'Run Analysis' when ready.")
     
-    def _display_sortable_results(self, df: pd.DataFrame, max_rows: int = 1000):
+    def _display_sortable_results(self, df: pd.DataFrame, max_rows: int = 1000, fallback_rows: int = 20):
         """
         Display results in a sortable table widget if available.
         
         Args:
             df: DataFrame to display
-            max_rows: Maximum number of rows to display (for performance)
+            max_rows: Maximum number of rows to display in DataGrid (for performance)
+            fallback_rows: Number of rows to show in fallback display
         """
         # Limit rows for performance
         display_df = df.head(max_rows) if len(df) > max_rows else df
@@ -312,7 +313,7 @@ class WatsonDashboard:
             print("\n💡 Note: Install ipydatagrid for interactive sortable tables:")
             print("   pip install ipydatagrid")
             print()
-            display(display_df.head(20))
+            display(display_df.head(fallback_rows))
     
     def _sanitize_identifier(self, identifier: str) -> str:
         """
