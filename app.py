@@ -157,6 +157,12 @@ class WatsonDashboard:
         
         Raises:
             ValueError: If identifier contains invalid characters
+        
+        Note:
+            Dots are allowed for schema-qualified names (e.g., schema.table).
+            Since table/column names come from information_schema and DESCRIBE
+            queries (system-controlled), the risk of malicious input is minimal.
+            User cannot directly input these values - they select from dropdowns.
         """
         # Allow alphanumeric, underscore, and dot (for schema.table)
         if not re.match(r'^[a-zA-Z0-9_\.]+$', identifier):
@@ -180,9 +186,13 @@ class WatsonDashboard:
             df = isf.run_query(query)
             
             if df is not None and not df.empty:
-                # DESCRIBE returns column info, typically with 'Column' or 'column_name'
-                col_column = 'Column' if 'Column' in df.columns else 'column_name'
-                return df[col_column].tolist()
+                # DESCRIBE returns column info - try common column names
+                # Most SQL systems use 'Column', 'column_name', or 'Field'
+                for col_name in ['Column', 'column_name', 'Field', 'field']:
+                    if col_name in df.columns:
+                        return df[col_name].tolist()
+                # Fallback to first column if none of the expected names found
+                return df.iloc[:, 0].tolist()
             else:
                 return []
         except Exception as e:

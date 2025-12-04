@@ -152,7 +152,7 @@ class EntropyStrategy(HuntStrategy):
         
         def calculate_shannon_entropy(text: str) -> float:
             """Calculate Shannon Entropy for a string."""
-            if not text or len(text) == 0:
+            if not text:
                 return 0.0
             
             # Count character frequencies
@@ -228,11 +228,11 @@ class ExfilStrategy(HuntStrategy):
         })
         
         # Calculate ratio (avoid division by zero)
-        # Use np.inf for cases where there's no incoming traffic
-        result_df['exfil_ratio'] = result_df.apply(
-            lambda row: row['total_bytes_out'] / row['total_bytes_in'] 
-            if row['total_bytes_in'] > 0 else np.inf,
-            axis=1
+        # Use vectorized operations for better performance
+        result_df['exfil_ratio'] = np.where(
+            result_df['total_bytes_in'] > 0,
+            result_df['total_bytes_out'] / result_df['total_bytes_in'],
+            np.inf
         )
         
         # Sort by exfil_ratio (descending)
