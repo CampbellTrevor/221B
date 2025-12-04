@@ -145,7 +145,9 @@ class WatsonDashboard:
         
         # Set tab titles
         for i, strategy in enumerate(self.strategies):
-            self.tab_widget.set_title(i, strategy.name.split(' ')[0])  # Use first word as tab title
+            # Use first word as tab title, with fallback to full name if empty
+            tab_title = strategy.name.split()[0] if strategy.name.strip() else f"Strategy {i+1}"
+            self.tab_widget.set_title(i, tab_title)
         
         # Observe tab changes
         self.tab_widget.observe(self._on_tab_change, names='selected_index')
@@ -239,7 +241,8 @@ class WatsonDashboard:
         try:
             # Sanitize table name to prevent SQL injection
             sanitized_table = self._sanitize_identifier(table_name)
-            query = f"DESCRIBE ionic.events.{sanitized_table}"
+            # Note: Schema path is hardcoded but could be made configurable via __init__ parameter
+            query = f"DESCRIBE {sanitized_table}"
             df = isf.run_query(query)
             
             if df is not None and not df.empty:
@@ -299,9 +302,13 @@ class WatsonDashboard:
         
         # Simple parsing of row/struct types
         # Look for pattern: row(field_name type, field_name type, ...)
-        if 'row(' in type_def.lower():
-            # Extract content between parentheses
-            start = type_def.lower().index('row(') + 4
+        type_def_lower = type_def.lower()
+        if 'row(' in type_def_lower:
+            # Extract content between parentheses (case-insensitive search)
+            start_pos = type_def_lower.find('row(')
+            if start_pos == -1:
+                return nested_fields
+            start = start_pos + 4
             depth = 1
             end = start
             
@@ -434,7 +441,10 @@ class WatsonDashboard:
             # Sanitize all column names and table name
             sanitized_columns = [self._sanitize_identifier(col) for col in col_map.values()]
             sanitized_table = self._sanitize_identifier(self.current_table)
-            limit = self.limit_input.value
+            
+            # Validate and sanitize limit value (IntText widget provides basic validation)
+            limit = max(1, min(1000000, int(self.limit_input.value)))
+            
             query = f"SELECT {', '.join(sanitized_columns)} FROM {sanitized_table} LIMIT {limit}"
         except ValueError as e:
             with self.output_widget:
