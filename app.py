@@ -636,6 +636,17 @@ class WatsonDashboard:
                 # Display results in sortable table
                 self._display_sortable_results(result_df)
                 
+                # Display column explanations for junior analysts
+                explanations = strategy.get_column_explanations()
+                if explanations:
+                    print()
+                    print("📖 Column Explanations:")
+                    print("-" * 80)
+                    for col_name, explanation in explanations.items():
+                        if col_name in result_df.columns:
+                            print(f"• {col_name}: {explanation}")
+                    print()
+                
             except Exception as e:
                 print(f"❌ Error during analysis: {e}")
                 import traceback

@@ -73,6 +73,16 @@ class HuntStrategy(ABC):
         if not HAS_PLOTLY:
             return None
         return None
+    
+    def get_column_explanations(self) -> dict:
+        """
+        Get explanations for output columns to help junior analysts.
+        
+        Returns:
+            Dictionary mapping column names to plain-language explanations
+        """
+        # Default implementation - should be overridden by subclasses
+        return {}
 
 
 class BeaconStrategy(HuntStrategy):
@@ -213,6 +223,18 @@ class BeaconStrategy(HuntStrategy):
         )
         
         return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for BeaconStrategy output columns."""
+        return {
+            'source_ip': 'The IP address that initiated the connections',
+            'dest_ip': 'The destination IP address being contacted',
+            'connection_count': 'Total number of connections observed between this source and destination',
+            'delta_variance': 'How much the timing between connections varies (lower = more consistent)',
+            'mean_delta_sec': 'Average time (in seconds) between consecutive connections',
+            'coeff_variation': 'Normalized measure of timing consistency (lower = more regular/suspicious). Values below 0.3 indicate very consistent timing patterns typical of automated C2 beaconing',
+            'beacon_score': 'Overall suspiciousness score (0-100). Higher scores indicate stronger evidence of C2 beaconing. Scores ≥50 suggest automated beaconing behavior worth investigating'
+        }
 
 
 class EntropyStrategy(HuntStrategy):
@@ -334,6 +356,15 @@ class EntropyStrategy(HuntStrategy):
         )
         
         return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for EntropyStrategy output columns."""
+        return {
+            'target_string': 'The string value being analyzed (e.g., domain name, DNS query)',
+            'string_length': 'Number of characters in the string. Very long strings (50+ characters) may indicate data exfiltration through DNS tunneling',
+            'entropy_score': 'Shannon entropy measuring randomness (0-8 bits). Higher values indicate more random/encoded data. Normal domains typically have entropy 3-4, while tunneled/DGA domains often exceed 4.5 bits',
+            'suspicion_score': 'Overall suspiciousness score (0-100) combining entropy and length. Higher scores suggest DNS tunneling, Domain Generation Algorithms (DGA), or encoded data. Scores ≥50 warrant investigation'
+        }
 
 
 class ExfilStrategy(HuntStrategy):
@@ -487,3 +518,15 @@ class ExfilStrategy(HuntStrategy):
         )
         
         return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for ExfilStrategy output columns."""
+        return {
+            'source_ip': 'The IP address generating the network traffic',
+            'total_bytes_out': 'Total bytes uploaded/sent by this source (in bytes)',
+            'total_bytes_in': 'Total bytes downloaded/received by this source (in bytes)',
+            'exfil_ratio': 'Upload-to-download ratio. Normal users typically download more than upload (ratio < 1). Ratios ≥2 indicate the host is uploading significantly more data than receiving, which may suggest data exfiltration',
+            'total_bytes': 'Sum of uploaded and downloaded bytes, showing total network activity volume',
+            'upload_percentile': 'Percentile rank (0-100) of this source\'s upload volume compared to all sources. Values ≥90 indicate this source is in the top 10% of uploaders',
+            'exfil_score': 'Overall exfiltration suspiciousness score (0-100) based on ratio, upload volume, and total traffic. Higher scores indicate stronger evidence of data exfiltration. Scores ≥50 suggest potential data theft worth investigating'
+        }
