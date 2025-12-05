@@ -720,9 +720,16 @@ class WatsonDashboard:
         # Check if strategy supports parallel processing
         if hasattr(strategy, 'parallel_analyze'):
             try:
-                num_cores = max(1, cpu_count() - 1)  # Leave one core free
-                print(f"   Using {num_cores} CPU cores for parallel processing...")
-                return strategy.parallel_analyze(df, col_map, num_cores)
+                # Determine optimal number of cores (leave one free, minimum 2 for parallelism)
+                total_cores = cpu_count()
+                num_cores = max(2, total_cores - 1) if total_cores > 2 else 1
+                
+                if num_cores > 1:
+                    print(f"   Using {num_cores} CPU cores for parallel processing...")
+                    return strategy.parallel_analyze(df, col_map, num_cores)
+                else:
+                    # Not enough cores for parallelism, use standard analysis
+                    return strategy.analyze(df, col_map)
             except Exception as e:
                 print(f"   ⚠️  Parallel processing failed, falling back to single-threaded: {e}")
                 return strategy.analyze(df, col_map)

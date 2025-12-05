@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 from scipy.stats import entropy
 from multiprocessing import Pool
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
 # Try to import plotly for visualizations (optional)
@@ -303,8 +304,15 @@ class BeaconStrategy(HuntStrategy):
                   for key, group in df.groupby([src_col, dst_col])]
         
         # Process groups in parallel
-        with Pool(processes=num_cores) as pool:
-            results = pool.map(self._process_beacon_group, groups)
+        # Try multiprocessing first, fall back to threading if it fails
+        # (Threading is more compatible with Jupyter notebooks)
+        try:
+            with Pool(processes=num_cores) as pool:
+                results = pool.map(self._process_beacon_group, groups)
+        except Exception:
+            # Fall back to threading for Jupyter notebook compatibility
+            with ThreadPoolExecutor(max_workers=num_cores) as executor:
+                results = list(executor.map(self._process_beacon_group, groups))
         
         # Filter out None results
         results = [r for r in results if r is not None]
