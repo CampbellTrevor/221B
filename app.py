@@ -381,9 +381,10 @@ class WatsonDashboard:
         # Store the full dataframe for pagination
         full_df = df
         
-        # State variables for pagination
+        # State variables for pagination and sorting
         current_page = {'value': 0}
         current_sort = {'column': '(unsorted)', 'ascending': False}
+        cached_sorted_df = {'df': full_df, 'total_pages': 1}  # Cache for sorted DataFrame
         
         # Create sorting controls
         sort_column = widgets.Dropdown(
@@ -421,19 +422,28 @@ class WatsonDashboard:
         table_output = widgets.Output()
         
         def get_sorted_df():
-            """Get the dataframe with current sorting applied."""
+            """Get the dataframe with current sorting applied (cached)."""
             if current_sort['column'] != '(unsorted)':
-                return full_df.sort_values(
+                sorted_df = full_df.sort_values(
                     by=current_sort['column'],
                     ascending=current_sort['ascending']
                 )
-            return full_df
+            else:
+                sorted_df = full_df
+            
+            # Update cache
+            total_rows = len(sorted_df)
+            total_pages = (total_rows + rows_per_page - 1) // rows_per_page
+            cached_sorted_df['df'] = sorted_df
+            cached_sorted_df['total_pages'] = total_pages
+            
+            return sorted_df
         
         def update_table():
             """Update the displayed table based on current page and sort settings."""
-            sorted_df = get_sorted_df()
+            sorted_df = cached_sorted_df['df']
             total_rows = len(sorted_df)
-            total_pages = (total_rows + rows_per_page - 1) // rows_per_page
+            total_pages = cached_sorted_df['total_pages']
             
             # Calculate start and end indices for current page
             start_idx = current_page['value'] * rows_per_page
@@ -459,6 +469,7 @@ class WatsonDashboard:
             current_sort['column'] = sort_column.value
             current_sort['ascending'] = (sort_order.value == 'Ascending')
             current_page['value'] = 0  # Reset to first page when sorting changes
+            get_sorted_df()  # Refresh cache
             update_table()
         
         def on_prev_click(b):
@@ -469,9 +480,7 @@ class WatsonDashboard:
         
         def on_next_click(b):
             """Handle next button click."""
-            sorted_df = get_sorted_df()
-            total_pages = (len(sorted_df) + rows_per_page - 1) // rows_per_page
-            if current_page['value'] < total_pages - 1:
+            if current_page['value'] < cached_sorted_df['total_pages'] - 1:
                 current_page['value'] += 1
                 update_table()
         
