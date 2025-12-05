@@ -370,20 +370,24 @@ class WatsonDashboard:
             print(f"✅ Loaded {len(tab_data['available_columns'])} columns from {current_table}")
             print("Configure column mappings above and click 'Run Analysis' when ready.")
     
-    def _display_sortable_results(self, df: pd.DataFrame, max_rows: int = 100):
+    def _display_sortable_results(self, df: pd.DataFrame, rows_per_page: int = 100):
         """
-        Display results with sorting controls using ipywidgets.
+        Display results with sorting and pagination controls using ipywidgets.
         
         Args:
             df: DataFrame to display
-            max_rows: Maximum number of rows to display (for performance)
+            rows_per_page: Number of rows to display per page
         """
-        # Limit rows for performance
-        display_df = df.head(max_rows) if len(df) > max_rows else df
+        # Store the full dataframe for pagination
+        full_df = df
+        
+        # State variables for pagination
+        current_page = {'value': 0}
+        current_sort = {'column': '(unsorted)', 'ascending': False}
         
         # Create sorting controls
         sort_column = widgets.Dropdown(
-            options=['(unsorted)'] + list(display_df.columns),
+            options=['(unsorted)'] + list(full_df.columns),
             value='(unsorted)',
             description='Sort by:',
             style={'description_width': 'initial'}
@@ -397,46 +401,103 @@ class WatsonDashboard:
             style={'description_width': 'initial'}
         )
         
+        # Create pagination controls
+        prev_button = widgets.Button(
+            description='◀ Previous',
+            button_style='primary',
+            disabled=True,
+            layout=widgets.Layout(width='120px')
+        )
+        
+        next_button = widgets.Button(
+            description='Next ▶',
+            button_style='primary',
+            layout=widgets.Layout(width='120px')
+        )
+        
+        page_info = widgets.HTML(value='')
+        
         # Create output area for the table
         table_output = widgets.Output()
         
-        def update_table(change=None):
-            """Update the displayed table based on sort settings."""
+        def get_sorted_df():
+            """Get the dataframe with current sorting applied."""
+            if current_sort['column'] != '(unsorted)':
+                return full_df.sort_values(
+                    by=current_sort['column'],
+                    ascending=current_sort['ascending']
+                )
+            return full_df
+        
+        def update_table():
+            """Update the displayed table based on current page and sort settings."""
+            sorted_df = get_sorted_df()
+            total_rows = len(sorted_df)
+            total_pages = (total_rows + rows_per_page - 1) // rows_per_page
+            
+            # Calculate start and end indices for current page
+            start_idx = current_page['value'] * rows_per_page
+            end_idx = min(start_idx + rows_per_page, total_rows)
+            
+            # Get the page data
+            page_df = sorted_df.iloc[start_idx:end_idx]
+            
+            # Update table display
             with table_output:
                 clear_output(wait=True)
-                
-                # Apply sorting
-                if sort_column.value != '(unsorted)':
-                    ascending = (sort_order.value == 'Ascending')
-                    sorted_df = display_df.sort_values(
-                        by=sort_column.value, 
-                        ascending=ascending
-                    )
-                else:
-                    sorted_df = display_df
-                
-                # Display the sorted dataframe
-                display(HTML(sorted_df.to_html(index=False)))
+                display(HTML(page_df.to_html(index=False)))
+            
+            # Update page info
+            page_info.value = f"<b>Page {current_page['value'] + 1} of {total_pages}</b> (Rows {start_idx + 1}-{end_idx} of {total_rows})"
+            
+            # Update button states
+            prev_button.disabled = (current_page['value'] == 0)
+            next_button.disabled = (current_page['value'] >= total_pages - 1)
         
-        # Attach observers
-        sort_column.observe(update_table, names='value')
-        sort_order.observe(update_table, names='value')
+        def on_sort_change(change):
+            """Handle sorting changes."""
+            current_sort['column'] = sort_column.value
+            current_sort['ascending'] = (sort_order.value == 'Ascending')
+            current_page['value'] = 0  # Reset to first page when sorting changes
+            update_table()
+        
+        def on_prev_click(b):
+            """Handle previous button click."""
+            if current_page['value'] > 0:
+                current_page['value'] -= 1
+                update_table()
+        
+        def on_next_click(b):
+            """Handle next button click."""
+            sorted_df = get_sorted_df()
+            total_pages = (len(sorted_df) + rows_per_page - 1) // rows_per_page
+            if current_page['value'] < total_pages - 1:
+                current_page['value'] += 1
+                update_table()
+        
+        # Attach observers and handlers
+        sort_column.observe(on_sort_change, names='value')
+        sort_order.observe(on_sort_change, names='value')
+        prev_button.on_click(on_prev_click)
+        next_button.on_click(on_next_click)
         
         # Initial display
         update_table()
         
-        # Create the sortable table widget
+        # Create the UI layout
         sort_controls = widgets.HBox([sort_column, sort_order])
+        pagination_controls = widgets.HBox([prev_button, page_info, next_button], 
+                                          layout=widgets.Layout(justify_content='center'))
+        
         sortable_table = widgets.VBox([
             widgets.HTML("<h4>📊 Results</h4>"),
             sort_controls,
-            table_output
+            pagination_controls,
+            table_output,
+            pagination_controls  # Show pagination at bottom too for convenience
         ])
         
         display(sortable_table)
-        
-        if len(df) > max_rows:
-            print(f"\n⚠️ Showing first {max_rows} of {len(df)} rows for performance.")
     
     def _sanitize_identifier(self, identifier: str) -> str:
         """

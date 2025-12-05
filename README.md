@@ -1,97 +1,268 @@
-# 221B: The Analyst's Head-Up Display
+# 221B - Interactive Threat Hunting Dashboard
 
-**221B** is a Jupyter-based analytic dashboard designed to bridge the gap between **ALEX** (Compute) and **IONIC** (Storage).
+A Jupyter notebook-based threat hunting platform that provides interactive analysis of network security data through pre-built detection strategies.
 
-It serves as a "No-Code" threat hunting interface, allowing analysts to execute complex statistical analysis and behavioral detection algorithms against Trino SQL datasets without writing a single line of code.
+## Overview
 
----
+221B is a no-code threat hunting tool designed for security analysts to investigate network traffic and detect malicious behavior patterns. It connects to IONIC data stores via the `ionic_scripting_framework` and provides an intuitive widget-based interface for running various threat detection strategies.
 
-## 🎯 Mission
+## Features
 
-The volume of data in IONIC makes manual SQL querying slow and error-prone. **221B** automates the "heavy lifting" of data engineering. It dynamically parses table schemas, constructs optimized SQL queries via the `ionic_scripting_framework` (isf), and visualizes the results using Python's advanced data science libraries.
+### 🎯 Detection Strategies
 
-## ⚡ Core Modules
+The dashboard includes three core threat hunting strategies:
 
-221B currently supports four distinct "Hunt Logic" modules:
+**Beacon Hunter (C2 Detection)**
+- Detects command-and-control beaconing behavior by analyzing connection timing patterns
+- Identifies rhythmic network traffic indicative of automated callbacks
+- Calculates beacon scores based on connection consistency and frequency
+- Useful for finding compromised hosts communicating with C2 servers
 
-### 1. The Beacon Hunter (C2 Detection)
-* **Goal:** Identify Command & Control (C2) callbacks.
-* **Method:** Aggregates connection timestamps per source/destination pair and calculates the standard deviation of "inter-arrival times" (deltas).
-* **Output:** Histograms identifying "rhythmic" machine-like traffic vs. "chaotic" human traffic.
+**Entropy Analyzer (DNS Tunneling)**
+- Detects DNS tunneling and Domain Generation Algorithm (DGA) domains
+- Calculates Shannon entropy on string fields to identify high-randomness data
+- Flags long, high-entropy strings that may indicate data exfiltration
+- Helps identify covert channels and encoded communications
 
-### 2. The Entropy Analyzer (DNS Tunneling)
-* **Goal:** Detect data exfiltration or C2 hidden in protocol fields.
-* **Method:** Applies Shannon Entropy math to string fields (DNS Queries, SSL Subjects).
-* **Output:** Scatter plots highlighting high-entropy, long-string anomalies indicative of tunneling or DGA (Domain Generation Algorithms).
+**Exfiltration Monitor (Producer/Consumer Ratio)**
+- Identifies hosts with unusual upload-to-download traffic ratios
+- Detects potential data exfiltration by finding "producer" hosts
+- Calculates suspicion scores based on traffic volume and ratio
+- Highlights hosts behaving abnormally compared to typical download patterns
 
-### 3. The Rare Artifact Finder (Outlier Detection)
-* **Goal:** Spot unique/anomalous User-Agents, JA3 Hashes, or File Names.
-* **Method:** Performs massive SQL aggregations to find the "Bottom 1%" of occurrences.
-* **Output:** Ranked lists of the rarest artifacts seen on the network.
+### 🔧 Interactive Controls
 
-### 4. The Exfiltration Monitor (Producer/Consumer Ratio)
-* **Goal:** Identify compromised internal hosts pushing data out.
-* **Method:** Compares `orig_bytes` (upload) vs `resp_bytes` (download) to generate a traffic ratio.
-* **Output:** Leaderboard of internal IPs behaving as "Producers" rather than "Consumers."
+**Dynamic Schema Discovery**
+- Automatically discovers available tables from the IONIC database
+- Caches table list locally for 7 days to improve performance
+- Provides schema inspection with support for nested fields
+- Intelligent column mapping with dropdown selectors
 
----
+**Flexible Query Options**
+- Configurable row limits (1 to 1,000,000 rows)
+- Offset-based pagination for SQL-level data retrieval
+- Optional date range filtering with enable/disable toggle
+- Automatic query construction with SQL injection protection
 
-## 🛠 Technology Stack
+**Results Visualization**
+- Interactive visualizations using Plotly (when available)
+- Sortable result tables with column-based ordering
+- Paginated result viewing (100 rows per page with Previous/Next navigation)
+- Column explanations displayed before results for better understanding
+- Export-ready HTML table format
 
-* **Frontend:** Jupyter Notebook (ALEX Environment)
-* **GUI Framework:** `ipywidgets` (Interactive controls), `ipydatagrid` (Data presentation)
-* **Backend Connection:** `ionic_scripting_framework` (`isf`)
-* **Data Processing:** `pandas`, `scipy.stats` (Entropy calculations)
-* **Query Engine:** Trino SQL
+### 🛡️ Security Features
 
----
+- SQL injection prevention through identifier sanitization
+- Date input validation with regex pattern matching
+- Parameterized query construction
+- Secure handling of user inputs throughout the interface
 
-## 🚀 Quick Start
+### ⚡ Performance Optimizations
+
+- Local caching of table discovery queries (7-day TTL)
+- Configurable cache location and expiration
+- Efficient pagination of large result sets
+- Lazy loading of table schemas
+
+## Getting Started
 
 ### Prerequisites
-Ensure you are operating within the ALEX environment and have access to the `ionic_scripting_framework`.
+
+- Jupyter Notebook environment (ALEX or compatible)
+- Access to `ionic_scripting_framework` (isf)
+- Python packages: `ipywidgets`, `pandas`, `scipy`, `plotly` (optional)
 
 ### Installation
-1. Clone this repository into your ALEX workspace:
-   ```bash
-   git clone https://gitlab.mil/users/your-repo/221B.git
-   ```
-2. Open the main dashboard file:
-   ```text
-   221B_Dashboard.ipynb
-   ```
 
-### Usage
-**221B** uses a "Wizard" style workflow:
-
-1.  **Initialize:** Run the first cell to load libraries and authenticate with `isf`.
-2.  **Select Dataset:** Use the dropdown to select a table (e.g., `zeek_conn`, `zeek_http`). 221B will automatically query the `information_schema` to populate the field options.
-3.  **Map Fields:** The tool will ask "Which column is the Source IP?" Select the correct column from your dataset.
-4.  **Run Hunt:** Click the module button (e.g., "Analyze Entropy").
-5.  **Visualize:** View the resulting charts and data grids below the control panel.
-
----
-
-## 🧩 Architecture
-
-The project follows a modified Model-View-Controller (MVC) pattern:
-
-* **`model.py`:** Handles `isf` connections and SQL query generation.
-* **`view.py`:** Manages `ipywidgets` layout and plotting logic.
-* **`controller.py`:** Binds user inputs to the model and updates the view.
-
-**Example Connection Logic:**
-```python
-from ionic_scripting_framework import isf
-
-def fetch_data(query):
-    """
-    Executes raw SQL against IONIC and returns a Pandas DataFrame.
-    """
-    try:
-        data = isf.run_query(query)
-        return data
-    except Exception as e:
-        print(f"Query Error: {e}")
-        return None
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd 221B
 ```
+
+2. Open the Jupyter notebook:
+```bash
+jupyter notebook 221B_Notebook.ipynb
+```
+
+### Basic Usage
+
+1. **Initialize the Dashboard**
+   - Run the notebook cells to load the WatsonDashboard
+   - Wait for table list to load (cached after first run)
+
+2. **Select a Strategy**
+   - Choose from Beacon, Entropy, or Exfiltration tabs
+   - Review the required inputs for your selected strategy
+
+3. **Configure Data Source**
+   - Use the table filter to search for your target table
+   - Click "Load Table Schema" to discover available columns
+   - Map the required fields to your table's columns
+
+4. **Set Query Options**
+   - Adjust row limit (default: 10,000)
+   - Set offset for SQL-level pagination (default: 0)
+   - Optionally enable date filtering and select date range
+
+5. **Run Analysis**
+   - Click "Run Analysis" to execute the threat hunt
+   - Review column explanations at the top
+   - Explore interactive visualizations
+   - Navigate through paginated results using Previous/Next buttons
+
+### Example Workflow
+
+```python
+from app import WatsonDashboard
+from strategies import BeaconStrategy, EntropyStrategy, ExfilStrategy
+
+# Initialize dashboard with custom cache settings
+dashboard = WatsonDashboard(
+    strategies=[
+        BeaconStrategy(),
+        EntropyStrategy(),
+        ExfilStrategy()
+    ],
+    cache_dir='.custom_cache',
+    cache_days=3
+)
+
+# Display the dashboard
+dashboard.display()
+```
+
+## Project Structure
+
+```
+221B/
+├── app.py              # Main dashboard application and UI logic
+├── strategies.py       # Threat hunting strategy implementations
+├── 221B_Notebook.ipynb # Jupyter notebook interface
+├── .221b_cache/        # Local cache directory (auto-created)
+└── README.md          # This file
+```
+
+### Key Components
+
+**app.py - WatsonDashboard Class**
+- Manages the overall dashboard UI and workflow
+- Handles table discovery and caching
+- Builds dynamic column mapping interfaces
+- Executes queries and displays results
+- Implements pagination and filtering controls
+
+**strategies.py - HuntStrategy Classes**
+- Abstract base class defining the strategy pattern
+- Concrete implementations for each detection method
+- Analysis logic separated from UI concerns
+- Optional visualization generation
+- Column explanation system for analyst education
+
+## Configuration
+
+### Cache Settings
+
+Configure cache behavior when initializing the dashboard:
+
+```python
+dashboard = WatsonDashboard(
+    strategies=my_strategies,
+    cache_dir='.my_cache',    # Custom cache directory
+    cache_days=14              # Cache expiration in days
+)
+```
+
+### Display Options
+
+Result pagination can be adjusted in the `_display_sortable_results` method:
+
+```python
+# Default: 100 rows per page
+self._display_sortable_results(result_df, rows_per_page=100)
+```
+
+## Advanced Features
+
+### Custom Strategies
+
+Create custom threat hunting strategies by extending the `HuntStrategy` base class:
+
+```python
+from strategies import HuntStrategy
+
+class CustomStrategy(HuntStrategy):
+    def _get_name(self) -> str:
+        return "Custom Threat Hunt"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'source_ip']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        # Your analysis logic here
+        return result_df
+    
+    def get_column_explanations(self) -> dict:
+        return {
+            'column_name': 'Explanation of what this column means'
+        }
+```
+
+### Nested Field Support
+
+The dashboard automatically discovers and expands nested fields in structured data types:
+
+- Supports Trino `ROW` types
+- Handles multiple levels of nesting (up to 3 levels deep)
+- Generates dot-notation paths (e.g., `parent.child.grandchild`)
+
+## Troubleshooting
+
+**Tables not appearing**
+- Verify IONIC connection via `ionic_scripting_framework`
+- Check cache file at `.221b_cache/available_tables.json`
+- Delete cache to force refresh
+
+**Date filtering not working**
+- Ensure your strategy includes a 'timestamp' required input
+- Verify timestamp column is mapped in Column Mapping section
+- Check that dates are selected in both start and end date pickers
+
+**Performance issues with large datasets**
+- Reduce the row limit in Query Options
+- Use date filtering to narrow the data window
+- Consider using SQL-level offset for large result sets
+
+**Cache not updating**
+- Delete `.221b_cache/` directory
+- Wait 7 days for automatic expiration
+- Or adjust `cache_days` parameter
+
+## Contributing
+
+When adding new features or strategies:
+
+1. Follow the existing code structure and patterns
+2. Implement proper input sanitization for security
+3. Add column explanations for analyst-facing outputs
+4. Test with various data sources and edge cases
+5. Update this README with new functionality
+
+## Security Considerations
+
+- All SQL identifiers are sanitized using regex validation
+- Date inputs are validated before query construction  
+- User inputs cannot directly inject SQL code
+- Cache files contain no sensitive data (table names only)
+
+## License
+
+[Add license information here]
+
+## Support
+
+For issues or questions:
+- Check the Troubleshooting section above
+- Review code comments in `app.py` and `strategies.py`
+- Consult IONIC/ALEX documentation for connection issues
