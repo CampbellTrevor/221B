@@ -10,6 +10,9 @@ import ipywidgets as widgets
 from IPython.display import display, clear_output, HTML
 import pandas as pd
 import re
+import json
+import os
+from datetime import datetime, timedelta
 from ionic_scripting_framework import isf
 from strategies import HuntStrategy
 
@@ -22,15 +25,23 @@ class WatsonDashboard:
     selected table schema, and executes hunt strategies on the data.
     """
     
-    def __init__(self, strategies: list):
+    def __init__(self, strategies: list, cache_dir: str = '.221b_cache', cache_days: int = 7):
         """
         Initialize the WatsonDashboard.
         
         Args:
             strategies: List of HuntStrategy objects to make available
+            cache_dir: Directory to store cached data (default: '.221b_cache')
+            cache_days: Number of days to keep cached tables list (default: 7)
         """
         self.strategies = strategies
         self.all_tables = []
+        self.cache_dir = cache_dir
+        self.cache_days = cache_days
+        self.tables_cache_file = os.path.join(cache_dir, 'available_tables.json')
+        
+        # Create cache directory if it doesn't exist
+        os.makedirs(cache_dir, exist_ok=True)
         
         # UI Components - will be created per tab
         self.tab_widget = None
@@ -50,11 +61,32 @@ class WatsonDashboard:
     def _get_available_tables(self) -> list:
         """
         Query information_schema.tables to get available tables.
+        Uses local cache if available and fresh (within cache_days).
         
         Returns:
             List of table names
         """
+        # Check if cache exists and is fresh
+        if os.path.exists(self.tables_cache_file):
+            try:
+                with open(self.tables_cache_file, 'r') as f:
+                    cache_data = json.load(f)
+                
+                # Check cache timestamp
+                cache_time = datetime.fromisoformat(cache_data['timestamp'])
+                age_days = (datetime.now() - cache_time).days
+                
+                if age_days < self.cache_days:
+                    print(f"📦 Using cached table list (age: {age_days} days)")
+                    return cache_data['tables']
+                else:
+                    print(f"⏰ Cache expired (age: {age_days} days), refreshing...")
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                print(f"⚠️ Cache file corrupted, refreshing... ({e})")
+        
+        # Cache miss or expired - query database
         try:
+            print("🔄 Querying database for available tables...")
             query = """
             SELECT table_name 
             FROM information_schema.tables 
@@ -64,7 +96,18 @@ class WatsonDashboard:
             df = isf.run_query(query)
             
             if df is not None and not df.empty:
-                return df['table_name'].tolist()
+                tables = df['table_name'].tolist()
+                
+                # Save to cache
+                cache_data = {
+                    'timestamp': datetime.now().isoformat(),
+                    'tables': tables
+                }
+                with open(self.tables_cache_file, 'w') as f:
+                    json.dump(cache_data, f, indent=2)
+                
+                print(f"✅ Cached {len(tables)} tables")
+                return tables
             else:
                 return ['No tables available']
         except Exception as e:
@@ -143,6 +186,29 @@ class WatsonDashboard:
                     max=1000000,
                     style={'description_width': 'initial'}
                 ),
+                'enable_date_filter': widgets.Checkbox(
+                    value=False,
+                    description='Enable Date Filter',
+                    style={'description_width': 'initial'}
+                ),
+                'start_date': widgets.DatePicker(
+                    description='Start Date:',
+                    disabled=True,
+                    style={'description_width': 'initial'}
+                ),
+                'end_date': widgets.DatePicker(
+                    description='End Date:',
+                    disabled=True,
+                    style={'description_width': 'initial'}
+                ),
+                'offset_input': widgets.IntText(
+                    value=0,
+                    description='Offset:',
+                    min=0,
+                    max=10000000,
+                    style={'description_width': 'initial'}
+                ),
+                'pagination_info': widgets.HTML(value=''),
                 'run_button': widgets.Button(
                     description='Run Analysis',
                     button_style='success',
@@ -166,18 +232,22 @@ class WatsonDashboard:
             def make_run_analysis_handler(tab_idx):
                 return lambda btn: self._run_analysis(btn, tab_idx)
             
+            def make_date_filter_handler(tab_idx):
+                return lambda change: self._on_date_filter_toggle(change, tab_idx)
+            
             tab_data['table_search'].observe(make_table_search_handler(i), names='value')
             tab_data['load_table_button'].on_click(make_load_table_handler(i))
             tab_data['run_button'].on_click(make_run_analysis_handler(i))
+            tab_data['enable_date_filter'].observe(make_date_filter_handler(i), names='value')
             
             # Create strategy description with input details
             input_descriptions = self._get_input_descriptions(strategy)
             inputs_html = ""
             for inp, (desc, example) in input_descriptions.items():
                 inputs_html += f"""
-                <div style="margin: 10px 0; padding: 8px; background: #f8f9fa; color: #6c757d;  border-left: 3px solid #007bff;">
+                <div style="margin: 10px 0; padding: 8px; background: #f8f9fa; color: #212529;  border-left: 3px solid #007bff;">
                     <b>{inp}:</b> {desc}<br/>
-                    <i style="color: #6c757d; font-size: 0.9em;">{example}</i>
+                    <i style="color: #495057; font-size: 0.9em;">{example}</i>
                 </div>
                 """
             
@@ -207,7 +277,14 @@ class WatsonDashboard:
                 widgets.HTML("<hr>"),
                 widgets.HTML("<h4>Column Mapping</h4>"),
                 tab_data['column_mapping_container'],
+                widgets.HTML("<hr>"),
+                widgets.HTML("<h4>Query Options</h4>"),
                 tab_data['limit_input'],
+                tab_data['offset_input'],
+                tab_data['enable_date_filter'],
+                tab_data['start_date'],
+                tab_data['end_date'],
+                tab_data['pagination_info'],
                 tab_data['run_button'],
                 widgets.HTML("<hr>"),
                 tab_data['output_widget']
@@ -243,6 +320,21 @@ class WatsonDashboard:
             # Filter tables based on search term
             filtered_tables = [t for t in self.all_tables if search_term in t.lower()]
             tab_data['table_dropdown'].options = filtered_tables if filtered_tables else ['No matching tables']
+    
+    def _on_date_filter_toggle(self, change, tab_index: int):
+        """
+        Handle date filter enable/disable toggle.
+        
+        Args:
+            change: Change event from checkbox widget
+            tab_index: Index of the tab
+        """
+        tab_data = self.strategy_tab_contents[tab_index]
+        enabled = change['new']
+        
+        # Enable/disable date picker widgets
+        tab_data['start_date'].disabled = not enabled
+        tab_data['end_date'].disabled = not enabled
     
     def _on_load_table(self, button, tab_index: int):
         """
@@ -580,16 +672,40 @@ class WatsonDashboard:
         for required_input, dropdown in column_dropdowns.items():
             col_map[required_input] = dropdown.value
         
-        # Build SELECT query with sanitized identifiers and LIMIT
+        # Build SELECT query with sanitized identifiers, date filtering, LIMIT and OFFSET
         try:
             # Sanitize all column names and table name
             sanitized_columns = [self._sanitize_identifier(col) for col in col_map.values()]
             sanitized_table = self._sanitize_identifier(current_table)
             
-            # Validate and sanitize limit value (IntText widget provides basic validation)
+            # Validate and sanitize limit and offset values (IntText widget provides basic validation)
             limit = max(1, min(1000000, int(tab_data['limit_input'].value)))
+            offset = max(0, int(tab_data['offset_input'].value))
             
-            query = f"SELECT {', '.join(sanitized_columns)} FROM {sanitized_table} LIMIT {limit}"
+            # Build the query
+            query = f"SELECT {', '.join(sanitized_columns)} FROM {sanitized_table}"
+            
+            # Add date filtering if enabled
+            where_clauses = []
+            if tab_data['enable_date_filter'].value:
+                # Find timestamp column for date filtering
+                timestamp_col = col_map.get('timestamp')
+                if timestamp_col:
+                    sanitized_ts_col = self._sanitize_identifier(timestamp_col)
+                    
+                    if tab_data['start_date'].value:
+                        start_date_str = tab_data['start_date'].value.isoformat()
+                        where_clauses.append(f"CAST({sanitized_ts_col} AS DATE) >= DATE '{start_date_str}'")
+                    
+                    if tab_data['end_date'].value:
+                        end_date_str = tab_data['end_date'].value.isoformat()
+                        where_clauses.append(f"CAST({sanitized_ts_col} AS DATE) <= DATE '{end_date_str}'")
+            
+            if where_clauses:
+                query += " WHERE " + " AND ".join(where_clauses)
+            
+            query += f" LIMIT {limit} OFFSET {offset}"
+            
         except ValueError as e:
             with tab_data['output_widget']:
                 print(f"❌ Invalid SQL identifier: {e}")
@@ -622,6 +738,16 @@ class WatsonDashboard:
                 print(f"✅ Analysis complete! Found {len(result_df)} results.")
                 print()
                 
+                # Display column explanations for junior analysts FIRST
+                explanations = strategy.get_column_explanations()
+                if explanations:
+                    print("📖 Column Explanations:")
+                    print("-" * 80)
+                    for col_name, explanation in explanations.items():
+                        if col_name in result_df.columns:
+                            print(f"• {col_name}: {explanation}")
+                    print()
+                
                 # Generate and display visualization if available
                 viz = strategy.visualize(result_df, col_map)
                 if viz is not None:
@@ -636,16 +762,27 @@ class WatsonDashboard:
                 # Display results in sortable table
                 self._display_sortable_results(result_df)
                 
-                # Display column explanations for junior analysts
-                explanations = strategy.get_column_explanations()
-                if explanations:
-                    print()
-                    print("📖 Column Explanations:")
-                    print("-" * 80)
-                    for col_name, explanation in explanations.items():
-                        if col_name in result_df.columns:
-                            print(f"• {col_name}: {explanation}")
-                    print()
+                # Display pagination controls
+                print()
+                print("⏭️ Pagination:")
+                print("-" * 80)
+                current_offset = offset
+                next_offset = offset + limit
+                prev_offset = max(0, offset - limit)
+                
+                print(f"Showing rows {current_offset + 1} to {current_offset + len(result_df)}")
+                print(f"To see the next {limit} results, set Offset to: {next_offset}")
+                print(f"To see the previous {limit} results, set Offset to: {prev_offset}")
+                print()
+                
+                # Update pagination info
+                tab_data['pagination_info'].value = f"""
+                <div style="padding: 10px; background: #e7f3ff; border-left: 3px solid #007bff; margin: 10px 0;">
+                    <b>Current View:</b> Rows {current_offset + 1} to {current_offset + len(result_df)}<br/>
+                    <b>Next Page:</b> Set Offset to {next_offset}<br/>
+                    <b>Previous Page:</b> Set Offset to {prev_offset}
+                </div>
+                """
                 
             except Exception as e:
                 print(f"❌ Error during analysis: {e}")
