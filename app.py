@@ -718,7 +718,13 @@ class WatsonDashboard:
             DataFrame with analysis results
         """
         # Check if strategy supports parallel processing
-        if hasattr(strategy, 'parallel_analyze'):
+        # Only use parallel processing if the method has been overridden (not just inherited)
+        strategy_class = strategy.__class__
+        base_class = HuntStrategy
+        has_custom_parallel = (hasattr(strategy_class, 'parallel_analyze') and 
+                               strategy_class.parallel_analyze != base_class.parallel_analyze)
+        
+        if has_custom_parallel:
             try:
                 # Determine optimal number of cores (leave one free, minimum 2 for parallelism)
                 total_cores = cpu_count()
