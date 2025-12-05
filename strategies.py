@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
 from scipy.stats import entropy
+from multiprocessing import Pool
+from functools import partial
 
 # Try to import plotly for visualizations (optional)
 try:
@@ -83,6 +85,24 @@ class HuntStrategy(ABC):
         """
         # Default implementation - should be overridden by subclasses
         return {}
+    
+    def parallel_analyze(self, df: pd.DataFrame, col_map: dict, num_cores: int = 4) -> pd.DataFrame:
+        """
+        Optional parallel implementation of analysis using multiprocessing.
+        
+        Subclasses can override this method to provide optimized parallel processing.
+        If not overridden, this will fall back to the standard analyze method.
+        
+        Args:
+            df: Input DataFrame with raw data
+            col_map: Dictionary mapping required_inputs to actual column names
+            num_cores: Number of CPU cores to use for parallel processing
+        
+        Returns:
+            DataFrame with analysis results
+        """
+        # Default implementation - just call the standard analyze method
+        return self.analyze(df, col_map)
 
 
 class BeaconStrategy(HuntStrategy):
@@ -185,6 +205,114 @@ class BeaconStrategy(HuntStrategy):
         # Filter and sort by beacon score
         if not result_df.empty:
             # Only show high-confidence beacons
+            result_df = result_df[result_df['beacon_score'] >= self.MIN_BEACON_SCORE]
+            result_df = result_df.sort_values('beacon_score', ascending=False)
+        
+        return result_df
+    
+    @staticmethod
+    def _process_beacon_group(group_data):
+        """
+        Process a single source/dest group for beacon detection.
+        
+        This static method is used for parallel processing.
+        
+        Args:
+            group_data: Tuple of ((src_ip, dst_ip), group_df, ts_col, min_connections)
+        
+        Returns:
+            Dictionary with analysis results or None if group doesn't meet criteria
+        """
+        (src_ip, dst_ip), group, ts_col, min_connections = group_data
+        
+        # Require minimum connections for statistical significance
+        if len(group) < min_connections:
+            return None
+        
+        # Calculate time deltas in seconds
+        timestamps = group[ts_col].values
+        deltas = np.diff(timestamps).astype('timedelta64[s]').astype(float)
+        
+        if len(deltas) == 0:
+            return None
+        
+        variance = np.var(deltas)
+        mean_delta = np.mean(deltas)
+        std_delta = np.std(deltas)
+        
+        # Calculate coefficient of variation (CV)
+        cv = (std_delta / mean_delta) if mean_delta > 0 else float('inf')
+        
+        # Calculate beacon score (0-100, higher = more suspicious)
+        beacon_score = 0
+        if cv < 0.1:
+            beacon_score += 50
+        elif cv < 0.3:
+            beacon_score += 30
+        elif cv < 0.5:
+            beacon_score += 15
+        
+        # Bonus for many connections
+        if len(group) >= 20:
+            beacon_score += 30
+        elif len(group) >= 10:
+            beacon_score += 20
+        elif len(group) >= 5:
+            beacon_score += 10
+        
+        # Bonus for reasonable beacon intervals (1 min to 1 hour)
+        if 60 <= mean_delta <= 3600:
+            beacon_score += 20
+        
+        return {
+            'source_ip': src_ip,
+            'dest_ip': dst_ip,
+            'connection_count': len(group),
+            'delta_variance': variance,
+            'mean_delta_sec': mean_delta,
+            'coeff_variation': cv,
+            'beacon_score': min(beacon_score, 100)
+        }
+    
+    def parallel_analyze(self, df: pd.DataFrame, col_map: dict, num_cores: int = 4) -> pd.DataFrame:
+        """
+        Parallel implementation of beacon detection analysis.
+        
+        Args:
+            df: DataFrame with connection logs
+            col_map: Mapping of column names
+            num_cores: Number of CPU cores to use
+        
+        Returns:
+            DataFrame with analysis results
+        """
+        # Map columns
+        ts_col = col_map['timestamp']
+        src_col = col_map['source_ip']
+        dst_col = col_map['dest_ip']
+        
+        # Ensure timestamp is datetime
+        df = df.copy()
+        df[ts_col] = pd.to_datetime(df[ts_col])
+        
+        # Sort by source, dest, and timestamp
+        df = df.sort_values([src_col, dst_col, ts_col])
+        
+        # Prepare groups for parallel processing
+        groups = [(key, group, ts_col, self.MIN_CONNECTIONS) 
+                  for key, group in df.groupby([src_col, dst_col])]
+        
+        # Process groups in parallel
+        with Pool(processes=num_cores) as pool:
+            results = pool.map(self._process_beacon_group, groups)
+        
+        # Filter out None results
+        results = [r for r in results if r is not None]
+        
+        result_df = pd.DataFrame(results)
+        
+        # Filter and sort by beacon score
+        if not result_df.empty:
             result_df = result_df[result_df['beacon_score'] >= self.MIN_BEACON_SCORE]
             result_df = result_df.sort_values('beacon_score', ascending=False)
         

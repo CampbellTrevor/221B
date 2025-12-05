@@ -14,6 +14,7 @@ import json
 import os
 import datetime
 from datetime import timedelta
+from multiprocessing import Pool, cpu_count
 from ionic_scripting_framework import isf
 from strategies import HuntStrategy
 
@@ -203,14 +204,6 @@ class WatsonDashboard:
                     disabled=True,
                     style={'description_width': 'initial'}
                 ),
-                'offset_input': widgets.IntText(
-                    value=0,
-                    description='Offset:',
-                    min=0,
-                    max=10000000,
-                    style={'description_width': 'initial'}
-                ),
-                'pagination_info': widgets.HTML(value=''),
                 'run_button': widgets.Button(
                     description='Run Analysis',
                     button_style='success',
@@ -282,11 +275,9 @@ class WatsonDashboard:
                 widgets.HTML("<hr>"),
                 widgets.HTML("<h4>Query Options</h4>"),
                 tab_data['limit_input'],
-                tab_data['offset_input'],
                 tab_data['enable_date_filter'],
                 tab_data['start_date'],
                 tab_data['end_date'],
-                tab_data['pagination_info'],
                 tab_data['run_button'],
                 widgets.HTML("<hr>"),
                 tab_data['output_widget']
@@ -711,6 +702,34 @@ class WatsonDashboard:
         # Update container
         tab_data['column_mapping_container'].children = dropdowns
     
+    def _run_parallel_analysis(self, strategy: HuntStrategy, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Run strategy analysis with multiprocessing support.
+        
+        This method attempts to parallelize the analysis by checking if the strategy
+        has a parallel_analyze method. If not, it falls back to the standard analyze method.
+        
+        Args:
+            strategy: The hunt strategy to execute
+            df: Input DataFrame with raw data
+            col_map: Dictionary mapping required_inputs to actual column names
+        
+        Returns:
+            DataFrame with analysis results
+        """
+        # Check if strategy supports parallel processing
+        if hasattr(strategy, 'parallel_analyze'):
+            try:
+                num_cores = max(1, cpu_count() - 1)  # Leave one core free
+                print(f"   Using {num_cores} CPU cores for parallel processing...")
+                return strategy.parallel_analyze(df, col_map, num_cores)
+            except Exception as e:
+                print(f"   ⚠️  Parallel processing failed, falling back to single-threaded: {e}")
+                return strategy.analyze(df, col_map)
+        else:
+            # Standard single-threaded analysis
+            return strategy.analyze(df, col_map)
+    
     def _run_analysis(self, button, tab_index: int):
         """
         Execute the selected hunt strategy on the selected table.
@@ -744,15 +763,14 @@ class WatsonDashboard:
         for required_input, dropdown in column_dropdowns.items():
             col_map[required_input] = dropdown.value
         
-        # Build SELECT query with sanitized identifiers, date filtering, LIMIT and OFFSET
+        # Build SELECT query with sanitized identifiers, date filtering, and LIMIT
         try:
             # Sanitize all column names and table name
             sanitized_columns = [self._sanitize_identifier(col) for col in col_map.values()]
             sanitized_table = self._sanitize_identifier(current_table)
             
-            # Validate and sanitize limit and offset values (IntText widget provides basic validation)
+            # Validate and sanitize limit value (IntText widget provides basic validation)
             limit = max(1, min(1000000, int(tab_data['limit_input'].value)))
-            offset = max(0, int(tab_data['offset_input'].value))
             
             # Build the query
             query = f"SELECT {', '.join(sanitized_columns)} FROM {sanitized_table}"
@@ -803,7 +821,7 @@ class WatsonDashboard:
             if where_clauses:
                 query += " WHERE " + " AND ".join(where_clauses)
             
-            query += f" LIMIT {limit} OFFSET {offset}"
+            query += f" LIMIT {limit}"
             
         except ValueError as e:
             with tab_data['output_widget']:
@@ -826,9 +844,9 @@ class WatsonDashboard:
                 print(f"✅ Retrieved {len(df)} rows from {current_table}")
                 print()
                 
-                # Run strategy analysis
+                # Run strategy analysis with multiprocessing support
                 print(f"🔬 Analyzing data with {strategy.name}...")
-                result_df = strategy.analyze(df, col_map)
+                result_df = self._run_parallel_analysis(strategy, df, col_map)
                 
                 if result_df is None or result_df.empty:
                     print("⚠️ Analysis returned no results.")
@@ -860,28 +878,6 @@ class WatsonDashboard:
                 
                 # Display results in sortable table
                 self._display_sortable_results(result_df)
-                
-                # Display pagination controls
-                print()
-                print("⏭️ Pagination:")
-                print("-" * 80)
-                current_offset = offset
-                next_offset = offset + limit
-                prev_offset = max(0, offset - limit)
-                
-                print(f"Showing rows {current_offset + 1} to {current_offset + len(result_df)}")
-                print(f"To see the next {limit} results, set Offset to: {next_offset}")
-                print(f"To see the previous {limit} results, set Offset to: {prev_offset}")
-                print()
-                
-                # Update pagination info
-                tab_data['pagination_info'].value = f"""
-                <div style="padding: 10px; background: #e7f3ff; border-left: 3px solid #007bff; margin: 10px 0;">
-                    <b>Current View:</b> Rows {current_offset + 1} to {current_offset + len(result_df)}<br/>
-                    <b>Next Page:</b> Set Offset to {next_offset}<br/>
-                    <b>Previous Page:</b> Set Offset to {prev_offset}
-                </div>
-                """
                 
             except Exception as e:
                 print(f"❌ Error during analysis: {e}")
