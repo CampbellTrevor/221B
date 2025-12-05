@@ -383,6 +383,8 @@ class EntropyStrategy(HuntStrategy):
     
     # Minimum suspicion score to be considered high-risk
     MIN_SUSPICION_SCORE = 50
+    # Batches per core for parallel processing (more batches = better load distribution)
+    BATCHES_PER_CORE = 4
     
     def _get_name(self) -> str:
         return "Entropy Analyzer (DNS Tunneling)"
@@ -539,7 +541,7 @@ class EntropyStrategy(HuntStrategy):
         unique_strings = df[str_col].unique().tolist()
         
         # Split strings into batches for parallel processing
-        batch_size = max(1, len(unique_strings) // (num_cores * 4))  # 4 batches per core
+        batch_size = max(1, len(unique_strings) // (num_cores * self.BATCHES_PER_CORE))
         batches = [unique_strings[i:i + batch_size] for i in range(0, len(unique_strings), batch_size)]
         
         # Prepare batch data with min suspicion score
@@ -631,6 +633,8 @@ class ExfilStrategy(HuntStrategy):
     MIN_BYTES_THRESHOLD = 1000
     # Minimum exfiltration score to be considered suspicious
     MIN_EXFIL_SCORE = 50
+    # Chunks per core for parallel processing (fewer chunks for groupby operations)
+    CHUNKS_PER_CORE = 1
     
     def _get_name(self) -> str:
         return "Exfiltration Monitor (Producer/Consumer Ratio)"
@@ -796,8 +800,10 @@ class ExfilStrategy(HuntStrategy):
         df[bytes_in_col] = pd.to_numeric(df[bytes_in_col], errors='coerce').fillna(0)
         
         # Split data into chunks by source IP for parallel processing
+        # Using fewer chunks (CHUNKS_PER_CORE) because groupby operations are more expensive
         unique_ips = df[src_col].unique()
-        chunk_size = max(1, len(unique_ips) // num_cores)
+        num_chunks = max(1, num_cores * self.CHUNKS_PER_CORE)
+        chunk_size = max(1, len(unique_ips) // num_chunks)
         ip_chunks = [unique_ips[i:i + chunk_size] for i in range(0, len(unique_ips), chunk_size)]
         
         # Create DataFrame chunks
@@ -820,10 +826,13 @@ class ExfilStrategy(HuntStrategy):
                 chunk_results = list(executor.map(self._process_exfil_chunk, chunk_data))
         
         # Combine results from all chunks
-        result_df = pd.concat(chunk_results, ignore_index=True)
+        # Filter out empty DataFrames before concatenation
+        non_empty_results = [df for df in chunk_results if not df.empty]
         
-        if result_df.empty:
-            return result_df
+        if not non_empty_results:
+            return pd.DataFrame()
+        
+        result_df = pd.concat(non_empty_results, ignore_index=True)
         
         # Calculate percentile rank across all results
         result_df['upload_percentile'] = result_df['total_bytes_out'].rank(pct=True) * 100
