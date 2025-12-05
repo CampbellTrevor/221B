@@ -12,7 +12,8 @@ import pandas as pd
 import re
 import json
 import os
-from datetime import datetime, timedelta
+import datetime
+from datetime import timedelta
 from ionic_scripting_framework import isf
 from strategies import HuntStrategy
 
@@ -73,14 +74,15 @@ class WatsonDashboard:
                     cache_data = json.load(f)
                 
                 # Check cache timestamp
-                cache_time = datetime.fromisoformat(cache_data['timestamp'])
-                age_days = (datetime.now() - cache_time).days
+                cache_time = datetime.datetime.fromisoformat(cache_data['timestamp'])
+                age_seconds = (datetime.datetime.now() - cache_time).total_seconds()
+                age_days = age_seconds / 86400  # Convert seconds to days
                 
                 if age_days < self.cache_days:
-                    print(f"📦 Using cached table list (age: {age_days} days)")
+                    print(f"📦 Using cached table list (age: {age_days:.1f} days)")
                     return cache_data['tables']
                 else:
-                    print(f"⏰ Cache expired (age: {age_days} days), refreshing...")
+                    print(f"⏰ Cache expired (age: {age_days:.1f} days), refreshing...")
             except (json.JSONDecodeError, KeyError, ValueError) as e:
                 print(f"⚠️ Cache file corrupted, refreshing... ({e})")
         
@@ -100,7 +102,7 @@ class WatsonDashboard:
                 
                 # Save to cache
                 cache_data = {
-                    'timestamp': datetime.now().isoformat(),
+                    'timestamp': datetime.datetime.now().isoformat(),
                     'tables': tables
                 }
                 with open(self.tables_cache_file, 'w') as f:
@@ -245,7 +247,7 @@ class WatsonDashboard:
             inputs_html = ""
             for inp, (desc, example) in input_descriptions.items():
                 inputs_html += f"""
-                <div style="margin: 10px 0; padding: 8px; background: #f8f9fa; color: #212529;  border-left: 3px solid #007bff;">
+                <div style="margin: 10px 0; padding: 8px; background: #f8f9fa; color: #212529; border-left: 3px solid #007bff;">
                     <b>{inp}:</b> {desc}<br/>
                     <i style="color: #495057; font-size: 0.9em;">{example}</i>
                 </div>
@@ -694,12 +696,39 @@ class WatsonDashboard:
                     sanitized_ts_col = self._sanitize_identifier(timestamp_col)
                     
                     if tab_data['start_date'].value:
-                        start_date_str = tab_data['start_date'].value.isoformat()
+                        # Validate date value - DatePicker should provide datetime.date object
+                        start_date = tab_data['start_date'].value
+                        if not isinstance(start_date, (datetime.date, datetime)):
+                            with tab_data['output_widget']:
+                                print("⚠️ Invalid start date format")
+                            return
+                        start_date_str = start_date.isoformat() if hasattr(start_date, 'isoformat') else str(start_date)
+                        # Sanitize date string - ensure it matches YYYY-MM-DD format
+                        if not re.match(r'^\d{4}-\d{2}-\d{2}$', start_date_str):
+                            with tab_data['output_widget']:
+                                print("⚠️ Invalid start date format")
+                            return
                         where_clauses.append(f"CAST({sanitized_ts_col} AS DATE) >= DATE '{start_date_str}'")
                     
                     if tab_data['end_date'].value:
-                        end_date_str = tab_data['end_date'].value.isoformat()
+                        # Validate date value - DatePicker should provide datetime.date object
+                        end_date = tab_data['end_date'].value
+                        if not isinstance(end_date, (datetime.date, datetime)):
+                            with tab_data['output_widget']:
+                                print("⚠️ Invalid end date format")
+                            return
+                        end_date_str = end_date.isoformat() if hasattr(end_date, 'isoformat') else str(end_date)
+                        # Sanitize date string - ensure it matches YYYY-MM-DD format
+                        if not re.match(r'^\d{4}-\d{2}-\d{2}$', end_date_str):
+                            with tab_data['output_widget']:
+                                print("⚠️ Invalid end date format")
+                            return
                         where_clauses.append(f"CAST({sanitized_ts_col} AS DATE) <= DATE '{end_date_str}'")
+                else:
+                    # Warn user that date filtering requires timestamp column
+                    with tab_data['output_widget']:
+                        print("⚠️ Date filtering requires a 'timestamp' column to be mapped. Please load the table schema and ensure a timestamp field is available.")
+                    return
             
             if where_clauses:
                 query += " WHERE " + " AND ".join(where_clauses)
