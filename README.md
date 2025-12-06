@@ -9,27 +9,33 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 ### 🆕 What's New in This Release
 
 **Expanded Detection Coverage:**
-- 4 NEW advanced threat hunting strategies added in this release
-- Now covering **32 comprehensive threat categories** (up from 28)
-- **NEW:** Insider Threat Detection, Ransomware Behavior, Zero-Day Exploitation, Cloud Misconfigurations
-- Enhanced coverage for behavioral anomalies, real-time ransomware detection, exploit identification, and cloud security
-- Previous additions: Supply Chain Attacks, Container Escapes, DNS Exfiltration, Process Injection, LOLBin Abuse, OAuth Abuse
-- Also includes: privilege escalation, web shells, credential dumping, ransomware indicators, fileless attacks, API abuse, shadow IT
-- Foundational strategies: Geo-Anomaly, User-Agent Analysis, Crypto Mining, DNS Anomaly, Account Takeover, Data Staging
+- 🔥 **4 BRAND NEW strategies** added in this release
+- Now covering **36 comprehensive threat categories** (up from 32)
+- **NEW:** API Gateway Abuse, Kerberos Attacks, Macro Malware, Network Covert Channels
+- Enhanced coverage for API attacks, Active Directory threats, Office document malware, and hidden communications
+- Previous additions: Insider Threats, Ransomware Behavior, Zero-Day Exploitation, Cloud Misconfigurations
+- Also includes: Supply Chain Attacks, Container Escapes, DNS Exfiltration, Process Injection, LOLBin Abuse, OAuth Abuse
+- Plus: privilege escalation, web shells, credential dumping, ransomware indicators, fileless attacks, API abuse, shadow IT
+- Foundational strategies: Beacon Detection, Entropy Analysis, Exfiltration, Port Scanning, Brute Force, and more
 
 **Visual Display Improvements:**
+- 🆕 **Threat Velocity Gauge** - Real-time monitoring of threat detection rates with trend visualization
+- 🆕 **JSON Export** - Export results as JSON for SIEM integration alongside traditional CSV
 - Color-coded severity indicators with visual badges (HIGH/MED/LOW)
 - Smart row highlighting based on threat scores
 - Quick-filter buttons for instant severity filtering
 - Professional table styling with clear visual hierarchy
 - Improved summary statistics dashboard
-- **🆕 IP Address Threat Heatmap** - Visualize which IPs generate the most threats across strategies
-- **🆕 Strategy Effectiveness Insights** - Compare detection rates and severity distributions
-- **🆕 Three-Row Quick Action Layout** - Better organized controls for improved accessibility
+- **IP Address Threat Heatmap** - Visualize which IPs generate the most threats across strategies
+- **Strategy Effectiveness Insights** - Compare detection rates and severity distributions
+- **Three-Row Quick Action Layout** - Better organized controls with 13 total buttons
 
 **Enhanced User Experience:**
+- 🆕 **13 Quick Action Buttons** - Now includes Threat Velocity gauge for real-time monitoring
+- 🆕 **Regex Search Mode** - Enable advanced pattern matching for powerful data filtering (e.g., `192\.168\..*` or `malware|trojan`)
+- 🆕 **Cache Freshness Indicators** - See cache age with visual warnings when data is getting stale
 - One-click severity filtering for rapid threat triage
-- Export respects current filters and sorting
+- Dual export formats: CSV for traditional analysis, JSON for automation and SIEM integration
 - Better visual feedback for high-priority threats
 - Cleaner, more intuitive interface with reorganized quick actions
 - Real-time performance tracking with execution time and throughput metrics
@@ -37,8 +43,7 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 - Interactive timeline analysis with temporal heatmaps
 - Smart recommendations that suggest next investigation steps
 - Context-aware workflow guidance based on detections
-- **🆕 12 Quick Action Buttons** - Comprehensive one-click analysis tools
-- **🔥 NEW Threat Overview Dashboard** - See all strategies at a glance with comprehensive visualizations
+- **Threat Overview Dashboard** - See all strategies at a glance with comprehensive visualizations
 
 **🎯 Advanced Analyst Workflow Features:**
 - **Quick Triage Dashboard** - View all high-severity threats across all strategies in one place
@@ -53,7 +58,7 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 ### 🎯 Detection Strategies
 
-The dashboard includes **thirty-two comprehensive threat hunting strategies**:
+The dashboard includes **thirty-six comprehensive threat hunting strategies**:
 
 **Beacon Hunter (C2 Detection)**
 - Detects command-and-control beaconing behavior by analyzing connection timing patterns
@@ -285,7 +290,7 @@ The dashboard includes **thirty-two comprehensive threat hunting strategies**:
 - Critical for detecting novel attacks without signatures
 - Essential for protecting against unknown vulnerabilities
 
-**Cloud Misconfiguration Detector (Infrastructure Security)** 🔥 LATEST
+**Cloud Misconfiguration Detector (Infrastructure Security)** 🔥 NEW
 - Detects cloud infrastructure security misconfigurations
 - Identifies public storage buckets and overly permissive IAM policies
 - Flags unencrypted storage and missing MFA on privileged accounts
@@ -293,6 +298,42 @@ The dashboard includes **thirty-two comprehensive threat hunting strategies**:
 - Monitors for default passwords and disabled logging
 - Critical for cloud security posture management
 - Essential for preventing data breaches via misconfiguration
+
+**API Gateway Abuse Detector (Application Layer Attacks)** 🔥 NEW
+- Detects API gateway attacks and abuse patterns
+- Identifies GraphQL query complexity abuse and flooding
+- Monitors REST API enumeration attempts
+- Detects rate limit bypass attempts
+- Flags potential timing attacks via response time analysis
+- Identifies data scraping and excessive API calls
+- Critical for protecting API infrastructure from abuse
+
+**Kerberos Attack Detector (Active Directory Threats)** 🔥 NEW
+- Identifies Kerberos-based attack patterns
+- Detects Kerberoasting via weak encryption types (RC4-HMAC)
+- Flags AS-REP Roasting attempts (pre-auth disabled accounts)
+- Monitors for Golden/Silver ticket usage patterns
+- Identifies Pass-the-Ticket lateral movement
+- Tracks excessive service ticket requests
+- Essential for protecting Active Directory environments
+
+**Macro Malware Detector (Document-Based Threats)** 🔥 NEW
+- Detects malicious Office macros and VBA execution
+- Identifies AutoOpen/AutoExec macro patterns
+- Flags suspicious process spawning from Office apps
+- Monitors for PowerShell, CMD, WScript execution
+- Detects encoded commands and download capabilities
+- Analyzes obfuscated VBA code patterns
+- Critical for preventing document-based malware infections
+
+**Network Covert Channel Detector (Hidden Communications)** 🔥 NEW
+- Identifies covert communication channels in network traffic
+- Detects ICMP tunneling via abnormal packet sizes
+- Flags timing channels with regular interval patterns
+- Monitors uncommon protocol usage (GRE, IPIP, L2TP)
+- Identifies steganography via consistent packet sizes
+- Detects micro-packet streams for data exfiltration
+- Essential for finding hidden command and control channels
 
 ### 🔧 Interactive Controls
 
@@ -457,7 +498,11 @@ dashboard = WatsonDashboard(
         InsiderThreatStrategy(),
         RansomwareBehaviorStrategy(),
         ZeroDayExploitStrategy(),
-        CloudMisconfigStrategy()
+        CloudMisconfigStrategy(),
+        APIGatewayAbuseStrategy(),
+        KerberosAttackStrategy(),
+        MacroMalwareStrategy(),
+        NetworkCovertChannelStrategy()
     ],
     cache_dir='.custom_cache',
     cache_days=3
@@ -534,7 +579,7 @@ dashboard.display()
     - Identify most productive detection methods
     - Optimize your threat hunting workflow
 
-11. **📊 Threat Overview Dashboard** 🔥 LATEST
+11. **📊 Threat Overview Dashboard** 🔥 NEW
     - Comprehensive view of ALL strategies at a glance
     - Overall threat landscape statistics with risk assessment
     - Strategy-by-strategy breakdown with severity counts
@@ -547,7 +592,16 @@ dashboard.display()
     - Unique source IP tracking across all strategies
     - Perfect for executive briefings and daily threat reviews
 
-12. **❓ Tips** - Usage tips and best practices
+12. **⚡ Threat Velocity** 🔥 NEW
+    - Real-time threat detection velocity metrics
+    - Threats per hour and per day calculations
+    - Interactive trend visualization over time
+    - Shows average detection rate with baseline
+    - Identifies top 5 most active detection strategies
+    - Perfect for understanding attack intensity and patterns
+    - Essential for capacity planning and resource allocation
+
+13. **❓ Tips** - Usage tips and best practices
     - Step-by-step usage guide
     - Power user features overview
     - Investigation strategy recommendations
@@ -565,10 +619,29 @@ dashboard.display()
 - **ORANGE rows with MED badge** = Suspicious activity worth investigating (score 50-74)
 - **GREEN rows with LOW badge** = Lower priority anomalies (score <50)
 
+**Advanced Search Features:**
+- **Plain Text Search**: Enter any text to search across all columns (case-insensitive)
+- **Regex Search**: Enable "Regex Mode" checkbox to use regular expressions
+  - Example: `192\.168\..*` to find all 192.168.x.x IPs
+  - Example: `malware|trojan|virus` to find rows containing any of these terms
+  - Example: `\d{3}-\d{3}-\d{4}` to find phone number patterns
+- Search is applied across ALL columns simultaneously for maximum flexibility
+- Invalid regex patterns automatically fall back to plain text search
+
 **Exporting Filtered Results:**
 - Apply any filters and sorting you want
-- Click the "📥 Export CSV" button
+- Click the "📥 Export CSV" button to export as CSV (traditional analysis)
+- Click the "📦 Export JSON" button to export as JSON (SIEM integration, APIs)
 - The exported file will contain only the filtered and sorted results
+- JSON format includes ISO-formatted timestamps perfect for programmatic processing
+
+**Cache Management:**
+- Table list is automatically cached for 7 days to improve performance
+- Cache age is shown when loading tables with freshness indicators:
+  - ✅ Fresh - Cache is recent and reliable
+  - ⚠️ Consider refreshing soon - Cache is approaching expiry (>80% of cache_days)
+- Delete `.221b_cache/` directory to force refresh
+- Or adjust `cache_days` parameter when initializing dashboard
 - Files are timestamped for easy tracking
 
 ### Analyst Workflow Best Practices
@@ -714,16 +787,16 @@ When adding new features or strategies:
 ## Project Statistics
 
 **Current Release:**
-- **32 comprehensive threat hunting strategies** covering modern attack vectors
-- **102 unit tests** with 100% pass rate
-- **12,300+ lines of code** across core modules
-- **12 quick action buttons** for one-click analysis including new Threat Overview Dashboard
+- **36 comprehensive threat hunting strategies** covering modern attack vectors
+- **114 unit tests** with 100% pass rate
+- **12,993+ lines of code** across core modules
+- **13 quick action buttons** for one-click analysis including Threat Velocity and Overview
 - **Multiple export formats** (CSV, JSON) for flexible integration
 - **Zero security vulnerabilities** detected by CodeQL analysis
 
 **Code Distribution:**
-- `strategies.py`: 6,030 lines - Pure threat detection logic
-- `app.py`: 3,106 lines - Interactive UI and dashboard
+- `strategies.py`: 6,723 lines - Pure threat detection logic
+- `app.py`: 3,504 lines - Interactive UI and dashboard
 - `test_strategies.py`: 2,480 lines - Comprehensive test suite
 - `README.md`: 714 lines - Complete documentation
 

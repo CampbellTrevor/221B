@@ -91,6 +91,45 @@ class WatsonDashboard:
         # Create tabs for strategies with all widgets inside each tab
         self._create_strategy_tabs()
     
+    def _get_cache_age(self) -> float:
+        """
+        Get the age of the cache in days.
+        
+        Returns:
+            Age in days, or -1 if cache doesn't exist
+        """
+        if os.path.exists(self.tables_cache_file):
+            try:
+                with open(self.tables_cache_file, 'r') as f:
+                    cache_data = json.load(f)
+                cache_time = datetime.datetime.fromisoformat(cache_data['timestamp'])
+                # Ensure timezone-naive comparison
+                if cache_time.tzinfo is not None:
+                    cache_time = cache_time.replace(tzinfo=None)
+                age_seconds = (datetime.datetime.now() - cache_time).total_seconds()
+                return age_seconds / 86400  # Convert to days
+            except:
+                return -1
+        return -1
+    
+    def _refresh_cache(self) -> list:
+        """
+        Force refresh the table cache from the database.
+        
+        Returns:
+            Updated list of table names
+        """
+        print("🔄 Manually refreshing table cache...")
+        
+        # Delete old cache if it exists
+        if os.path.exists(self.tables_cache_file):
+            os.remove(self.tables_cache_file)
+        
+        # Force re-query
+        tables = self._get_available_tables()
+        print("✅ Cache refreshed successfully!")
+        return tables
+    
     def _get_available_tables(self) -> list:
         """
         Query information_schema.tables to get available tables.
@@ -107,11 +146,18 @@ class WatsonDashboard:
                 
                 # Check cache timestamp
                 cache_time = datetime.datetime.fromisoformat(cache_data['timestamp'])
+                # Ensure timezone-naive comparison
+                if cache_time.tzinfo is not None:
+                    cache_time = cache_time.replace(tzinfo=None)
                 age_seconds = (datetime.datetime.now() - cache_time).total_seconds()
                 age_days = age_seconds / 86400  # Convert seconds to days
                 
                 if age_days < self.cache_days:
-                    print(f"📦 Using cached table list (age: {age_days:.1f} days)")
+                    # Add indicator for stale cache (approaching expiry)
+                    if age_days > self.cache_days * 0.8:
+                        print(f"📦 Using cached table list (age: {age_days:.1f} days) ⚠️ Consider refreshing soon")
+                    else:
+                        print(f"📦 Using cached table list (age: {age_days:.1f} days) ✅ Fresh")
                     return cache_data['tables']
                 else:
                     print(f"⏰ Cache expired (age: {age_days:.1f} days), refreshing...")
@@ -584,6 +630,115 @@ class WatsonDashboard:
         )
         
         display(fig)
+    
+    def _show_threat_velocity_gauge(self):
+        """
+        Display a real-time threat velocity gauge showing threats detected per time period.
+        """
+        if not self.strategy_results:
+            print("⚠️ No analysis results available. Run some strategies first.")
+            return
+        
+        print("=" * 80)
+        print("⚡ THREAT VELOCITY METRICS")
+        print("=" * 80)
+        print()
+        
+        # Collect all threats with timestamps
+        all_threats = []
+        for strategy_name, result_data in self.strategy_results.items():
+            df = result_data['dataframe']
+            
+            # Find timestamp columns
+            timestamp_cols = [col for col in df.columns if 'timestamp' in col.lower() or 'time' in col.lower()]
+            
+            if timestamp_cols:
+                ts_col = timestamp_cols[0]
+                for idx, row in df.iterrows():
+                    ts = row[ts_col]
+                    if pd.notna(ts):
+                        all_threats.append({
+                            'timestamp': ts,
+                            'strategy': strategy_name
+                        })
+        
+        if not all_threats:
+            print("⚠️ No timestamp data available for velocity calculation")
+            return
+        
+        # Convert to DataFrame
+        threats_df = pd.DataFrame(all_threats)
+        threats_df['timestamp'] = pd.to_datetime(threats_df['timestamp'])
+        
+        # Calculate time span
+        min_time = threats_df['timestamp'].min()
+        max_time = threats_df['timestamp'].max()
+        time_span_hours = (max_time - min_time).total_seconds() / 3600
+        time_span_days = time_span_hours / 24
+        
+        total_count = len(threats_df)
+        
+        # Calculate velocities
+        threats_per_hour = total_count / time_span_hours if time_span_hours > 0 else 0
+        threats_per_day = total_count / time_span_days if time_span_days > 0 else 0
+        
+        # Display metrics
+        print(f"📊 Time Range: {min_time.strftime('%Y-%m-%d %H:%M')} to {max_time.strftime('%Y-%m-%d %H:%M')}")
+        print(f"⏱️  Duration: {time_span_days:.1f} days ({time_span_hours:.1f} hours)")
+        print(f"🎯 Total Threats: {total_count:,}")
+        print()
+        print(f"⚡ Threat Velocity:")
+        print(f"   • Per Hour: {threats_per_hour:.1f} threats/hour")
+        print(f"   • Per Day: {threats_per_day:.1f} threats/day")
+        print()
+        
+        # Show trend over time (by hour)
+        if HAS_PLOTLY and time_span_hours > 1:
+            threats_df['hour'] = threats_df['timestamp'].dt.floor('H')
+            hourly_counts = threats_df.groupby('hour').size()
+            
+            fig = go.Figure()
+            
+            # Line chart for trend
+            fig.add_trace(go.Scatter(
+                x=hourly_counts.index,
+                y=hourly_counts.values,
+                mode='lines+markers',
+                name='Threats per Hour',
+                line=dict(color='#ef4444', width=3),
+                marker=dict(size=8, color='#dc2626'),
+                fill='tozeroy',
+                fillcolor='rgba(239, 68, 68, 0.2)'
+            ))
+            
+            # Add average line
+            avg_line = [threats_per_hour] * len(hourly_counts)
+            fig.add_trace(go.Scatter(
+                x=hourly_counts.index,
+                y=avg_line,
+                mode='lines',
+                name=f'Average ({threats_per_hour:.1f}/hr)',
+                line=dict(color='#f59e0b', width=2, dash='dash')
+            ))
+            
+            fig.update_layout(
+                title='Threat Detection Velocity Over Time',
+                xaxis_title='Time',
+                yaxis_title='Threats Detected',
+                height=400,
+                hovermode='x unified',
+                showlegend=True
+            )
+            
+            display(fig)
+        
+        # Show top strategies by detection rate
+        strategy_counts = threats_df['strategy'].value_counts()
+        print("🏆 Top 5 Most Active Strategies:")
+        for i, (strategy, count) in enumerate(strategy_counts.head(5).items(), 1):
+            rate_per_day = count / time_span_days if time_span_days > 0 else 0
+            print(f"   {i}. {strategy}: {count} threats ({rate_per_day:.1f}/day)")
+        print()
     
     def _show_performance_statistics(self):
         """
@@ -1661,15 +1816,22 @@ class WatsonDashboard:
         current_page = {'value': 0}
         current_sort = {'column': '(unsorted)', 'ascending': False}
         current_filter = {'level': 'All'}
-        current_search = {'text': ''}
+        current_search = {'text': '', 'regex': False}
         cached_sorted_df = {'df': full_df, 'total_pages': 1}  # Cache for sorted DataFrame
         
-        # Create text search box
+        # Create text search box with regex support
         search_box = widgets.Text(
-            placeholder='Search in results... (searches all columns)',
+            placeholder='Search in results... (supports regex with .* patterns)',
             description='🔍 Search:',
             style={'description_width': 'initial'},
-            layout=widgets.Layout(width='400px')
+            layout=widgets.Layout(width='450px')
+        )
+        
+        regex_checkbox = widgets.Checkbox(
+            value=False,
+            description='Regex Mode',
+            tooltip='Enable regex pattern matching',
+            layout=widgets.Layout(width='120px')
         )
         
         clear_search_button = widgets.Button(
@@ -1722,11 +1884,19 @@ class WatsonDashboard:
         
         page_info = widgets.HTML(value='')
         
-        # Create export button
-        export_button = widgets.Button(
+        # Create export buttons
+        export_csv_button = widgets.Button(
             description='📥 Export CSV',
             button_style='success',
             icon='download',
+            layout=widgets.Layout(width='150px')
+        )
+        
+        export_json_button = widgets.Button(
+            description='📦 Export JSON',
+            button_style='info',
+            icon='download',
+            tooltip='Export as JSON for SIEM integration',
             layout=widgets.Layout(width='150px')
         )
         
@@ -1735,18 +1905,33 @@ class WatsonDashboard:
         # Create output area for the table
         table_output = widgets.Output()
         
+        def apply_text_search(df, search_term, use_regex):
+            """Apply text search to dataframe (helper to avoid duplication)."""
+            mask = pd.Series([False] * len(df), index=df.index)
+            search_term_lower = search_term.lower()
+            
+            for col in df.columns:
+                if use_regex:
+                    # Regex search (case-insensitive)
+                    mask |= df[col].astype(str).str.contains(search_term, na=False, regex=True, case=False)
+                else:
+                    # Plain text search (case-insensitive)
+                    mask |= df[col].astype(str).str.lower().str.contains(search_term_lower, na=False, regex=False)
+            return df[mask]
+        
         def get_sorted_df():
             """Get the dataframe with current sorting and filtering applied (cached)."""
             # First apply text search if present
             if current_search['text']:
-                search_term = current_search['text'].lower()
-                # Optimize: only search in columns that are already strings or can be strings
-                # Create mask by checking each column individually
-                mask = pd.Series([False] * len(full_df), index=full_df.index)
-                for col in full_df.columns:
-                    # Convert to string only for this column, then search
-                    mask |= full_df[col].astype(str).str.lower().str.contains(search_term, na=False, regex=False)
-                filtered_df = full_df[mask]
+                search_term = current_search['text']
+                use_regex = current_search.get('regex', False)
+                
+                try:
+                    filtered_df = apply_text_search(full_df, search_term, use_regex)
+                except re.error as e:
+                    # Invalid regex pattern, fall back to plain text search
+                    print(f"⚠️ Invalid regex pattern: {e}. Using plain text search.")
+                    filtered_df = apply_text_search(full_df, search_term, use_regex=False)
             else:
                 filtered_df = full_df
             
@@ -1874,16 +2059,26 @@ class WatsonDashboard:
             get_sorted_df()  # Refresh cache
             update_table()
         
+        def on_regex_change(change):
+            """Handle regex checkbox changes."""
+            current_search['regex'] = regex_checkbox.value
+            if current_search['text']:  # Only refresh if there's text to search
+                current_page['value'] = 0
+                get_sorted_df()
+                update_table()
+        
         def on_clear_search_click(b):
             """Handle clear search button click."""
             search_box.value = ''
+            regex_checkbox.value = False
             current_search['text'] = ''
+            current_search['regex'] = False
             current_page['value'] = 0
             get_sorted_df()
             update_table()
         
-        def on_export_click(b):
-            """Handle export button click."""
+        def on_export_csv_click(b):
+            """Handle CSV export button click."""
             with export_output:
                 clear_output(wait=True)
                 try:
@@ -1901,8 +2096,29 @@ class WatsonDashboard:
                 except Exception as e:
                     print(f"❌ Export failed: {e}")
         
+        def on_export_json_click(b):
+            """Handle JSON export button click."""
+            with export_output:
+                clear_output(wait=True)
+                try:
+                    # Generate filename with timestamp
+                    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                    # Sanitize strategy name for filename
+                    safe_name = re.sub(r'[^\w\s-]', '', strategy_name).strip().replace(' ', '_')
+                    filename = f"{safe_name}_{timestamp}.json"
+                    
+                    # Save JSON (use current filtered/sorted df)
+                    sorted_df = cached_sorted_df['df']
+                    sorted_df.to_json(filename, orient='records', date_format='iso', indent=2)
+                    
+                    print(f"✅ Exported {len(sorted_df)} rows to {filename}")
+                    print("💡 JSON format is ideal for SIEM integration, API ingestion, or programmatic analysis")
+                except Exception as e:
+                    print(f"❌ Export failed: {e}")
+        
         # Attach observers and handlers
         search_box.observe(on_search_change, names='value')
+        regex_checkbox.observe(on_regex_change, names='value')
         clear_search_button.on_click(on_clear_search_click)
         sort_column.observe(on_sort_change, names='value')
         sort_order.observe(on_sort_change, names='value')
@@ -1910,13 +2126,14 @@ class WatsonDashboard:
             filter_buttons.observe(on_filter_change, names='value')
         prev_button.on_click(on_prev_click)
         next_button.on_click(on_next_click)
-        export_button.on_click(on_export_click)
+        export_csv_button.on_click(on_export_csv_click)
+        export_json_button.on_click(on_export_json_click)
         
         # Initial display
         update_table()
         
         # Create the UI layout
-        sort_controls = widgets.HBox([sort_column, sort_order, export_button])
+        sort_controls = widgets.HBox([sort_column, sort_order, export_csv_button, export_json_button])
         pagination_controls = widgets.HBox([prev_button, page_info, next_button], 
                                           layout=widgets.Layout(justify_content='center'))
         
@@ -1925,9 +2142,9 @@ class WatsonDashboard:
             widgets.HTML("<h4>📊 Results</h4>"),
         ]
         
-        # Add search box
+        # Add search box with regex support
         ui_components.append(widgets.HTML("<div style='margin: 10px 0;'><b>🔍 Text Search & Filters:</b></div>"))
-        ui_components.append(widgets.HBox([search_box, clear_search_button]))
+        ui_components.append(widgets.HBox([search_box, regex_checkbox, clear_search_button]))
         
         # Add filter buttons if score column exists
         if filter_buttons:
@@ -3177,6 +3394,14 @@ class WatsonDashboard:
             layout=widgets.Layout(width='170px')
         )
         
+        velocity_button = widgets.Button(
+            description='⚡ Threat Velocity',
+            button_style='warning',
+            tooltip='View real-time threat detection velocity and trends',
+            icon='tachometer',
+            layout=widgets.Layout(width='160px')
+        )
+        
         action_output = widgets.Output()
         
         def show_tips():
@@ -3199,7 +3424,8 @@ class WatsonDashboard:
                 
                 <h4>🎯 Power User Features:</h4>
                 <ul style="line-height: 1.8;">
-                    <li><strong>Threat Overview Dashboard:</strong> 🔥 NEW! Click 📊 Threat Overview to see ALL strategies at a glance with comprehensive visualizations</li>
+                    <li><strong>Threat Overview Dashboard:</strong> 🔥 Click 📊 Threat Overview to see ALL strategies at a glance with comprehensive visualizations</li>
+                    <li><strong>Threat Velocity Gauge:</strong> 🆕 Click ⚡ Threat Velocity to monitor real-time threat detection rates and trends</li>
                     <li><strong>Metrics Dashboard:</strong> Click 📊 to view real-time threat intelligence with aggregated statistics and strategy comparisons</li>
                     <li><strong>Performance Stats:</strong> Click ⚡ to see execution times, throughput rates, and detection efficiency for each strategy</li>
                     <li><strong>Timeline Analysis:</strong> Click 📅 to visualize when threats occurred with interactive heatmaps and temporal patterns</li>
@@ -3210,7 +3436,7 @@ class WatsonDashboard:
                     <li><strong>Quick Triage:</strong> After running multiple analyses, click the 🚨 button to see all critical threats at once</li>
                     <li><strong>Correlation Analysis:</strong> Click 🔗 to find IPs appearing in multiple strategies - these are your highest-priority targets</li>
                     <li><strong>HTML Reports:</strong> Generate professional reports with the 📄 button for management briefings</li>
-                    <li><strong>Export Options:</strong> All views support CSV export for further analysis in Excel or other tools</li>
+                    <li><strong>Export Options:</strong> 🆕 Export as CSV or JSON - JSON format is ideal for SIEM integration and programmatic analysis</li>
                     <li><strong>Multi-Filter:</strong> Combine text search with severity filters and sorting for precise threat identification</li>
                 </ul>
                 
@@ -3300,6 +3526,11 @@ class WatsonDashboard:
                 clear_output(wait=True)
                 self._show_threat_overview_dashboard()
         
+        def on_velocity_click(b):
+            with action_output:
+                clear_output(wait=True)
+                self._show_threat_velocity_gauge()
+        
         triage_button.on_click(on_triage_click)
         correlation_button.on_click(on_correlation_click)
         report_button.on_click(on_report_click)
@@ -3312,6 +3543,7 @@ class WatsonDashboard:
         heatmap_button.on_click(on_heatmap_click)
         insights_button.on_click(on_insights_click)
         overview_button.on_click(on_overview_click)
+        velocity_button.on_click(on_velocity_click)
         
         # Split buttons into three rows for better layout
         action_row1 = widgets.HBox([
@@ -3331,6 +3563,7 @@ class WatsonDashboard:
         ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))
         
         action_row3 = widgets.HBox([
+            velocity_button,
             recommend_button,
             help_button
         ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))

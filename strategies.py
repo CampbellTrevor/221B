@@ -6031,3 +6031,697 @@ class CloudMisconfigStrategy(HuntStrategy):
             'flags': 'Misconfiguration types (public_storage, wildcard_permissions, no_mfa_on_privileged_account, etc.)',
             'misconfiguration_score': 'Severity score (0-100). Scores ≥75 indicate critical security risks requiring immediate remediation. Scores ≥50 should be addressed promptly'
         }
+
+
+class APIGatewayAbuseStrategy(HuntStrategy):
+    """
+    Detects API gateway abuse, including rate limit bypasses, GraphQL query abuse,
+    REST API enumeration, and excessive API calls that may indicate scraping or DDoS.
+    """
+    
+    def _get_name(self) -> str:
+        return "API Gateway Abuse Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'source_ip', 'endpoint', 'status_code', 'response_time']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze API traffic for gateway abuse patterns.
+        
+        Detects:
+        - Excessive API calls (potential scraping/DDoS)
+        - GraphQL query complexity abuse
+        - REST API enumeration attempts
+        - Rate limit bypass attempts
+        - Abnormal response times (timing attacks)
+        """
+        ts_col = col_map.get('timestamp')
+        ip_col = col_map.get('source_ip')
+        endpoint_col = col_map.get('endpoint')
+        status_col = col_map.get('status_code')
+        time_col = col_map.get('response_time')
+        
+        results = []
+        
+        # Group by source IP and endpoint
+        for (source_ip, endpoint), group in df.groupby([ip_col, endpoint_col]):
+            if pd.isna(source_ip) or pd.isna(endpoint):
+                continue
+            
+            call_count = len(group)
+            
+            # Skip if too few calls to analyze
+            if call_count < 10:
+                continue
+            
+            score = 0
+            flags = []
+            
+            endpoint_str = str(endpoint).lower()
+            
+            # Calculate rate (calls per minute)
+            if ts_col and ts_col in df.columns:
+                time_span = (group[ts_col].max() - group[ts_col].min()).total_seconds()
+                if time_span > 0:
+                    calls_per_minute = (call_count / time_span) * 60
+                    
+                    # High rate of calls
+                    if calls_per_minute > 100:
+                        score += 35
+                        flags.append('excessive_call_rate')
+                    elif calls_per_minute > 50:
+                        score += 20
+                        flags.append('high_call_rate')
+            
+            # Check for GraphQL abuse
+            if 'graphql' in endpoint_str or 'graph' in endpoint_str:
+                # Look for complex queries (indicated by large response times or multiple queries)
+                if time_col and time_col in group.columns:
+                    avg_response_time = group[time_col].mean()
+                    if avg_response_time > 5000:  # >5 seconds
+                        score += 30
+                        flags.append('graphql_complex_query')
+                
+                if call_count > 100:
+                    score += 25
+                    flags.append('graphql_query_flood')
+            
+            # Check for REST API enumeration
+            status_codes = group[status_col].value_counts()
+            error_count = sum(status_codes.get(code, 0) for code in [400, 401, 403, 404])
+            error_rate = error_count / call_count if call_count > 0 else 0
+            
+            if error_rate > 0.5 and call_count > 50:
+                score += 30
+                flags.append('api_enumeration')
+            
+            # Check for rate limit bypass patterns (429 followed by successful calls)
+            if status_col and status_col in group.columns:
+                has_429 = 429 in status_codes
+                has_success = 200 in status_codes or 201 in status_codes
+                
+                if has_429 and has_success:
+                    # They got rate limited but kept trying and succeeded
+                    score += 35
+                    flags.append('rate_limit_bypass_attempt')
+            
+            # Check for timing attack patterns (very consistent response times)
+            if time_col and time_col in group.columns:
+                response_times = group[time_col].dropna()
+                if len(response_times) > 10:
+                    std_dev = response_times.std()
+                    mean_time = response_times.mean()
+                    
+                    # Very low variance might indicate timing attacks
+                    if mean_time > 0 and (std_dev / mean_time) < 0.1:
+                        score += 25
+                        flags.append('potential_timing_attack')
+            
+            # Check for excessive data extraction
+            if call_count > 200:
+                score += 20
+                flags.append('data_scraping_suspected')
+            
+            # Check for admin/sensitive endpoint probing
+            sensitive_paths = ['admin', 'config', 'settings', 'debug', 'internal', 'swagger', 'api-docs']
+            if any(path in endpoint_str for path in sensitive_paths):
+                score += 25
+                flags.append('sensitive_endpoint_probing')
+            
+            if score >= 40:  # Only report significant abuse
+                results.append({
+                    'source_ip': source_ip,
+                    'endpoint': endpoint,
+                    'call_count': call_count,
+                    'error_rate': f"{error_rate:.2%}",
+                    'first_seen': group[ts_col].min() if ts_col and ts_col in df.columns else None,
+                    'last_seen': group[ts_col].max() if ts_col and ts_col in df.columns else None,
+                    'flags': ', '.join(set(flags)),
+                    'abuse_score': min(score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('abuse_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate API abuse visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Scatter plot of call count vs abuse score
+        fig = go.Figure(go.Scatter(
+            x=result_df['call_count'],
+            y=result_df['abuse_score'],
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=result_df['abuse_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Abuse Score")
+            ),
+            text=result_df['source_ip'],
+            hovertemplate='<b>%{text}</b><br>Calls: %{x}<br>Score: %{y}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title='API Gateway Abuse Pattern',
+            xaxis_title='Call Count',
+            yaxis_title='Abuse Score',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for APIGatewayAbuseStrategy output columns."""
+        return {
+            'source_ip': 'IP address making excessive API calls',
+            'endpoint': 'API endpoint being targeted',
+            'call_count': 'Total number of API calls made',
+            'error_rate': 'Percentage of failed/error responses',
+            'first_seen': 'First timestamp of abuse activity',
+            'last_seen': 'Most recent timestamp of abuse activity',
+            'flags': 'Abuse patterns detected (excessive_call_rate, graphql_query_flood, api_enumeration, rate_limit_bypass_attempt, timing_attack, data_scraping_suspected, sensitive_endpoint_probing)',
+            'abuse_score': 'Severity score (0-100). Scores ≥75 indicate likely automated abuse. Scores ≥50 suggest suspicious API usage patterns'
+        }
+
+
+class KerberosAttackStrategy(HuntStrategy):
+    """
+    Detects Kerberos-based attacks including Kerberoasting, Golden Ticket,
+    Silver Ticket, Pass-the-Ticket, and AS-REP Roasting attacks.
+    """
+    
+    def _get_name(self) -> str:
+        return "Kerberos Attack Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'source_ip', 'destination_ip', 'service_name', 'ticket_encryption']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze Kerberos traffic for attack patterns.
+        
+        Detects:
+        - Kerberoasting (TGS-REQ for weak encryption types)
+        - AS-REP Roasting (pre-auth disabled accounts)
+        - Golden/Silver ticket usage (abnormal ticket lifetimes)
+        - Pass-the-Ticket (unusual lateral movement patterns)
+        - Excessive service ticket requests
+        """
+        ts_col = col_map.get('timestamp')
+        src_col = col_map.get('source_ip')
+        dst_col = col_map.get('destination_ip')
+        service_col = col_map.get('service_name')
+        enc_col = col_map.get('ticket_encryption')
+        
+        results = []
+        
+        # Group by source IP
+        for source_ip, group in df.groupby(src_col):
+            if pd.isna(source_ip):
+                continue
+            
+            request_count = len(group)
+            
+            # Skip if too few requests
+            if request_count < 5:
+                continue
+            
+            score = 0
+            flags = []
+            
+            # Check for Kerberoasting - weak encryption types
+            if enc_col and enc_col in group.columns:
+                weak_enc_types = ['rc4-hmac', 'rc4', 'des', 'arcfour']  # Order matters for matching
+                enc_values = group[enc_col].astype(str).str.lower()
+                # Count unique rows with weak encryption (not individual matches)
+                weak_enc_count = sum(any(wt in str(val).lower() for wt in weak_enc_types) for val in group[enc_col])
+                
+                if weak_enc_count > 3:
+                    score += 35
+                    flags.append('kerberoasting_weak_encryption')
+            
+            # Check for excessive service ticket requests (potential Kerberoasting)
+            if service_col and service_col in group.columns:
+                unique_services = group[service_col].nunique()
+                
+                if unique_services > 20:
+                    score += 40
+                    flags.append('excessive_tgs_requests')
+                elif unique_services > 10:
+                    score += 25
+                    flags.append('high_tgs_requests')
+            
+            # Check for AS-REP Roasting patterns (no pre-auth)
+            service_names = group[service_col].astype(str).str.lower() if service_col and service_col in group.columns else pd.Series()
+            # More specific patterns to avoid false positives
+            asrep_count = sum(service_names.str.contains(r'\basrep\b|as-rep|pre-?auth.*disabled', na=False, regex=True))
+            
+            if asrep_count > 3:
+                score += 35
+                flags.append('asrep_roasting')
+            
+            # Check for Golden/Silver ticket indicators
+            # Multiple destinations from same source (lateral movement)
+            if dst_col and dst_col in group.columns:
+                unique_destinations = group[dst_col].nunique()
+                
+                if unique_destinations > 15:
+                    score += 30
+                    flags.append('potential_golden_ticket')
+                elif unique_destinations > 8:
+                    score += 20
+                    flags.append('suspicious_lateral_movement')
+            
+            # Check for rapid ticket requests (automated tools)
+            if ts_col and ts_col in df.columns:
+                time_span = (group[ts_col].max() - group[ts_col].min()).total_seconds()
+                if time_span > 0:
+                    requests_per_minute = (request_count / time_span) * 60
+                    
+                    if requests_per_minute > 30:
+                        score += 30
+                        flags.append('automated_ticket_requests')
+            
+            # Check for unusual service names (potential forgery)
+            if service_col and service_col in group.columns:
+                unusual_services = ['krbtgt', 'fake', 'test', 'admin']
+                for svc in group[service_col].astype(str):
+                    svc_lower = svc.lower()
+                    if any(term in svc_lower for term in unusual_services):
+                        score += 25
+                        flags.append('suspicious_service_name')
+                        break
+            
+            if score >= 40:  # Only report significant attacks
+                results.append({
+                    'source_ip': source_ip,
+                    'destination_count': group[dst_col].nunique() if dst_col and dst_col in group.columns else 0,
+                    'service_count': group[service_col].nunique() if service_col and service_col in group.columns else 0,
+                    'request_count': request_count,
+                    'first_seen': group[ts_col].min() if ts_col and ts_col in df.columns else None,
+                    'last_seen': group[ts_col].max() if ts_col and ts_col in df.columns else None,
+                    'flags': ', '.join(set(flags)),
+                    'attack_score': min(score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('attack_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate Kerberos attack visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Bubble chart of attack patterns
+        fig = go.Figure(go.Scatter(
+            x=result_df['service_count'],
+            y=result_df['destination_count'],
+            mode='markers',
+            marker=dict(
+                size=result_df['request_count'] / 10,
+                color=result_df['attack_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Attack Score"),
+                sizemode='diameter',
+                sizemin=4
+            ),
+            text=result_df['source_ip'],
+            hovertemplate='<b>%{text}</b><br>Services: %{x}<br>Destinations: %{y}<br>Requests: %{marker.size}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title='Kerberos Attack Pattern Analysis',
+            xaxis_title='Unique Services Requested',
+            yaxis_title='Unique Destinations',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for KerberosAttackStrategy output columns."""
+        return {
+            'source_ip': 'IP address exhibiting Kerberos attack behavior',
+            'destination_count': 'Number of unique destinations contacted (lateral movement indicator)',
+            'service_count': 'Number of unique services requested (Kerberoasting indicator)',
+            'request_count': 'Total number of Kerberos requests',
+            'first_seen': 'First timestamp of suspicious activity',
+            'last_seen': 'Most recent timestamp of suspicious activity',
+            'flags': 'Attack types detected (kerberoasting_weak_encryption, excessive_tgs_requests, asrep_roasting, potential_golden_ticket, automated_ticket_requests, suspicious_service_name)',
+            'attack_score': 'Severity score (0-100). Scores ≥75 indicate likely Kerberos attack in progress. Scores ≥50 suggest reconnaissance or preparation'
+        }
+
+
+class MacroMalwareStrategy(HuntStrategy):
+    """
+    Detects malicious Office macros, VBA execution, embedded scripts,
+    and suspicious document behavior patterns.
+    """
+    
+    def _get_name(self) -> str:
+        return "Macro Malware Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'filename', 'file_content', 'process_name']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze file and process activity for macro malware.
+        
+        Detects:
+        - Office files with embedded macros
+        - VBA execution patterns
+        - AutoOpen/AutoExec macros
+        - Suspicious process spawning from Office apps
+        - Script execution (PowerShell, CMD, WScript)
+        """
+        ts_col = col_map.get('timestamp')
+        file_col = col_map.get('filename')
+        content_col = col_map.get('file_content')
+        proc_col = col_map.get('process_name')
+        
+        results = []
+        
+        # Office applications that can execute macros
+        office_apps = ['winword.exe', 'excel.exe', 'powerpnt.exe', 'outlook.exe', 'msaccess.exe']
+        
+        # Suspicious VBA keywords
+        vba_suspicious = [
+            'autoopen', 'autoexec', 'auto_open', 'workbook_open', 'document_open',
+            'shell', 'createobject', 'wscript', 'powershell', 'cmd.exe',
+            'downloadfile', 'downloadstring', 'invoke-expression', 'iex',
+            'base64', 'frombase64', 'encodedcommand', '-enc', '-e ',
+            'bitstransfer', 'webclient', 'net.webclient',
+            'regsvr32', 'rundll32', 'mshta', 'certutil'
+        ]
+        
+        for idx, row in df.iterrows():
+            filename = row[file_col] if file_col and file_col in row else None
+            content = row[content_col] if content_col and content_col in row else None
+            process = row[proc_col] if proc_col and proc_col in row else None
+            
+            if pd.isna(filename) and pd.isna(process):
+                continue
+            
+            score = 0
+            flags = []
+            
+            filename_str = str(filename).lower() if pd.notna(filename) else ''
+            content_str = str(content).lower() if pd.notna(content) else ''
+            process_str = str(process).lower() if pd.notna(process) else ''
+            
+            # Check for Office file formats
+            office_extensions = ['.doc', '.docx', '.docm', '.xls', '.xlsx', '.xlsm', '.ppt', '.pptx', '.pptm']
+            is_office_file = any(ext in filename_str for ext in office_extensions)
+            
+            # Check for macro-enabled formats
+            if any(ext in filename_str for ext in ['.docm', '.xlsm', '.pptm']):
+                score += 20
+                flags.append('macro_enabled_format')
+            
+            # Check for VBA content
+            if 'vba' in content_str or 'macro' in content_str:
+                score += 25
+                flags.append('contains_vba_code')
+            
+            # Check for suspicious VBA keywords
+            suspicious_found = [kw for kw in vba_suspicious if kw in content_str]
+            if suspicious_found:
+                score += 15 * min(len(suspicious_found), 4)  # Cap at 4 keywords
+                flags.append(f'suspicious_vba_keywords')
+            
+            # Check for AutoOpen/AutoExec
+            if any(auto in content_str for auto in ['autoopen', 'autoexec', 'auto_open', 'workbook_open']):
+                score += 30
+                flags.append('auto_execute_macro')
+            
+            # Check for process spawning from Office
+            parent_is_office = any(app in process_str for app in office_apps)
+            
+            if parent_is_office:
+                # Office spawning suspicious processes
+                if any(proc in process_str for proc in ['powershell', 'cmd', 'wscript', 'cscript', 'mshta']):
+                    score += 40
+                    flags.append('office_spawned_shell')
+                
+                if any(proc in process_str for proc in ['regsvr32', 'rundll32', 'certutil', 'bitsadmin']):
+                    score += 35
+                    flags.append('office_spawned_lolbin')
+            
+            # Check for encoded commands
+            if any(enc in content_str for enc in ['base64', 'frombase64', 'encodedcommand', '-enc']):
+                score += 30
+                flags.append('encoded_command')
+            
+            # Check for download commands
+            if any(dl in content_str for dl in ['downloadfile', 'downloadstring', 'webclient', 'bitstransfer']):
+                score += 35
+                flags.append('download_capability')
+            
+            # Check for obfuscation
+            OBFUSCATION_CHR_THRESHOLD = 5  # Multiple chr() calls suggest encoding
+            OBFUSCATION_CONCAT_THRESHOLD = 20  # Many & concatenations suggest obfuscation
+            if content_str.count('chr(') > OBFUSCATION_CHR_THRESHOLD or content_str.count('&') > OBFUSCATION_CONCAT_THRESHOLD:
+                score += 25
+                flags.append('obfuscated_code')
+            
+            if score >= 40:  # Only report significant threats
+                results.append({
+                    'filename': filename if pd.notna(filename) else 'N/A',
+                    'process': process if pd.notna(process) else 'N/A',
+                    'timestamp': row[ts_col] if ts_col and ts_col in row else None,
+                    'flags': ', '.join(set(flags)),
+                    'malware_score': min(score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('malware_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate macro malware visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Bar chart of malware scores
+        fig = go.Figure(go.Bar(
+            x=result_df['filename'][:20],  # Top 20
+            y=result_df['malware_score'][:20],
+            marker=dict(
+                color=result_df['malware_score'][:20],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Malware Score")
+            ),
+            text=result_df['malware_score'][:20],
+            textposition='outside'
+        ))
+        
+        fig.update_layout(
+            title='Top 20 Suspicious Macro Files',
+            xaxis_title='Filename',
+            yaxis_title='Malware Score',
+            height=500,
+            xaxis={'tickangle': -45}
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for MacroMalwareStrategy output columns."""
+        return {
+            'filename': 'Office document filename with suspicious macro behavior',
+            'process': 'Process spawned by the Office application',
+            'timestamp': 'When the suspicious activity was detected',
+            'flags': 'Malware indicators (macro_enabled_format, suspicious_vba_keywords, auto_execute_macro, office_spawned_shell, encoded_command, download_capability, obfuscated_code)',
+            'malware_score': 'Severity score (0-100). Scores ≥75 indicate likely malicious macro. Scores ≥50 suggest suspicious document requiring analysis'
+        }
+
+
+class NetworkCovertChannelStrategy(HuntStrategy):
+    """
+    Detects covert communication channels including ICMP tunneling,
+    DNS tunneling, timing channels, and steganography in network protocols.
+    """
+    
+    def _get_name(self) -> str:
+        return "Network Covert Channel Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'source_ip', 'destination_ip', 'protocol', 'packet_size']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze network traffic for covert channels.
+        
+        Detects:
+        - ICMP tunneling (large/frequent ICMP packets)
+        - DNS tunneling (covered by DNSExfiltrationStrategy, but cross-validated)
+        - Timing channels (regular intervals suggesting covert timing)
+        - Protocol steganography (unusual protocol usage)
+        - HTTP header exfiltration
+        """
+        ts_col = col_map.get('timestamp')
+        src_col = col_map.get('source_ip')
+        dst_col = col_map.get('destination_ip')
+        proto_col = col_map.get('protocol')
+        size_col = col_map.get('packet_size')
+        
+        results = []
+        
+        # Group by source-destination pairs
+        for (source_ip, dest_ip, protocol), group in df.groupby([src_col, dst_col, proto_col]):
+            if pd.isna(source_ip) or pd.isna(dest_ip) or pd.isna(protocol):
+                continue
+            
+            packet_count = len(group)
+            
+            # Need sufficient packets to detect patterns
+            if packet_count < 10:
+                continue
+            
+            score = 0
+            flags = []
+            
+            protocol_str = str(protocol).upper()
+            
+            # Check for ICMP tunneling
+            if protocol_str in ['ICMP', 'ICMPV6']:
+                # ICMP packets with data payloads
+                if size_col and size_col in group.columns:
+                    avg_size = group[size_col].mean()
+                    
+                    # Normal ICMP is small, tunneling uses larger packets
+                    if avg_size > 500:
+                        score += 40
+                        flags.append('icmp_tunneling_large_packets')
+                    elif avg_size > 200:
+                        score += 25
+                        flags.append('icmp_suspicious_size')
+                
+                # High frequency ICMP is suspicious
+                if packet_count > 100:
+                    score += 30
+                    flags.append('excessive_icmp_traffic')
+            
+            # Check for timing channel patterns
+            if ts_col and ts_col in df.columns:
+                timestamps = group[ts_col].sort_values()
+                if len(timestamps) > 5:
+                    # Calculate inter-packet intervals
+                    intervals = timestamps.diff().dt.total_seconds().dropna()
+                    
+                    if len(intervals) > 5:
+                        mean_interval = intervals.mean()
+                        std_interval = intervals.std()
+                        
+                        # Very regular intervals suggest timing channel
+                        if mean_interval > 0 and (std_interval / mean_interval) < 0.15:
+                            score += 35
+                            flags.append('timing_channel_detected')
+            
+            # Check for unusual protocol usage
+            uncommon_protocols = ['GRE', 'IPIP', 'L2TP', 'PPTP']
+            if protocol_str in uncommon_protocols:
+                score += 25
+                flags.append('uncommon_protocol')
+            
+            # Check for consistent packet sizes (steganography indicator)
+            if size_col and size_col in group.columns:
+                sizes = group[size_col].dropna()
+                if len(sizes) > 10:
+                    size_std = sizes.std()
+                    size_mean = sizes.mean()
+                    
+                    # Very consistent sizes suggest covert channel
+                    if size_mean > 0 and (size_std / size_mean) < 0.1:
+                        score += 30
+                        flags.append('consistent_packet_sizes')
+            
+            # Check for HTTP protocol (potential for anomalies)
+            # Note: Without port information, we flag HTTP as potentially suspicious in context
+            if protocol_str == 'HTTP' and packet_count > 50:
+                score += 15
+                flags.append('http_protocol_detected')
+            
+            # High packet count with small sizes (potential steganography)
+            if size_col and size_col in group.columns:
+                avg_size = group[size_col].mean()
+                if packet_count > 200 and avg_size < 100:
+                    score += 25
+                    flags.append('micro_packet_stream')
+            
+            if score >= 40:  # Only report significant covert channels
+                results.append({
+                    'source_ip': source_ip,
+                    'destination_ip': dest_ip,
+                    'protocol': protocol,
+                    'packet_count': packet_count,
+                    'avg_packet_size': group[size_col].mean() if size_col and size_col in group.columns else 0,
+                    'first_seen': group[ts_col].min() if ts_col and ts_col in df.columns else None,
+                    'last_seen': group[ts_col].max() if ts_col and ts_col in df.columns else None,
+                    'flags': ', '.join(set(flags)),
+                    'covert_score': min(score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('covert_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate covert channel visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Scatter plot by protocol
+        fig = go.Figure()
+        
+        for protocol in result_df['protocol'].unique():
+            protocol_data = result_df[result_df['protocol'] == protocol]
+            fig.add_trace(go.Scatter(
+                x=protocol_data['packet_count'],
+                y=protocol_data['covert_score'],
+                mode='markers',
+                name=protocol,
+                marker=dict(size=10),
+                text=protocol_data['source_ip'],
+                hovertemplate='<b>%{text}</b><br>Protocol: ' + protocol + '<br>Packets: %{x}<br>Score: %{y}<extra></extra>'
+            ))
+        
+        fig.update_layout(
+            title='Covert Channel Detection by Protocol',
+            xaxis_title='Packet Count',
+            yaxis_title='Covert Channel Score',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for NetworkCovertChannelStrategy output columns."""
+        return {
+            'source_ip': 'Source IP using covert communication channel',
+            'destination_ip': 'Destination IP receiving covert communication',
+            'protocol': 'Network protocol being abused for covert channel',
+            'packet_count': 'Number of packets in the covert stream',
+            'avg_packet_size': 'Average packet size in bytes',
+            'first_seen': 'First timestamp of covert channel activity',
+            'last_seen': 'Most recent timestamp of covert channel activity',
+            'flags': 'Covert channel indicators (icmp_tunneling_large_packets, timing_channel_detected, uncommon_protocol, consistent_packet_sizes, micro_packet_stream)',
+            'covert_score': 'Severity score (0-100). Scores ≥75 indicate high confidence covert channel. Scores ≥50 suggest suspicious communication patterns'
+        }

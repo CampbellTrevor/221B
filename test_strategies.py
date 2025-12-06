@@ -41,7 +41,11 @@ from strategies import (
     InsiderThreatStrategy,
     RansomwareBehaviorStrategy,
     ZeroDayExploitStrategy,
-    CloudMisconfigStrategy
+    CloudMisconfigStrategy,
+    APIGatewayAbuseStrategy,
+    KerberosAttackStrategy,
+    MacroMalwareStrategy,
+    NetworkCovertChannelStrategy
 )
 
 
@@ -2473,6 +2477,288 @@ class TestCloudMisconfigStrategy(unittest.TestCase):
         explanations = self.strategy.get_column_explanations()
         self.assertIn('misconfiguration_score', explanations)
         self.assertIn('resource_type', explanations)
+        self.assertIn('flags', explanations)
+
+
+class TestAPIGatewayAbuseStrategy(unittest.TestCase):
+    """Test the API Gateway Abuse Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = APIGatewayAbuseStrategy()
+    
+    def test_api_abuse_detection(self):
+        """Test that API gateway abuse is detected."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create 200 API calls in 1 minute (high rate)
+        for i in range(200):
+            data.append({
+                'timestamp': base_time + timedelta(seconds=i * 0.3),
+                'source_ip': '10.0.0.100',
+                'endpoint': '/api/graphql',
+                'status_code': 200,
+                'response_time': 6000  # Slow GraphQL query
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'endpoint': 'endpoint',
+            'status_code': 'status_code',
+            'response_time': 'response_time'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect abuse
+        self.assertFalse(result.empty)
+        self.assertGreaterEqual(result.iloc[0]['abuse_score'], 50)
+    
+    def test_normal_api_usage_not_flagged(self):
+        """Test that normal API usage is not flagged."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create moderate API calls
+        for i in range(15):
+            data.append({
+                'timestamp': base_time + timedelta(seconds=i * 10),
+                'source_ip': '10.0.0.100',
+                'endpoint': '/api/users',
+                'status_code': 200,
+                'response_time': 100
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'endpoint': 'endpoint',
+            'status_code': 'status_code',
+            'response_time': 'response_time'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal usage
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('abuse_score', explanations)
+        self.assertIn('endpoint', explanations)
+        self.assertIn('flags', explanations)
+
+
+class TestKerberosAttackStrategy(unittest.TestCase):
+    """Test the Kerberos Attack Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = KerberosAttackStrategy()
+    
+    def test_kerberos_attack_detection(self):
+        """Test that Kerberos attacks are detected."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create Kerberoasting pattern - many TGS requests with weak encryption
+        for i in range(30):
+            data.append({
+                'timestamp': base_time + timedelta(seconds=i),
+                'source_ip': '10.0.0.50',
+                'destination_ip': f'10.0.1.{i}',
+                'service_name': f'HTTP/server{i}.domain.com',
+                'ticket_encryption': 'rc4-hmac'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'destination_ip': 'destination_ip',
+            'service_name': 'service_name',
+            'ticket_encryption': 'ticket_encryption'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect Kerberos attack
+        self.assertFalse(result.empty)
+        self.assertGreaterEqual(result.iloc[0]['attack_score'], 50)
+    
+    def test_normal_kerberos_traffic_not_flagged(self):
+        """Test that normal Kerberos traffic is not flagged."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create normal Kerberos traffic
+        for i in range(3):
+            data.append({
+                'timestamp': base_time + timedelta(minutes=i),
+                'source_ip': '10.0.0.50',
+                'destination_ip': '10.0.1.1',
+                'service_name': 'HTTP/server.domain.com',
+                'ticket_encryption': 'aes256'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'destination_ip': 'destination_ip',
+            'service_name': 'service_name',
+            'ticket_encryption': 'ticket_encryption'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal traffic
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('attack_score', explanations)
+        self.assertIn('service_count', explanations)
+        self.assertIn('flags', explanations)
+
+
+class TestMacroMalwareStrategy(unittest.TestCase):
+    """Test the Macro Malware Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = MacroMalwareStrategy()
+    
+    def test_macro_malware_detection(self):
+        """Test that malicious macros are detected."""
+        data = [{
+            'timestamp': datetime.now(),
+            'filename': 'invoice.docm',
+            'file_content': 'Sub AutoOpen() Shell "powershell.exe -enc IABlAHgAKABOAGUAdwAtAE8AYgBqAGUAYwB0" CreateObject("WScript.Shell") End Sub',
+            'process_name': 'winword.exe -> powershell.exe'
+        }]
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'filename': 'filename',
+            'file_content': 'file_content',
+            'process_name': 'process_name'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect macro malware
+        self.assertFalse(result.empty)
+        self.assertGreaterEqual(result.iloc[0]['malware_score'], 50)
+    
+    def test_benign_office_file_not_flagged(self):
+        """Test that benign Office files are not flagged."""
+        data = [{
+            'timestamp': datetime.now(),
+            'filename': 'report.docx',
+            'file_content': 'This is a normal document with no macros.',
+            'process_name': 'winword.exe'
+        }]
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'filename': 'filename',
+            'file_content': 'file_content',
+            'process_name': 'process_name'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag benign files
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('malware_score', explanations)
+        self.assertIn('filename', explanations)
+        self.assertIn('flags', explanations)
+
+
+class TestNetworkCovertChannelStrategy(unittest.TestCase):
+    """Test the Network Covert Channel Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = NetworkCovertChannelStrategy()
+    
+    def test_covert_channel_detection(self):
+        """Test that covert channels are detected."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create ICMP tunneling pattern - many large ICMP packets
+        for i in range(150):
+            data.append({
+                'timestamp': base_time + timedelta(seconds=i),
+                'source_ip': '10.0.0.100',
+                'destination_ip': '8.8.8.8',
+                'protocol': 'ICMP',
+                'packet_size': 800  # Large for ICMP
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'destination_ip': 'destination_ip',
+            'protocol': 'protocol',
+            'packet_size': 'packet_size'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect covert channel
+        self.assertFalse(result.empty)
+        self.assertGreaterEqual(result.iloc[0]['covert_score'], 50)
+    
+    def test_normal_traffic_not_flagged(self):
+        """Test that normal network traffic is not flagged."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create normal traffic
+        for i in range(5):
+            data.append({
+                'timestamp': base_time + timedelta(seconds=i * 30),
+                'source_ip': '10.0.0.100',
+                'destination_ip': '8.8.8.8',
+                'protocol': 'TCP',
+                'packet_size': 1500
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'destination_ip': 'destination_ip',
+            'protocol': 'protocol',
+            'packet_size': 'packet_size'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal traffic
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('covert_score', explanations)
+        self.assertIn('protocol', explanations)
         self.assertIn('flags', explanations)
 
 
