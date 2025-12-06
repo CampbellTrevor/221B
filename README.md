@@ -10,7 +10,8 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 **Code Quality & Consolidation:**
 - 🔧 **Major code consolidation** - Improved maintainability and reduced duplication
-- **Gradient pattern consolidation** - 9+ inline CSS gradients replaced with reusable constants
+- **CSS style consolidation** - 10 new CSS constants consolidate 20+ duplicate inline styles
+- **Gradient pattern consolidation** - 9 inline CSS gradients replaced with reusable constants
 - **Magic number elimination** - All severity thresholds now use named constants for easier maintenance
 - **Enhanced code consistency** - Single source of truth for styling and threshold values
 - All improvements maintain 100% backward compatibility with zero breaking changes
