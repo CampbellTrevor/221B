@@ -10,6 +10,11 @@ import ipywidgets as widgets
 from IPython.display import display, clear_output, HTML
 import pandas as pd
 import re
+import json
+import os
+import datetime
+from datetime import timedelta
+from multiprocessing import Pool, cpu_count
 from ionic_scripting_framework import isf
 from strategies import HuntStrategy
 
@@ -22,15 +27,23 @@ class WatsonDashboard:
     selected table schema, and executes hunt strategies on the data.
     """
     
-    def __init__(self, strategies: list):
+    def __init__(self, strategies: list, cache_dir: str = '.221b_cache', cache_days: int = 7):
         """
         Initialize the WatsonDashboard.
         
         Args:
             strategies: List of HuntStrategy objects to make available
+            cache_dir: Directory to store cached data (default: '.221b_cache')
+            cache_days: Number of days to keep cached tables list (default: 7)
         """
         self.strategies = strategies
         self.all_tables = []
+        self.cache_dir = cache_dir
+        self.cache_days = cache_days
+        self.tables_cache_file = os.path.join(cache_dir, 'available_tables.json')
+        
+        # Create cache directory if it doesn't exist
+        os.makedirs(cache_dir, exist_ok=True)
         
         # UI Components - will be created per tab
         self.tab_widget = None
@@ -50,11 +63,33 @@ class WatsonDashboard:
     def _get_available_tables(self) -> list:
         """
         Query information_schema.tables to get available tables.
+        Uses local cache if available and fresh (within cache_days).
         
         Returns:
             List of table names
         """
+        # Check if cache exists and is fresh
+        if os.path.exists(self.tables_cache_file):
+            try:
+                with open(self.tables_cache_file, 'r') as f:
+                    cache_data = json.load(f)
+                
+                # Check cache timestamp
+                cache_time = datetime.datetime.fromisoformat(cache_data['timestamp'])
+                age_seconds = (datetime.datetime.now() - cache_time).total_seconds()
+                age_days = age_seconds / 86400  # Convert seconds to days
+                
+                if age_days < self.cache_days:
+                    print(f"📦 Using cached table list (age: {age_days:.1f} days)")
+                    return cache_data['tables']
+                else:
+                    print(f"⏰ Cache expired (age: {age_days:.1f} days), refreshing...")
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                print(f"⚠️ Cache file corrupted, refreshing... ({e})")
+        
+        # Cache miss or expired - query database
         try:
+            print("🔄 Querying database for available tables...")
             query = """
             SELECT table_name 
             FROM information_schema.tables 
@@ -64,7 +99,18 @@ class WatsonDashboard:
             df = isf.run_query(query)
             
             if df is not None and not df.empty:
-                return df['table_name'].tolist()
+                tables = df['table_name'].tolist()
+                
+                # Save to cache
+                cache_data = {
+                    'timestamp': datetime.datetime.now().isoformat(),
+                    'tables': tables
+                }
+                with open(self.tables_cache_file, 'w') as f:
+                    json.dump(cache_data, f, indent=2)
+                
+                print(f"✅ Cached {len(tables)} tables")
+                return tables
             else:
                 return ['No tables available']
         except Exception as e:
@@ -143,6 +189,21 @@ class WatsonDashboard:
                     max=1000000,
                     style={'description_width': 'initial'}
                 ),
+                'enable_date_filter': widgets.Checkbox(
+                    value=False,
+                    description='Enable Date Filter',
+                    style={'description_width': 'initial'}
+                ),
+                'start_date': widgets.DatePicker(
+                    description='Start Date:',
+                    disabled=True,
+                    style={'description_width': 'initial'}
+                ),
+                'end_date': widgets.DatePicker(
+                    description='End Date:',
+                    disabled=True,
+                    style={'description_width': 'initial'}
+                ),
                 'run_button': widgets.Button(
                     description='Run Analysis',
                     button_style='success',
@@ -166,18 +227,22 @@ class WatsonDashboard:
             def make_run_analysis_handler(tab_idx):
                 return lambda btn: self._run_analysis(btn, tab_idx)
             
+            def make_date_filter_handler(tab_idx):
+                return lambda change: self._on_date_filter_toggle(change, tab_idx)
+            
             tab_data['table_search'].observe(make_table_search_handler(i), names='value')
             tab_data['load_table_button'].on_click(make_load_table_handler(i))
             tab_data['run_button'].on_click(make_run_analysis_handler(i))
+            tab_data['enable_date_filter'].observe(make_date_filter_handler(i), names='value')
             
             # Create strategy description with input details
             input_descriptions = self._get_input_descriptions(strategy)
             inputs_html = ""
             for inp, (desc, example) in input_descriptions.items():
                 inputs_html += f"""
-                <div style="margin: 10px 0; padding: 8px; background: #f8f9fa; color: #6c757d;  border-left: 3px solid #007bff;">
+                <div style="margin: 10px 0; padding: 8px; background: #f8f9fa; color: #212529; border-left: 3px solid #007bff;">
                     <b>{inp}:</b> {desc}<br/>
-                    <i style="color: #6c757d; font-size: 0.9em;">{example}</i>
+                    <i style="color: #495057; font-size: 0.9em;">{example}</i>
                 </div>
                 """
             
@@ -207,7 +272,12 @@ class WatsonDashboard:
                 widgets.HTML("<hr>"),
                 widgets.HTML("<h4>Column Mapping</h4>"),
                 tab_data['column_mapping_container'],
+                widgets.HTML("<hr>"),
+                widgets.HTML("<h4>Query Options</h4>"),
                 tab_data['limit_input'],
+                tab_data['enable_date_filter'],
+                tab_data['start_date'],
+                tab_data['end_date'],
                 tab_data['run_button'],
                 widgets.HTML("<hr>"),
                 tab_data['output_widget']
@@ -244,6 +314,21 @@ class WatsonDashboard:
             filtered_tables = [t for t in self.all_tables if search_term in t.lower()]
             tab_data['table_dropdown'].options = filtered_tables if filtered_tables else ['No matching tables']
     
+    def _on_date_filter_toggle(self, change, tab_index: int):
+        """
+        Handle date filter enable/disable toggle.
+        
+        Args:
+            change: Change event from checkbox widget
+            tab_index: Index of the tab
+        """
+        tab_data = self.strategy_tab_contents[tab_index]
+        enabled = change['new']
+        
+        # Enable/disable date picker widgets
+        tab_data['start_date'].disabled = not enabled
+        tab_data['end_date'].disabled = not enabled
+    
     def _on_load_table(self, button, tab_index: int):
         """
         Load table schema when button is pressed.
@@ -276,20 +361,25 @@ class WatsonDashboard:
             print(f"✅ Loaded {len(tab_data['available_columns'])} columns from {current_table}")
             print("Configure column mappings above and click 'Run Analysis' when ready.")
     
-    def _display_sortable_results(self, df: pd.DataFrame, max_rows: int = 100):
+    def _display_sortable_results(self, df: pd.DataFrame, rows_per_page: int = 100):
         """
-        Display results with sorting controls using ipywidgets.
+        Display results with sorting and pagination controls using ipywidgets.
         
         Args:
             df: DataFrame to display
-            max_rows: Maximum number of rows to display (for performance)
+            rows_per_page: Number of rows to display per page
         """
-        # Limit rows for performance
-        display_df = df.head(max_rows) if len(df) > max_rows else df
+        # Store the full dataframe for pagination
+        full_df = df
+        
+        # State variables for pagination and sorting
+        current_page = {'value': 0}
+        current_sort = {'column': '(unsorted)', 'ascending': False}
+        cached_sorted_df = {'df': full_df, 'total_pages': 1}  # Cache for sorted DataFrame
         
         # Create sorting controls
         sort_column = widgets.Dropdown(
-            options=['(unsorted)'] + list(display_df.columns),
+            options=['(unsorted)'] + list(full_df.columns),
             value='(unsorted)',
             description='Sort by:',
             style={'description_width': 'initial'}
@@ -303,46 +393,111 @@ class WatsonDashboard:
             style={'description_width': 'initial'}
         )
         
+        # Create pagination controls
+        prev_button = widgets.Button(
+            description='◀ Previous',
+            button_style='primary',
+            disabled=True,
+            layout=widgets.Layout(width='120px')
+        )
+        
+        next_button = widgets.Button(
+            description='Next ▶',
+            button_style='primary',
+            layout=widgets.Layout(width='120px')
+        )
+        
+        page_info = widgets.HTML(value='')
+        
         # Create output area for the table
         table_output = widgets.Output()
         
-        def update_table(change=None):
-            """Update the displayed table based on sort settings."""
+        def get_sorted_df():
+            """Get the dataframe with current sorting applied (cached)."""
+            if current_sort['column'] != '(unsorted)':
+                sorted_df = full_df.sort_values(
+                    by=current_sort['column'],
+                    ascending=current_sort['ascending']
+                )
+            else:
+                sorted_df = full_df
+            
+            # Update cache
+            total_rows = len(sorted_df)
+            total_pages = (total_rows + rows_per_page - 1) // rows_per_page
+            cached_sorted_df['df'] = sorted_df
+            cached_sorted_df['total_pages'] = total_pages
+            
+            return sorted_df
+        
+        def update_table():
+            """Update the displayed table based on current page and sort settings."""
+            sorted_df = cached_sorted_df['df']
+            total_rows = len(sorted_df)
+            total_pages = cached_sorted_df['total_pages']
+            
+            # Calculate start and end indices for current page
+            start_idx = current_page['value'] * rows_per_page
+            end_idx = min(start_idx + rows_per_page, total_rows)
+            
+            # Get the page data
+            page_df = sorted_df.iloc[start_idx:end_idx]
+            
+            # Update table display
             with table_output:
                 clear_output(wait=True)
-                
-                # Apply sorting
-                if sort_column.value != '(unsorted)':
-                    ascending = (sort_order.value == 'Ascending')
-                    sorted_df = display_df.sort_values(
-                        by=sort_column.value, 
-                        ascending=ascending
-                    )
-                else:
-                    sorted_df = display_df
-                
-                # Display the sorted dataframe
-                display(HTML(sorted_df.to_html(index=False)))
+                display(HTML(page_df.to_html(index=False)))
+            
+            # Update page info
+            page_info.value = f"<b>Page {current_page['value'] + 1} of {total_pages}</b> (Rows {start_idx + 1}-{end_idx} of {total_rows})"
+            
+            # Update button states
+            prev_button.disabled = (current_page['value'] == 0)
+            next_button.disabled = (current_page['value'] >= total_pages - 1)
         
-        # Attach observers
-        sort_column.observe(update_table, names='value')
-        sort_order.observe(update_table, names='value')
+        def on_sort_change(change):
+            """Handle sorting changes."""
+            current_sort['column'] = sort_column.value
+            current_sort['ascending'] = (sort_order.value == 'Ascending')
+            current_page['value'] = 0  # Reset to first page when sorting changes
+            get_sorted_df()  # Refresh cache
+            update_table()
+        
+        def on_prev_click(b):
+            """Handle previous button click."""
+            if current_page['value'] > 0:
+                current_page['value'] -= 1
+                update_table()
+        
+        def on_next_click(b):
+            """Handle next button click."""
+            if current_page['value'] < cached_sorted_df['total_pages'] - 1:
+                current_page['value'] += 1
+                update_table()
+        
+        # Attach observers and handlers
+        sort_column.observe(on_sort_change, names='value')
+        sort_order.observe(on_sort_change, names='value')
+        prev_button.on_click(on_prev_click)
+        next_button.on_click(on_next_click)
         
         # Initial display
         update_table()
         
-        # Create the sortable table widget
+        # Create the UI layout
         sort_controls = widgets.HBox([sort_column, sort_order])
+        pagination_controls = widgets.HBox([prev_button, page_info, next_button], 
+                                          layout=widgets.Layout(justify_content='center'))
+        
         sortable_table = widgets.VBox([
             widgets.HTML("<h4>📊 Results</h4>"),
             sort_controls,
-            table_output
+            pagination_controls,
+            table_output,
+            pagination_controls  # Show pagination at bottom too for convenience
         ])
         
         display(sortable_table)
-        
-        if len(df) > max_rows:
-            print(f"\n⚠️ Showing first {max_rows} of {len(df)} rows for performance.")
     
     def _sanitize_identifier(self, identifier: str) -> str:
         """
@@ -547,6 +702,47 @@ class WatsonDashboard:
         # Update container
         tab_data['column_mapping_container'].children = dropdowns
     
+    def _run_parallel_analysis(self, strategy: HuntStrategy, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Run strategy analysis with multiprocessing support.
+        
+        This method attempts to parallelize the analysis by checking if the strategy
+        has a parallel_analyze method. If not, it falls back to the standard analyze method.
+        
+        Args:
+            strategy: The hunt strategy to execute
+            df: Input DataFrame with raw data
+            col_map: Dictionary mapping required_inputs to actual column names
+        
+        Returns:
+            DataFrame with analysis results
+        """
+        # Check if strategy supports parallel processing
+        # Only use parallel processing if the method has been overridden (not just inherited)
+        strategy_class = strategy.__class__
+        base_class = HuntStrategy
+        has_custom_parallel = (hasattr(strategy_class, 'parallel_analyze') and 
+                               strategy_class.parallel_analyze != base_class.parallel_analyze)
+        
+        if has_custom_parallel:
+            try:
+                # Determine optimal number of cores (leave one free, minimum 2 for parallelism)
+                total_cores = cpu_count()
+                num_cores = max(2, total_cores - 1) if total_cores > 2 else 1
+                
+                if num_cores > 1:
+                    print(f"   Using {num_cores} CPU cores for parallel processing...")
+                    return strategy.parallel_analyze(df, col_map, num_cores)
+                else:
+                    # Not enough cores for parallelism, use standard analysis
+                    return strategy.analyze(df, col_map)
+            except Exception as e:
+                print(f"   ⚠️  Parallel processing failed, falling back to single-threaded: {e}")
+                return strategy.analyze(df, col_map)
+        else:
+            # Standard single-threaded analysis
+            return strategy.analyze(df, col_map)
+    
     def _run_analysis(self, button, tab_index: int):
         """
         Execute the selected hunt strategy on the selected table.
@@ -580,7 +776,7 @@ class WatsonDashboard:
         for required_input, dropdown in column_dropdowns.items():
             col_map[required_input] = dropdown.value
         
-        # Build SELECT query with sanitized identifiers and LIMIT
+        # Build SELECT query with sanitized identifiers, date filtering, and LIMIT
         try:
             # Sanitize all column names and table name
             sanitized_columns = [self._sanitize_identifier(col) for col in col_map.values()]
@@ -589,7 +785,57 @@ class WatsonDashboard:
             # Validate and sanitize limit value (IntText widget provides basic validation)
             limit = max(1, min(1000000, int(tab_data['limit_input'].value)))
             
-            query = f"SELECT {', '.join(sanitized_columns)} FROM {sanitized_table} LIMIT {limit}"
+            # Build the query
+            query = f"SELECT {', '.join(sanitized_columns)} FROM {sanitized_table}"
+            
+            # Add date filtering if enabled
+            where_clauses = []
+            if tab_data['enable_date_filter'].value:
+                # Find timestamp column for date filtering
+                timestamp_col = col_map.get('timestamp')
+                if timestamp_col:
+                    sanitized_ts_col = self._sanitize_identifier(timestamp_col)
+                    
+                    if tab_data['start_date'].value:
+                        # Validate date value - DatePicker should provide datetime.date object
+                        start_date = tab_data['start_date'].value
+                        if not isinstance(start_date, (datetime.date, datetime)):
+                            with tab_data['output_widget']:
+                                print("⚠️ Invalid start date format")
+                            return
+                        start_date_str = start_date.isoformat() if hasattr(start_date, 'isoformat') else str(start_date)
+                        # Sanitize date string - ensure it matches YYYY-MM-DD format
+                        if not re.match(r'^\d{4}-\d{2}-\d{2}$', start_date_str):
+                            with tab_data['output_widget']:
+                                print("⚠️ Invalid start date format")
+                            return
+                        where_clauses.append(f"CAST({sanitized_ts_col} AS DATE) >= DATE '{start_date_str}'")
+                    
+                    if tab_data['end_date'].value:
+                        # Validate date value - DatePicker should provide datetime.date object
+                        end_date = tab_data['end_date'].value
+                        if not isinstance(end_date, (datetime.date, datetime)):
+                            with tab_data['output_widget']:
+                                print("⚠️ Invalid end date format")
+                            return
+                        end_date_str = end_date.isoformat() if hasattr(end_date, 'isoformat') else str(end_date)
+                        # Sanitize date string - ensure it matches YYYY-MM-DD format
+                        if not re.match(r'^\d{4}-\d{2}-\d{2}$', end_date_str):
+                            with tab_data['output_widget']:
+                                print("⚠️ Invalid end date format")
+                            return
+                        where_clauses.append(f"CAST({sanitized_ts_col} AS DATE) <= DATE '{end_date_str}'")
+                else:
+                    # Warn user that date filtering requires timestamp column
+                    with tab_data['output_widget']:
+                        print("⚠️ Date filtering requires a 'timestamp' column to be mapped. Please load the table schema and ensure a timestamp field is available.")
+                    return
+            
+            if where_clauses:
+                query += " WHERE " + " AND ".join(where_clauses)
+            
+            query += f" LIMIT {limit}"
+            
         except ValueError as e:
             with tab_data['output_widget']:
                 print(f"❌ Invalid SQL identifier: {e}")
@@ -611,9 +857,9 @@ class WatsonDashboard:
                 print(f"✅ Retrieved {len(df)} rows from {current_table}")
                 print()
                 
-                # Run strategy analysis
+                # Run strategy analysis with multiprocessing support
                 print(f"🔬 Analyzing data with {strategy.name}...")
-                result_df = strategy.analyze(df, col_map)
+                result_df = self._run_parallel_analysis(strategy, df, col_map)
                 
                 if result_df is None or result_df.empty:
                     print("⚠️ Analysis returned no results.")
@@ -621,6 +867,16 @@ class WatsonDashboard:
                 
                 print(f"✅ Analysis complete! Found {len(result_df)} results.")
                 print()
+                
+                # Display column explanations for junior analysts FIRST
+                explanations = strategy.get_column_explanations()
+                if explanations:
+                    print("📖 Column Explanations:")
+                    print("-" * 80)
+                    for col_name, explanation in explanations.items():
+                        if col_name in result_df.columns:
+                            print(f"• {col_name}: {explanation}")
+                    print()
                 
                 # Generate and display visualization if available
                 viz = strategy.visualize(result_df, col_map)
@@ -635,17 +891,6 @@ class WatsonDashboard:
                 
                 # Display results in sortable table
                 self._display_sortable_results(result_df)
-                
-                # Display column explanations for junior analysts
-                explanations = strategy.get_column_explanations()
-                if explanations:
-                    print()
-                    print("📖 Column Explanations:")
-                    print("-" * 80)
-                    for col_name, explanation in explanations.items():
-                        if col_name in result_df.columns:
-                            print(f"• {col_name}: {explanation}")
-                    print()
                 
             except Exception as e:
                 print(f"❌ Error during analysis: {e}")

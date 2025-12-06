@@ -38,3 +38,6 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# 221B Cache
+.221b_cache/

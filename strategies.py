@@ -9,6 +9,9 @@ from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
 from scipy.stats import entropy
+from multiprocessing import Pool
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 
 # Try to import plotly for visualizations (optional)
 try:
@@ -83,6 +86,24 @@ class HuntStrategy(ABC):
         """
         # Default implementation - should be overridden by subclasses
         return {}
+    
+    def parallel_analyze(self, df: pd.DataFrame, col_map: dict, num_cores: int = 4) -> pd.DataFrame:
+        """
+        Optional parallel implementation of analysis using multiprocessing.
+        
+        Subclasses can override this method to provide optimized parallel processing.
+        If not overridden, this will fall back to the standard analyze method.
+        
+        Args:
+            df: Input DataFrame with raw data
+            col_map: Dictionary mapping required_inputs to actual column names
+            num_cores: Number of CPU cores to use for parallel processing
+        
+        Returns:
+            DataFrame with analysis results
+        """
+        # Default implementation - just call the standard analyze method
+        return self.analyze(df, col_map)
 
 
 class BeaconStrategy(HuntStrategy):
@@ -190,6 +211,121 @@ class BeaconStrategy(HuntStrategy):
         
         return result_df
     
+    @staticmethod
+    def _process_beacon_group(group_data):
+        """
+        Process a single source/dest group for beacon detection.
+        
+        This static method is used for parallel processing.
+        
+        Args:
+            group_data: Tuple of ((src_ip, dst_ip), group_df, ts_col, min_connections)
+        
+        Returns:
+            Dictionary with analysis results or None if group doesn't meet criteria
+        """
+        (src_ip, dst_ip), group, ts_col, min_connections = group_data
+        
+        # Require minimum connections for statistical significance
+        if len(group) < min_connections:
+            return None
+        
+        # Calculate time deltas in seconds
+        timestamps = group[ts_col].values
+        deltas = np.diff(timestamps).astype('timedelta64[s]').astype(float)
+        
+        if len(deltas) == 0:
+            return None
+        
+        variance = np.var(deltas)
+        mean_delta = np.mean(deltas)
+        std_delta = np.std(deltas)
+        
+        # Calculate coefficient of variation (CV)
+        cv = (std_delta / mean_delta) if mean_delta > 0 else float('inf')
+        
+        # Calculate beacon score (0-100, higher = more suspicious)
+        beacon_score = 0
+        if cv < 0.1:
+            beacon_score += 50
+        elif cv < 0.3:
+            beacon_score += 30
+        elif cv < 0.5:
+            beacon_score += 15
+        
+        # Bonus for many connections
+        if len(group) >= 20:
+            beacon_score += 30
+        elif len(group) >= 10:
+            beacon_score += 20
+        elif len(group) >= 5:
+            beacon_score += 10
+        
+        # Bonus for reasonable beacon intervals (1 min to 1 hour)
+        if 60 <= mean_delta <= 3600:
+            beacon_score += 20
+        
+        return {
+            'source_ip': src_ip,
+            'dest_ip': dst_ip,
+            'connection_count': len(group),
+            'delta_variance': variance,
+            'mean_delta_sec': mean_delta,
+            'coeff_variation': cv,
+            'beacon_score': min(beacon_score, 100)
+        }
+    
+    def parallel_analyze(self, df: pd.DataFrame, col_map: dict, num_cores: int = 4) -> pd.DataFrame:
+        """
+        Parallel implementation of beacon detection analysis.
+        
+        Args:
+            df: DataFrame with connection logs
+            col_map: Mapping of column names
+            num_cores: Number of CPU cores to use
+        
+        Returns:
+            DataFrame with analysis results
+        """
+        # Map columns
+        ts_col = col_map['timestamp']
+        src_col = col_map['source_ip']
+        dst_col = col_map['dest_ip']
+        
+        # Ensure timestamp is datetime
+        df = df.copy()
+        df[ts_col] = pd.to_datetime(df[ts_col])
+        
+        # Sort by source, dest, and timestamp
+        df = df.sort_values([src_col, dst_col, ts_col])
+        
+        # Prepare groups for parallel processing
+        groups = [(key, group, ts_col, self.MIN_CONNECTIONS) 
+                  for key, group in df.groupby([src_col, dst_col])]
+        
+        # Process groups in parallel
+        # Try multiprocessing first, fall back to threading if it fails
+        # (Threading is more compatible with Jupyter notebooks)
+        try:
+            with Pool(processes=num_cores) as pool:
+                results = pool.map(self._process_beacon_group, groups)
+        except Exception:
+            # Fall back to threading for Jupyter notebook compatibility
+            with ThreadPoolExecutor(max_workers=num_cores) as executor:
+                results = list(executor.map(self._process_beacon_group, groups))
+        
+        # Filter out None results
+        results = [r for r in results if r is not None]
+        
+        result_df = pd.DataFrame(results)
+        
+        # Filter and sort by beacon score
+        if not result_df.empty:
+            result_df = result_df[result_df['beacon_score'] >= self.MIN_BEACON_SCORE]
+            result_df = result_df.sort_values('beacon_score', ascending=False)
+        
+        return result_df
+    
     def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
         """Generate beacon detection visualization."""
         if not HAS_PLOTLY or result_df.empty:
@@ -247,6 +383,8 @@ class EntropyStrategy(HuntStrategy):
     
     # Minimum suspicion score to be considered high-risk
     MIN_SUSPICION_SCORE = 50
+    # Batches per core for parallel processing (more batches = better load distribution)
+    BATCHES_PER_CORE = 4
     
     def _get_name(self) -> str:
         return "Entropy Analyzer (DNS Tunneling)"
@@ -323,6 +461,120 @@ class EntropyStrategy(HuntStrategy):
         
         return result_df
     
+    @staticmethod
+    def _process_entropy_batch(batch_data):
+        """
+        Process a batch of strings for entropy calculation.
+        
+        This static method is used for parallel processing.
+        
+        Args:
+            batch_data: Tuple of (strings_list, min_suspicion_score)
+        
+        Returns:
+            List of dictionaries with analysis results
+        """
+        strings_list, min_suspicion_score = batch_data
+        results = []
+        
+        for text in strings_list:
+            if not text or not isinstance(text, str):
+                continue
+            
+            # Calculate Shannon Entropy
+            char_counts = {}
+            for char in text:
+                char_counts[char] = char_counts.get(char, 0) + 1
+            
+            length = len(text)
+            probabilities = [count / length for count in char_counts.values()]
+            ent_score = entropy(probabilities, base=2)
+            
+            # Calculate suspicion score
+            suspicion = 0.0
+            
+            # Entropy scoring (0-50 points)
+            if ent_score >= 4.5:
+                suspicion += 50
+            elif ent_score >= 4.0:
+                suspicion += 35
+            elif ent_score >= 3.5:
+                suspicion += 20
+            
+            # Length scoring (0-50 points)
+            if length >= 50:
+                suspicion += 50
+            elif length >= 30:
+                suspicion += 35
+            elif length >= 20:
+                suspicion += 20
+            
+            # Only include if meets minimum threshold
+            if suspicion >= min_suspicion_score:
+                results.append({
+                    'target_string': text,
+                    'string_length': length,
+                    'entropy_score': ent_score,
+                    'suspicion_score': suspicion
+                })
+        
+        return results
+    
+    def parallel_analyze(self, df: pd.DataFrame, col_map: dict, num_cores: int = 4) -> pd.DataFrame:
+        """
+        Parallel implementation of entropy analysis.
+        
+        Args:
+            df: DataFrame with string data
+            col_map: Mapping of column names
+            num_cores: Number of CPU cores to use
+        
+        Returns:
+            DataFrame with analysis results
+        """
+        # Map columns
+        str_col = col_map['target_string']
+        
+        # Get unique strings to analyze
+        df = df.copy()
+        df = df.dropna(subset=[str_col])
+        unique_strings = df[str_col].unique().tolist()
+        
+        # Split strings into batches for parallel processing
+        batch_size = max(1, len(unique_strings) // (num_cores * self.BATCHES_PER_CORE))
+        batches = [unique_strings[i:i + batch_size] for i in range(0, len(unique_strings), batch_size)]
+        
+        # Prepare batch data with min suspicion score
+        batch_data = [(batch, self.MIN_SUSPICION_SCORE) for batch in batches]
+        
+        # Process batches in parallel
+        try:
+            with Pool(processes=num_cores) as pool:
+                batch_results = pool.map(self._process_entropy_batch, batch_data)
+        except Exception:
+            # Fall back to threading for Jupyter notebook compatibility
+            with ThreadPoolExecutor(max_workers=num_cores) as executor:
+                batch_results = list(executor.map(self._process_entropy_batch, batch_data))
+        
+        # Flatten results
+        results = []
+        for batch_result in batch_results:
+            results.extend(batch_result)
+        
+        # Create result DataFrame
+        result_df = pd.DataFrame(results)
+        
+        if result_df.empty:
+            return result_df
+        
+        # Sort by suspicion score (descending)
+        result_df = result_df.sort_values('suspicion_score', ascending=False)
+        
+        # Remove duplicates
+        result_df = result_df.drop_duplicates(subset=['target_string'], keep='first')
+        
+        return result_df
+    
     def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
         """Generate entropy visualization."""
         if not HAS_PLOTLY or result_df.empty:
@@ -381,6 +633,8 @@ class ExfilStrategy(HuntStrategy):
     MIN_BYTES_THRESHOLD = 1000
     # Minimum exfiltration score to be considered suspicious
     MIN_EXFIL_SCORE = 50
+    # Chunks per core for parallel processing (fewer chunks for groupby operations)
+    CHUNKS_PER_CORE = 1
     
     def _get_name(self) -> str:
         return "Exfiltration Monitor (Producer/Consumer Ratio)"
@@ -466,6 +720,144 @@ class ExfilStrategy(HuntStrategy):
         result_df = result_df[result_df['exfil_score'] >= self.MIN_EXFIL_SCORE]
         
         # Sort by exfil_score (descending)
+        result_df = result_df.sort_values('exfil_score', ascending=False)
+        
+        return result_df
+    
+    @staticmethod
+    def _process_exfil_chunk(chunk_data):
+        """
+        Process a chunk of IPs for exfiltration analysis.
+        
+        This static method is used for parallel processing.
+        
+        Args:
+            chunk_data: Tuple of (df_chunk, src_col, bytes_out_col, bytes_in_col, 
+                                  min_bytes_threshold, pure_upload_ratio, min_exfil_score)
+        
+        Returns:
+            DataFrame with analysis results for this chunk
+        """
+        (df_chunk, src_col, bytes_out_col, bytes_in_col, 
+         min_bytes_threshold, pure_upload_ratio, min_exfil_score) = chunk_data
+        
+        # Group by source IP and sum bytes
+        result_df = df_chunk.groupby(src_col).agg({
+            bytes_out_col: 'sum',
+            bytes_in_col: 'sum'
+        }).reset_index()
+        
+        result_df = result_df.rename(columns={
+            src_col: 'source_ip',
+            bytes_out_col: 'total_bytes_out',
+            bytes_in_col: 'total_bytes_in'
+        })
+        
+        # Filter out rows with minimal traffic
+        result_df = result_df[
+            (result_df['total_bytes_out'] + result_df['total_bytes_in']) >= min_bytes_threshold
+        ]
+        
+        if result_df.empty:
+            return result_df
+        
+        # Calculate ratio
+        result_df['exfil_ratio'] = np.where(
+            result_df['total_bytes_in'] > 0,
+            result_df['total_bytes_out'] / result_df['total_bytes_in'],
+            np.where(
+                result_df['total_bytes_out'] > 0,
+                pure_upload_ratio,
+                0.0
+            )
+        )
+        
+        # Add total traffic
+        result_df['total_bytes'] = result_df['total_bytes_out'] + result_df['total_bytes_in']
+        
+        return result_df
+    
+    def parallel_analyze(self, df: pd.DataFrame, col_map: dict, num_cores: int = 4) -> pd.DataFrame:
+        """
+        Parallel implementation of exfiltration analysis.
+        
+        Args:
+            df: DataFrame with connection logs
+            col_map: Mapping of column names
+            num_cores: Number of CPU cores to use
+        
+        Returns:
+            DataFrame with analysis results
+        """
+        # Map columns
+        src_col = col_map['source_ip']
+        bytes_out_col = col_map['bytes_out']
+        bytes_in_col = col_map['bytes_in']
+        
+        # Prepare data
+        df = df.copy()
+        df[bytes_out_col] = pd.to_numeric(df[bytes_out_col], errors='coerce').fillna(0)
+        df[bytes_in_col] = pd.to_numeric(df[bytes_in_col], errors='coerce').fillna(0)
+        
+        # Split data into chunks by source IP for parallel processing
+        # Using fewer chunks (CHUNKS_PER_CORE) because groupby operations are more expensive
+        unique_ips = df[src_col].unique()
+        num_chunks = max(1, num_cores * self.CHUNKS_PER_CORE)
+        chunk_size = max(1, len(unique_ips) // num_chunks)
+        ip_chunks = [unique_ips[i:i + chunk_size] for i in range(0, len(unique_ips), chunk_size)]
+        
+        # Create DataFrame chunks
+        df_chunks = [df[df[src_col].isin(ip_chunk)] for ip_chunk in ip_chunks]
+        
+        # Prepare chunk data
+        chunk_data = [
+            (chunk, src_col, bytes_out_col, bytes_in_col, 
+             self.MIN_BYTES_THRESHOLD, self.PURE_UPLOAD_RATIO, self.MIN_EXFIL_SCORE)
+            for chunk in df_chunks
+        ]
+        
+        # Process chunks in parallel
+        try:
+            with Pool(processes=num_cores) as pool:
+                chunk_results = pool.map(self._process_exfil_chunk, chunk_data)
+        except Exception:
+            # Fall back to threading for Jupyter notebook compatibility
+            with ThreadPoolExecutor(max_workers=num_cores) as executor:
+                chunk_results = list(executor.map(self._process_exfil_chunk, chunk_data))
+        
+        # Combine results from all chunks
+        # Filter out empty DataFrames before concatenation
+        non_empty_results = [df for df in chunk_results if not df.empty]
+        
+        if not non_empty_results:
+            return pd.DataFrame()
+        
+        result_df = pd.concat(non_empty_results, ignore_index=True)
+        
+        # Calculate percentile rank across all results
+        result_df['upload_percentile'] = result_df['total_bytes_out'].rank(pct=True) * 100
+        
+        # Calculate exfiltration score
+        result_df['exfil_score'] = 0.0
+        
+        # Factor 1: High upload ratio (50 points)
+        result_df.loc[result_df['exfil_ratio'] >= 10, 'exfil_score'] += 50
+        result_df.loc[(result_df['exfil_ratio'] >= 5) & (result_df['exfil_ratio'] < 10), 'exfil_score'] += 35
+        result_df.loc[(result_df['exfil_ratio'] >= 2) & (result_df['exfil_ratio'] < 5), 'exfil_score'] += 20
+        
+        # Factor 2: High upload volume (30 points)
+        result_df.loc[result_df['upload_percentile'] >= 95, 'exfil_score'] += 30
+        result_df.loc[(result_df['upload_percentile'] >= 90) & (result_df['upload_percentile'] < 95), 'exfil_score'] += 20
+        result_df.loc[(result_df['upload_percentile'] >= 80) & (result_df['upload_percentile'] < 90), 'exfil_score'] += 10
+        
+        # Factor 3: Significant total traffic (20 points)
+        result_df.loc[result_df['total_bytes'] >= 10_000_000, 'exfil_score'] += 20
+        result_df.loc[(result_df['total_bytes'] >= 1_000_000) & (result_df['total_bytes'] < 10_000_000), 'exfil_score'] += 10
+        
+        # Filter to high-confidence exfiltration
+        result_df = result_df[result_df['exfil_score'] >= self.MIN_EXFIL_SCORE]
+        
+        # Sort by exfil_score
         result_df = result_df.sort_values('exfil_score', ascending=False)
         
         return result_df
