@@ -8,10 +8,16 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 ### 🆕 What's New in This Release
 
-**Expanded Detection Coverage:**
-- 🔥 **4 BRAND NEW strategies** added in this release
-- Now covering **36 comprehensive threat categories** (up from 32)
-- **NEW:** API Gateway Abuse, Kerberos Attacks, Macro Malware, Network Covert Channels
+**Code Quality & Consolidation:**
+- 🔧 **Major code consolidation** - Improved maintainability and reduced duplication
+- **Gradient pattern consolidation** - 9+ inline CSS gradients replaced with reusable constants
+- **Magic number elimination** - All severity thresholds now use named constants for easier maintenance
+- **Enhanced code consistency** - Single source of truth for styling and threshold values
+- All improvements maintain 100% backward compatibility with zero breaking changes
+
+**Detection Coverage:**
+- 📊 **36 comprehensive threat hunting strategies** covering modern attack vectors
+- Including: API Gateway Abuse, Kerberos Attacks, Macro Malware, Network Covert Channels
 - Enhanced coverage for API attacks, Active Directory threats, Office document malware, and hidden communications
 - Previous additions: Insider Threats, Ransomware Behavior, Zero-Day Exploitation, Cloud Misconfigurations
 - Also includes: Supply Chain Attacks, Container Escapes, DNS Exfiltration, Process Injection, LOLBin Abuse, OAuth Abuse
