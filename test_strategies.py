@@ -21,7 +21,10 @@ from strategies import (
     TimeAnomalyStrategy,
     GeoAnomalyStrategy,
     UserAgentAnomalyStrategy,
-    CryptoMiningStrategy
+    CryptoMiningStrategy,
+    DNSAnomalyStrategy,
+    AccountTakeoverStrategy,
+    DataStagingStrategy
 )
 
 
@@ -894,13 +897,246 @@ class TestStrategyRequirements(unittest.TestCase):
             TimeAnomalyStrategy(),
             GeoAnomalyStrategy(),
             UserAgentAnomalyStrategy(),
-            CryptoMiningStrategy()
+            CryptoMiningStrategy(),
+            DNSAnomalyStrategy(),
+            AccountTakeoverStrategy(),
+            DataStagingStrategy()
         ]
         
         for strategy in strategies:
             explanations = strategy.get_column_explanations()
             self.assertIsNotNone(explanations)
             self.assertGreater(len(explanations), 0)
+
+
+class TestDNSAnomalyStrategy(unittest.TestCase):
+    """Test the DNS Anomaly Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = DNSAnomalyStrategy()
+    
+    def test_suspicious_dns_patterns(self):
+        """Test that suspicious DNS patterns are detected."""
+        # Create mock data with suspicious patterns
+        base_time = datetime.now()
+        data = []
+        
+        # Generate high-volume queries with suspicious TLDs and high NXDOMAIN rate
+        for i in range(100):
+            data.append({
+                'timestamp': base_time + timedelta(seconds=i),
+                'source_ip': '192.168.1.100',
+                'query_name': f'malware{i}.suspicious.tk',
+                'response_code': '3'  # NXDOMAIN
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'query_name': 'query_name',
+            'response_code': 'response_code'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect anomalous DNS behavior
+        self.assertFalse(result.empty)
+        self.assertGreaterEqual(result.iloc[0]['dns_anomaly_score'], 50)
+        self.assertGreater(result.iloc[0]['suspicious_tld_count'], 0)
+        self.assertGreater(result.iloc[0]['nxdomain_ratio'], 0.5)
+    
+    def test_normal_dns_not_flagged(self):
+        """Test that normal DNS queries are not flagged."""
+        # Create mock data with normal DNS patterns
+        base_time = datetime.now()
+        data = []
+        
+        # Generate low-volume queries to legitimate domains
+        for i in range(10):
+            data.append({
+                'timestamp': base_time + timedelta(seconds=i * 60),
+                'source_ip': '192.168.1.100',
+                'query_name': f'www.google.com',
+                'response_code': '0'  # Success
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'query_name': 'query_name',
+            'response_code': 'response_code'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not detect anomalies or have low score
+        if not result.empty:
+            self.assertLess(result.iloc[0]['dns_anomaly_score'], 50)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('dns_anomaly_score', explanations)
+        self.assertIn('source_ip', explanations)
+
+
+class TestAccountTakeoverStrategy(unittest.TestCase):
+    """Test the Account Takeover Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = AccountTakeoverStrategy()
+    
+    def test_takeover_pattern_detection(self):
+        """Test that account takeover patterns are detected."""
+        # Create mock data with suspicious patterns
+        base_time = datetime.now()
+        data = []
+        
+        # Simulate multiple IPs, failed attempts, and rapid switching
+        ips = ['10.0.0.1', '10.0.0.2', '10.0.0.3', '10.0.0.4', '10.0.0.5']
+        for i in range(50):
+            data.append({
+                'timestamp': base_time + timedelta(seconds=i * 10),
+                'username': 'admin',
+                'source_ip': ips[i % len(ips)],
+                'action': 'login',
+                'status': 'failed' if i < 30 else 'success'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'username': 'username',
+            'source_ip': 'source_ip',
+            'action': 'action',
+            'status': 'status'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect takeover pattern
+        self.assertFalse(result.empty)
+        self.assertGreaterEqual(result.iloc[0]['takeover_score'], 50)
+        self.assertGreaterEqual(result.iloc[0]['unique_ips'], 3)
+        self.assertGreater(result.iloc[0]['failed_attempts'], 0)
+    
+    def test_normal_activity_not_flagged(self):
+        """Test that normal authentication activity is not flagged."""
+        # Create mock data with normal patterns
+        base_time = datetime.now()
+        data = []
+        
+        # Simulate normal single-IP successful logins
+        for i in range(10):
+            data.append({
+                'timestamp': base_time + timedelta(hours=i),
+                'username': 'user1',
+                'source_ip': '192.168.1.100',
+                'action': 'login',
+                'status': 'success'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'username': 'username',
+            'source_ip': 'source_ip',
+            'action': 'action',
+            'status': 'status'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not detect anomalies
+        if not result.empty:
+            self.assertLess(result.iloc[0]['takeover_score'], 50)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('takeover_score', explanations)
+        self.assertIn('username', explanations)
+
+
+class TestDataStagingStrategy(unittest.TestCase):
+    """Test the Data Staging Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = DataStagingStrategy()
+    
+    def test_staging_activity_detection(self):
+        """Test that data staging activity is detected."""
+        # Create mock data with staging patterns
+        base_time = datetime.now()
+        data = []
+        
+        # Simulate compression operations on sensitive files
+        for i in range(100):
+            data.append({
+                'timestamp': base_time + timedelta(seconds=i),
+                'source_ip': '192.168.1.100',
+                'file_path': f'/finance/documents/report{i}.zip' if i % 2 == 0 else f'/hr/confidential/data{i}.rar',
+                'operation': 'write',
+                'file_size': 10 * 1024 * 1024  # 10 MB
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'file_path': 'file_path',
+            'operation': 'operation',
+            'file_size': 'file_size'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect staging activity
+        self.assertFalse(result.empty)
+        self.assertGreaterEqual(result.iloc[0]['staging_score'], 50)
+        self.assertGreater(result.iloc[0]['staging_file_ops'], 0)
+        self.assertGreater(result.iloc[0]['sensitive_access'], 0)
+    
+    def test_normal_file_ops_not_flagged(self):
+        """Test that normal file operations are not flagged."""
+        # Create mock data with normal patterns
+        base_time = datetime.now()
+        data = []
+        
+        # Simulate low-volume normal file reads
+        for i in range(5):
+            data.append({
+                'timestamp': base_time + timedelta(minutes=i * 10),
+                'source_ip': '192.168.1.100',
+                'file_path': f'/home/user/document{i}.txt',
+                'operation': 'read',
+                'file_size': 1024  # 1 KB
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'file_path': 'file_path',
+            'operation': 'operation',
+            'file_size': 'file_size'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not detect anomalies (below minimum threshold)
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('staging_score', explanations)
+        self.assertIn('source_ip', explanations)
 
 
 if __name__ == '__main__':

@@ -2353,3 +2353,630 @@ class CryptoMiningStrategy(HuntStrategy):
             'flags': 'Specific mining indicators detected',
             'mining_score': 'Overall cryptocurrency mining suspiciousness score (0-100). Higher scores indicate likely cryptojacking or unauthorized mining activity. Scores ≥50 suggest active mining operations that consume resources and may indicate malware infection or policy violations'
         }
+
+
+class DNSAnomalyStrategy(HuntStrategy):
+    """
+    Detects suspicious DNS query patterns that may indicate malware, data exfiltration,
+    or reconnaissance activities. Analyzes DNS queries for:
+    - Unusually high query volumes
+    - Rare or suspicious TLDs
+    - Typosquatting attempts
+    - Long subdomain chains (potential DGA domains)
+    - Excessive NXDOMAIN responses
+    """
+    
+    def _get_name(self) -> str:
+        return "DNS Anomaly Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'source_ip', 'query_name', 'response_code']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze DNS queries for suspicious patterns.
+        
+        Args:
+            df: DataFrame with DNS query logs
+            col_map: Column mapping
+        
+        Returns:
+            DataFrame with DNS anomaly results
+        """
+        if df.empty:
+            return pd.DataFrame()
+        
+        # Map columns
+        ts_col = col_map['timestamp']
+        src_col = col_map['source_ip']
+        query_col = col_map['query_name']
+        resp_col = col_map['response_code']
+        
+        # Suspicious TLDs commonly used by malware
+        suspicious_tlds = ['.tk', '.ml', '.ga', '.cf', '.gq', '.pw', '.cc', '.ws', '.top', '.xyz']
+        
+        # Calculate DNS metrics per source IP
+        results = []
+        
+        for src_ip, group in df.groupby(src_col):
+            total_queries = len(group)
+            
+            if total_queries < 5:  # Skip low-volume sources
+                continue
+            
+            # Extract query names
+            queries = group[query_col].astype(str).tolist()
+            
+            # Analyze query patterns
+            unique_domains = len(set(queries))
+            avg_query_length = np.mean([len(q) for q in queries])
+            max_query_length = max([len(q) for q in queries])
+            
+            # Count suspicious TLD usage
+            suspicious_tld_count = sum(1 for q in queries if any(q.endswith(tld) for tld in suspicious_tlds))
+            
+            # Count NXDOMAIN responses (typically response code 3)
+            nxdomain_count = len(group[group[resp_col].astype(str).str.contains('3|NXDOMAIN', na=False, case=False)])
+            nxdomain_ratio = nxdomain_count / total_queries if total_queries > 0 else 0
+            
+            # Count long subdomain chains (potential DGA)
+            long_subdomain_count = sum(1 for q in queries if q.count('.') > 3)
+            
+            # Count queries with high entropy subdomains (randomness)
+            high_entropy_queries = 0
+            for q in queries:
+                # Calculate entropy of the first part of the domain
+                subdomain = q.split('.')[0] if '.' in q else q
+                if len(subdomain) > 5:
+                    # Simple entropy calculation
+                    char_counts = {}
+                    for char in subdomain:
+                        char_counts[char] = char_counts.get(char, 0) + 1
+                    entropy_val = -sum((count/len(subdomain)) * np.log2(count/len(subdomain)) 
+                                      for count in char_counts.values())
+                    if entropy_val > 3.5:  # High randomness threshold
+                        high_entropy_queries += 1
+            
+            # Calculate anomaly score
+            dns_score = 0
+            flags = []
+            
+            # High volume scoring
+            if total_queries > 100:
+                dns_score += 25
+                flags.append(f'HIGH_VOLUME({total_queries})')
+            elif total_queries > 50:
+                dns_score += 15
+                flags.append(f'ELEVATED_VOLUME({total_queries})')
+            
+            # Suspicious TLD scoring
+            if suspicious_tld_count > 0:
+                tld_ratio = suspicious_tld_count / total_queries
+                dns_score += min(30, int(tld_ratio * 100))
+                flags.append(f'SUSPICIOUS_TLD({suspicious_tld_count})')
+            
+            # NXDOMAIN ratio scoring (high failure rate suspicious)
+            if nxdomain_ratio > 0.5:
+                dns_score += 20
+                flags.append(f'HIGH_NXDOMAIN({nxdomain_count})')
+            elif nxdomain_ratio > 0.3:
+                dns_score += 10
+                flags.append('ELEVATED_NXDOMAIN')
+            
+            # Long query scoring
+            if avg_query_length > 50:
+                dns_score += 15
+                flags.append(f'LONG_QUERIES(avg:{int(avg_query_length)})')
+            
+            # DGA-like subdomain chains
+            if long_subdomain_count > total_queries * 0.3:
+                dns_score += 20
+                flags.append(f'DGA_PATTERN({long_subdomain_count})')
+            
+            # High entropy queries
+            if high_entropy_queries > total_queries * 0.3:
+                dns_score += 25
+                flags.append(f'HIGH_ENTROPY({high_entropy_queries})')
+            
+            # Only report if score is meaningful
+            if dns_score >= 30 or len(flags) > 0:
+                results.append({
+                    'source_ip': src_ip,
+                    'total_queries': total_queries,
+                    'unique_domains': unique_domains,
+                    'avg_query_length': round(avg_query_length, 1),
+                    'max_query_length': max_query_length,
+                    'suspicious_tld_count': suspicious_tld_count,
+                    'nxdomain_count': nxdomain_count,
+                    'nxdomain_ratio': round(nxdomain_ratio, 2),
+                    'high_entropy_queries': high_entropy_queries,
+                    'flags': ' | '.join(flags) if flags else 'ANOMALOUS_PATTERN',
+                    'dns_anomaly_score': min(dns_score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('dns_anomaly_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate DNS anomaly visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=result_df['total_queries'],
+            y=result_df['nxdomain_ratio'],
+            mode='markers',
+            marker=dict(
+                size=result_df['high_entropy_queries'] / 2,
+                color=result_df['dns_anomaly_score'],
+                colorscale='YlOrRd',
+                showscale=True,
+                colorbar=dict(title="DNS<br>Anomaly<br>Score")
+            ),
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Queries: {result_df.iloc[i]['total_queries']}<br>NXDOMAIN: {result_df.iloc[i]['nxdomain_ratio']:.1%}<br>Flags: {result_df.iloc[i]['flags']}<br>Score: {result_df.iloc[i]['dns_anomaly_score']:.0f}" 
+                  for i in range(len(result_df))],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title="DNS Anomaly Detection: Query Volume vs Failure Rate",
+            xaxis_title="Total DNS Queries",
+            yaxis_title="NXDOMAIN Ratio (Failure Rate)",
+            hovermode='closest',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for DNSAnomalyStrategy output columns."""
+        return {
+            'source_ip': 'The IP address making suspicious DNS queries',
+            'total_queries': 'Total number of DNS queries made by this source',
+            'unique_domains': 'Number of different domain names queried',
+            'avg_query_length': 'Average length of query strings. Longer queries may indicate data exfiltration via DNS tunneling',
+            'max_query_length': 'Longest query string observed. Extremely long queries are suspicious',
+            'suspicious_tld_count': 'Count of queries to high-risk TLDs (.tk, .ml, .ga, etc.) commonly used by malware',
+            'nxdomain_count': 'Number of failed DNS lookups (domain not found)',
+            'nxdomain_ratio': 'Percentage of queries that failed. High ratios may indicate DGA malware or reconnaissance',
+            'high_entropy_queries': 'Count of queries with random-looking subdomains, typical of DGA (Domain Generation Algorithm) malware',
+            'flags': 'Specific DNS anomaly indicators detected',
+            'dns_anomaly_score': 'Overall DNS anomaly suspiciousness score (0-100). Higher scores indicate likely malware C2 communication, DNS tunneling, or reconnaissance. Scores ≥50 warrant investigation for DGA malware, data exfiltration, or other DNS-based attacks'
+        }
+
+
+class AccountTakeoverStrategy(HuntStrategy):
+    """
+    Detects account takeover and credential theft patterns by analyzing:
+    - Rapid role or privilege changes
+    - Impossible travel scenarios (location switches)
+    - Unusual access patterns and times
+    - Multiple failed login attempts followed by success
+    - Access from new devices or locations
+    """
+    
+    def _get_name(self) -> str:
+        return "Account Takeover Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'username', 'source_ip', 'action', 'status']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze authentication and access patterns for account takeover indicators.
+        
+        Args:
+            df: DataFrame with authentication/access logs
+            col_map: Column mapping
+        
+        Returns:
+            DataFrame with account takeover detection results
+        """
+        if df.empty:
+            return pd.DataFrame()
+        
+        # Map columns
+        ts_col = col_map['timestamp']
+        user_col = col_map['username']
+        ip_col = col_map['source_ip']
+        action_col = col_map['action']
+        status_col = col_map['status']
+        
+        # Convert timestamp to datetime if needed
+        if not pd.api.types.is_datetime64_any_dtype(df[ts_col]):
+            df[ts_col] = pd.to_datetime(df[ts_col], errors='coerce')
+        
+        # Sort by user and time
+        df = df.sort_values([user_col, ts_col])
+        
+        results = []
+        
+        for username, group in df.groupby(user_col):
+            if len(group) < 3:  # Need enough activity to analyze
+                continue
+            
+            # Extract data
+            timestamps = group[ts_col].tolist()
+            ips = group[ip_col].astype(str).tolist()
+            actions = group[action_col].astype(str).tolist()
+            statuses = group[status_col].astype(str).tolist()
+            
+            # Calculate metrics
+            total_events = len(group)
+            unique_ips = len(set(ips))
+            
+            # Count failed attempts
+            failed_attempts = sum(1 for s in statuses 
+                                 if 'fail' in str(s).lower() or 'denied' in str(s).lower() 
+                                 or '401' in str(s) or '403' in str(s))
+            
+            # Count successful events
+            success_attempts = sum(1 for s in statuses 
+                                  if 'success' in str(s).lower() or 'ok' in str(s).lower() 
+                                  or '200' in str(s))
+            
+            # Calculate failure rate
+            failure_rate = failed_attempts / total_events if total_events > 0 else 0
+            
+            # Check for rapid IP switching (potential credential stuffing)
+            rapid_ip_switches = 0
+            for i in range(1, len(timestamps)):
+                time_diff = (timestamps[i] - timestamps[i-1]).total_seconds()
+                if time_diff < 60 and ips[i] != ips[i-1]:  # Different IP within 1 minute
+                    rapid_ip_switches += 1
+            
+            # Check for failed login followed by success from different IP
+            compromised_pattern = False
+            for i in range(1, len(statuses)):
+                prev_status = str(statuses[i-1]).lower()
+                curr_status = str(statuses[i]).lower()
+                if ('fail' in prev_status or 'denied' in prev_status) and \
+                   ('success' in curr_status or 'ok' in curr_status) and \
+                   ips[i] != ips[i-1]:
+                    compromised_pattern = True
+                    break
+            
+            # Check for unusual activity times (off-hours)
+            off_hours_count = 0
+            for ts in timestamps:
+                hour = ts.hour
+                weekday = ts.weekday()
+                # Off-hours: before 6 AM, after 8 PM, or weekends
+                if hour < 6 or hour > 20 or weekday >= 5:
+                    off_hours_count += 1
+            
+            off_hours_ratio = off_hours_count / total_events if total_events > 0 else 0
+            
+            # Calculate takeover score
+            takeover_score = 0
+            flags = []
+            
+            # Multiple IPs scoring
+            if unique_ips >= 5:
+                takeover_score += 30
+                flags.append(f'MULTI_IP({unique_ips})')
+            elif unique_ips >= 3:
+                takeover_score += 15
+                flags.append(f'MULTIPLE_IPS({unique_ips})')
+            
+            # Rapid IP switching scoring
+            if rapid_ip_switches > 0:
+                takeover_score += min(25, rapid_ip_switches * 5)
+                flags.append(f'RAPID_IP_SWITCH({rapid_ip_switches})')
+            
+            # High failure rate scoring
+            if failure_rate > 0.5:
+                takeover_score += 25
+                flags.append(f'HIGH_FAIL_RATE({failed_attempts})')
+            elif failure_rate > 0.3:
+                takeover_score += 15
+                flags.append('ELEVATED_FAILURES')
+            
+            # Compromised pattern (failed then success from different IP)
+            if compromised_pattern:
+                takeover_score += 30
+                flags.append('COMPROMISED_PATTERN')
+            
+            # Off-hours activity
+            if off_hours_ratio > 0.7:
+                takeover_score += 20
+                flags.append(f'OFF_HOURS({off_hours_count})')
+            elif off_hours_ratio > 0.5:
+                takeover_score += 10
+                flags.append('ELEVATED_OFF_HOURS')
+            
+            # Only report if score is meaningful
+            if takeover_score >= 35 or len(flags) > 0:
+                results.append({
+                    'username': username,
+                    'total_events': total_events,
+                    'unique_ips': unique_ips,
+                    'failed_attempts': failed_attempts,
+                    'failure_rate': round(failure_rate, 2),
+                    'rapid_ip_switches': rapid_ip_switches,
+                    'off_hours_events': off_hours_count,
+                    'off_hours_ratio': round(off_hours_ratio, 2),
+                    'compromised_pattern': 'YES' if compromised_pattern else 'NO',
+                    'flags': ' | '.join(flags) if flags else 'SUSPICIOUS_PATTERN',
+                    'takeover_score': min(takeover_score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('takeover_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate account takeover visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=result_df['unique_ips'],
+            y=result_df['failure_rate'],
+            mode='markers',
+            marker=dict(
+                size=result_df['rapid_ip_switches'] * 2 + 8,
+                color=result_df['takeover_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Takeover<br>Score")
+            ),
+            text=[f"User: {result_df.iloc[i]['username']}<br>IPs: {result_df.iloc[i]['unique_ips']}<br>Failure Rate: {result_df.iloc[i]['failure_rate']:.1%}<br>Flags: {result_df.iloc[i]['flags']}<br>Score: {result_df.iloc[i]['takeover_score']:.0f}" 
+                  for i in range(len(result_df))],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title="Account Takeover Detection: IP Diversity vs Authentication Failures",
+            xaxis_title="Number of Unique IPs",
+            yaxis_title="Authentication Failure Rate",
+            hovermode='closest',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for AccountTakeoverStrategy output columns."""
+        return {
+            'username': 'The user account showing suspicious activity patterns',
+            'total_events': 'Total number of authentication/access events for this account',
+            'unique_ips': 'Number of different source IPs used. High values suggest credential sharing or compromise',
+            'failed_attempts': 'Number of failed authentication attempts',
+            'failure_rate': 'Percentage of failed authentication attempts. High rates suggest brute force or credential stuffing',
+            'rapid_ip_switches': 'Count of IP address changes within 1-minute windows, indicating possible credential stuffing attacks',
+            'off_hours_events': 'Number of access events outside normal business hours (before 6 AM, after 8 PM, or weekends)',
+            'off_hours_ratio': 'Percentage of events occurring off-hours. High ratios suggest unauthorized access',
+            'compromised_pattern': 'Whether failed login followed by success from different IP was detected (strong indicator of compromise)',
+            'flags': 'Specific account takeover indicators detected',
+            'takeover_score': 'Overall account takeover suspiciousness score (0-100). Higher scores indicate likely credential theft, account compromise, or credential stuffing attacks. Scores ≥50 warrant immediate investigation and potentially disabling the account'
+        }
+
+
+class DataStagingStrategy(HuntStrategy):
+    """
+    Detects data staging activities that often precede exfiltration by analyzing:
+    - Files being compressed or archived
+    - Large file operations
+    - Access to sensitive directories
+    - Rapid sequential file access patterns
+    - Creation of temporary staging locations
+    """
+    
+    def _get_name(self) -> str:
+        return "Data Staging Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'source_ip', 'file_path', 'operation', 'file_size']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze file operations for data staging patterns.
+        
+        Args:
+            df: DataFrame with file operation logs
+            col_map: Column mapping
+        
+        Returns:
+            DataFrame with data staging detection results
+        """
+        if df.empty:
+            return pd.DataFrame()
+        
+        # Map columns
+        ts_col = col_map['timestamp']
+        src_col = col_map['source_ip']
+        path_col = col_map['file_path']
+        op_col = col_map['operation']
+        size_col = col_map['file_size']
+        
+        # Convert timestamp to datetime if needed
+        if not pd.api.types.is_datetime64_any_dtype(df[ts_col]):
+            df[ts_col] = pd.to_datetime(df[ts_col], errors='coerce')
+        
+        # Convert file size to numeric if needed
+        if not pd.api.types.is_numeric_dtype(df[size_col]):
+            df[size_col] = pd.to_numeric(df[size_col], errors='coerce')
+        
+        # Fill NaN sizes with 0
+        df[size_col] = df[size_col].fillna(0)
+        
+        # Suspicious file extensions for staging/compression
+        staging_extensions = ['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.tmp', '.staging']
+        
+        # Sensitive directory patterns
+        sensitive_patterns = ['finance', 'payroll', 'hr', 'employee', 'customer', 'confidential', 
+                             'secret', 'password', 'credential', 'backup', 'database', 'db']
+        
+        results = []
+        
+        for src_ip, group in df.groupby(src_col):
+            if len(group) < 5:  # Need enough activity to analyze
+                continue
+            
+            # Extract data
+            file_paths = group[path_col].astype(str).tolist()
+            operations = group[op_col].astype(str).tolist()
+            file_sizes = group[size_col].tolist()
+            timestamps = group[ts_col].tolist()
+            
+            # Calculate metrics
+            total_operations = len(group)
+            unique_files = len(set(file_paths))
+            total_size_mb = sum(file_sizes) / (1024 * 1024)  # Convert to MB
+            
+            # Count staging file operations
+            staging_ops = sum(1 for path in file_paths 
+                             if any(path.lower().endswith(ext) for ext in staging_extensions))
+            
+            # Count access to sensitive directories
+            sensitive_access = sum(1 for path in file_paths 
+                                   if any(pattern in path.lower() for pattern in sensitive_patterns))
+            
+            # Count large file operations (>10 MB)
+            large_file_ops = sum(1 for size in file_sizes if size > 10 * 1024 * 1024)
+            
+            # Check for rapid sequential access (potential bulk collection)
+            rapid_operations = 0
+            for i in range(1, len(timestamps)):
+                time_diff = (timestamps[i] - timestamps[i-1]).total_seconds()
+                if time_diff < 5:  # Operations within 5 seconds
+                    rapid_operations += 1
+            
+            # Count write/create operations (staging activity)
+            write_ops = sum(1 for op in operations 
+                           if 'write' in str(op).lower() or 'create' in str(op).lower() 
+                           or 'copy' in str(op).lower())
+            
+            # Calculate average file size
+            avg_file_size_mb = total_size_mb / total_operations if total_operations > 0 else 0
+            
+            # Calculate staging score
+            staging_score = 0
+            flags = []
+            
+            # High volume scoring
+            if total_operations > 100:
+                staging_score += 20
+                flags.append(f'HIGH_VOLUME({total_operations})')
+            elif total_operations > 50:
+                staging_score += 10
+                flags.append('ELEVATED_VOLUME')
+            
+            # Staging file operations scoring
+            if staging_ops > 0:
+                staging_ratio = staging_ops / total_operations
+                staging_score += min(30, int(staging_ratio * 100))
+                flags.append(f'STAGING_FILES({staging_ops})')
+            
+            # Sensitive directory access scoring
+            if sensitive_access > 0:
+                sensitive_ratio = sensitive_access / total_operations
+                staging_score += min(25, int(sensitive_ratio * 100))
+                flags.append(f'SENSITIVE_ACCESS({sensitive_access})')
+            
+            # Large file operations scoring
+            if large_file_ops > 0:
+                staging_score += min(20, large_file_ops * 5)
+                flags.append(f'LARGE_FILES({large_file_ops})')
+            
+            # Total size scoring
+            if total_size_mb > 500:
+                staging_score += 20
+                flags.append(f'MASSIVE_VOLUME({int(total_size_mb)}MB)')
+            elif total_size_mb > 100:
+                staging_score += 10
+                flags.append(f'HIGH_VOLUME({int(total_size_mb)}MB)')
+            
+            # Rapid operations scoring
+            if rapid_operations > total_operations * 0.5:
+                staging_score += 15
+                flags.append(f'RAPID_OPS({rapid_operations})')
+            
+            # Write operations scoring
+            write_ratio = write_ops / total_operations if total_operations > 0 else 0
+            if write_ratio > 0.7:
+                staging_score += 15
+                flags.append(f'HIGH_WRITE_ACTIVITY({write_ops})')
+            
+            # Only report if score is meaningful
+            if staging_score >= 35 or len(flags) > 0:
+                results.append({
+                    'source_ip': src_ip,
+                    'total_operations': total_operations,
+                    'unique_files': unique_files,
+                    'total_size_mb': round(total_size_mb, 1),
+                    'avg_file_size_mb': round(avg_file_size_mb, 1),
+                    'staging_file_ops': staging_ops,
+                    'sensitive_access': sensitive_access,
+                    'large_file_ops': large_file_ops,
+                    'rapid_operations': rapid_operations,
+                    'write_operations': write_ops,
+                    'flags': ' | '.join(flags) if flags else 'STAGING_PATTERN',
+                    'staging_score': min(staging_score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('staging_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate data staging visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=result_df['total_operations'],
+            y=result_df['total_size_mb'],
+            mode='markers',
+            marker=dict(
+                size=result_df['sensitive_access'] * 2 + 8,
+                color=result_df['staging_score'],
+                colorscale='OrRd',
+                showscale=True,
+                colorbar=dict(title="Staging<br>Score")
+            ),
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Operations: {result_df.iloc[i]['total_operations']}<br>Total Size: {result_df.iloc[i]['total_size_mb']:.1f}MB<br>Flags: {result_df.iloc[i]['flags']}<br>Score: {result_df.iloc[i]['staging_score']:.0f}" 
+                  for i in range(len(result_df))],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title="Data Staging Detection: Operation Volume vs Data Size",
+            xaxis_title="Total File Operations",
+            yaxis_title="Total Data Size (MB)",
+            hovermode='closest',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for DataStagingStrategy output columns."""
+        return {
+            'source_ip': 'The IP address performing suspicious file operations',
+            'total_operations': 'Total number of file operations performed',
+            'unique_files': 'Number of different files accessed or modified',
+            'total_size_mb': 'Total volume of data accessed in megabytes. Large volumes suggest bulk data collection',
+            'avg_file_size_mb': 'Average file size accessed. Helps identify bulk operations vs many small files',
+            'staging_file_ops': 'Number of operations on staging/compression files (.zip, .rar, .tmp, etc.)',
+            'sensitive_access': 'Count of accesses to sensitive directories (finance, HR, customer data, etc.)',
+            'large_file_ops': 'Number of operations on large files (>10 MB)',
+            'rapid_operations': 'Count of operations within 5-second windows, indicating automated bulk collection',
+            'write_operations': 'Number of write/create/copy operations, indicating data is being staged rather than just read',
+            'flags': 'Specific data staging indicators detected',
+            'staging_score': 'Overall data staging suspiciousness score (0-100). Higher scores indicate likely preparation for data exfiltration. Scores ≥50 suggest an insider threat or compromised account collecting data before exfiltration. Immediate investigation recommended'
+        }
