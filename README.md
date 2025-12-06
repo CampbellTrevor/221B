@@ -9,12 +9,13 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 ### 🆕 What's New in This Release
 
 **Expanded Detection Coverage:**
-- 6 NEW cutting-edge threat hunting strategies added in this release
-- Now covering **28 comprehensive threat categories** (up from 22)
-- Added: Supply Chain Attacks, Container Escapes, DNS Exfiltration, Process Injection, LOLBin Abuse, OAuth Abuse
-- Enhanced coverage for modern attack vectors: compromised packages, Docker breakouts, token theft, code injection
-- Previous additions: privilege escalation, web shells, credential dumping, ransomware, fileless attacks, API abuse, shadow IT
-- Also includes: Geo-Anomaly, User-Agent Analysis, Crypto Mining, DNS Anomaly, Account Takeover, Data Staging
+- 4 NEW advanced threat hunting strategies added in this release
+- Now covering **32 comprehensive threat categories** (up from 28)
+- **NEW:** Insider Threat Detection, Ransomware Behavior, Zero-Day Exploitation, Cloud Misconfigurations
+- Enhanced coverage for behavioral anomalies, real-time ransomware detection, exploit identification, and cloud security
+- Previous additions: Supply Chain Attacks, Container Escapes, DNS Exfiltration, Process Injection, LOLBin Abuse, OAuth Abuse
+- Also includes: privilege escalation, web shells, credential dumping, ransomware indicators, fileless attacks, API abuse, shadow IT
+- Foundational strategies: Geo-Anomaly, User-Agent Analysis, Crypto Mining, DNS Anomaly, Account Takeover, Data Staging
 
 **Visual Display Improvements:**
 - Color-coded severity indicators with visual badges (HIGH/MED/LOW)
@@ -51,7 +52,7 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 ### 🎯 Detection Strategies
 
-The dashboard includes **twenty-eight comprehensive threat hunting strategies**:
+The dashboard includes **thirty-two comprehensive threat hunting strategies**:
 
 **Beacon Hunter (C2 Detection)**
 - Detects command-and-control beaconing behavior by analyzing connection timing patterns
@@ -256,6 +257,42 @@ The dashboard includes **twenty-eight comprehensive threat hunting strategies**:
 - Critical for securing modern API authentication flows
 - Essential for protecting cloud and SaaS environments
 
+**Insider Threat Detector (Behavioral Anomalies)** 🔥 LATEST
+- Monitors unusual data access patterns and behavioral changes
+- Detects after-hours access combined with bulk downloads
+- Identifies excessive resource access and sensitive data collection
+- Flags automated access patterns and credential sharing
+- Analyzes off-hours activity ratios and multi-IP usage
+- Critical for detecting malicious insiders and compromised accounts
+- Essential for data loss prevention and early threat detection
+
+**Ransomware Behavior Detector (Real-Time Protection)** 🔥 LATEST
+- Detects real-time ransomware-like file operations
+- Monitors mass file operations and encryption patterns
+- Identifies shadow copy deletion and backup tampering
+- Flags ransom note creation and suspicious extensions
+- Analyzes rapid file modifications across systems
+- Critical for stopping ransomware before encryption completes
+- Provides early warning for containment and response
+
+**Zero-Day Exploit Indicator (Advanced Threats)** 🔥 LATEST
+- Identifies potential zero-day exploitation attempts
+- Detects exploitation framework signatures (Metasploit, Cobalt Strike)
+- Analyzes shellcode patterns and protocol violations
+- Flags high-entropy payloads and abnormal packet structures
+- Monitors rapid retry patterns indicating exploit attempts
+- Critical for detecting novel attacks without signatures
+- Essential for protecting against unknown vulnerabilities
+
+**Cloud Misconfiguration Detector (Infrastructure Security)** 🔥 LATEST
+- Detects cloud infrastructure security misconfigurations
+- Identifies public storage buckets and overly permissive IAM policies
+- Flags unencrypted storage and missing MFA on privileged accounts
+- Analyzes open security groups and exposed credentials
+- Monitors for default passwords and disabled logging
+- Critical for cloud security posture management
+- Essential for preventing data breaches via misconfiguration
+
 ### 🔧 Interactive Controls
 
 **Dynamic Schema Discovery**
@@ -372,7 +409,17 @@ from strategies import (
     PrivilegeEscalationStrategy,
     WebshellDetectionStrategy,
     CredentialDumpingStrategy,
-    RansomwareIndicatorStrategy
+    RansomwareIndicatorStrategy,
+    SupplyChainAttackStrategy,
+    ContainerEscapeStrategy,
+    DNSExfiltrationStrategy,
+    ProcessInjectionStrategy,
+    LiveOffLandStrategy,
+    OAuthAbuseStrategy,
+    InsiderThreatStrategy,
+    RansomwareBehaviorStrategy,
+    ZeroDayExploitStrategy,
+    CloudMisconfigStrategy
 )
 
 # Initialize dashboard with all strategies and custom cache settings
@@ -399,7 +446,17 @@ dashboard = WatsonDashboard(
         PrivilegeEscalationStrategy(),
         WebshellDetectionStrategy(),
         CredentialDumpingStrategy(),
-        RansomwareIndicatorStrategy()
+        RansomwareIndicatorStrategy(),
+        SupplyChainAttackStrategy(),
+        ContainerEscapeStrategy(),
+        DNSExfiltrationStrategy(),
+        ProcessInjectionStrategy(),
+        LiveOffLandStrategy(),
+        OAuthAbuseStrategy(),
+        InsiderThreatStrategy(),
+        RansomwareBehaviorStrategy(),
+        ZeroDayExploitStrategy(),
+        CloudMisconfigStrategy()
     ],
     cache_dir='.custom_cache',
     cache_days=3
@@ -625,25 +682,26 @@ When adding new features or strategies:
 ## Project Statistics
 
 **Current Release:**
-- **28 comprehensive threat hunting strategies** covering modern attack vectors
-- **90 unit tests** with 100% pass rate
-- **11,000+ lines of code** across core modules
+- **32 comprehensive threat hunting strategies** covering modern attack vectors
+- **102 unit tests** with 100% pass rate
+- **12,300+ lines of code** across core modules
 - **11 quick action buttons** for one-click analysis
 - **Multiple export formats** (CSV, JSON) for flexible integration
 - **Zero security vulnerabilities** detected by CodeQL analysis
 
 **Code Distribution:**
-- `strategies.py`: 5,283 lines - Pure threat detection logic
+- `strategies.py`: 6,030 lines - Pure threat detection logic
 - `app.py`: 3,106 lines - Interactive UI and dashboard
-- `test_strategies.py`: 2,193 lines - Comprehensive test suite
-- `README.md`: 634 lines - Complete documentation
+- `test_strategies.py`: 2,480 lines - Comprehensive test suite
+- `README.md`: 714 lines - Complete documentation
 
 **Strategy Coverage:**
-- Network-based attacks: 8 strategies (C2, DNS, Port Scans, Tunneling, Exfiltration, etc.)
+- Network-based attacks: 9 strategies (C2, DNS, Port Scans, Tunneling, Exfiltration, Zero-Day, etc.)
 - Authentication attacks: 4 strategies (Brute Force, Account Takeover, OAuth Abuse, Credential Dumping)
-- Advanced persistent threats: 6 strategies (Lateral Movement, Data Staging, Fileless, Process Injection, etc.)
-- Infrastructure threats: 5 strategies (Container Escape, Crypto Mining, Webshells, Privilege Escalation, LOLBins)
+- Advanced persistent threats: 7 strategies (Lateral Movement, Data Staging, Fileless, Process Injection, Insider Threat, etc.)
+- Infrastructure threats: 6 strategies (Container Escape, Crypto Mining, Webshells, Privilege Escalation, LOLBins, Cloud Misconfig)
 - Anomaly detection: 5 strategies (Geo, Time, User-Agent, API Abuse, Shadow IT)
+- Ransomware detection: 2 strategies (Ransomware Indicators, Real-time Ransomware Behavior)
 
 ## License
 
