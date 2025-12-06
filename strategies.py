@@ -6258,9 +6258,10 @@ class KerberosAttackStrategy(HuntStrategy):
             
             # Check for Kerberoasting - weak encryption types
             if enc_col and enc_col in group.columns:
-                weak_enc_types = ['rc4', 'rc4-hmac', 'des', 'arcfour']
+                weak_enc_types = ['rc4-hmac', 'rc4', 'des', 'arcfour']  # Order matters for matching
                 enc_values = group[enc_col].astype(str).str.lower()
-                weak_enc_count = sum(enc_values.str.contains('|'.join(weak_enc_types), na=False))
+                # Count unique rows with weak encryption (not individual matches)
+                weak_enc_count = sum(any(wt in str(val).lower() for wt in weak_enc_types) for val in group[enc_col])
                 
                 if weak_enc_count > 3:
                     score += 35
@@ -6279,7 +6280,8 @@ class KerberosAttackStrategy(HuntStrategy):
             
             # Check for AS-REP Roasting patterns (no pre-auth)
             service_names = group[service_col].astype(str).str.lower() if service_col and service_col in group.columns else pd.Series()
-            asrep_count = sum(service_names.str.contains('asrep|as-rep|pre-auth', na=False))
+            # More specific patterns to avoid false positives
+            asrep_count = sum(service_names.str.contains(r'\basrep\b|as-rep|pre-?auth.*disabled', na=False, regex=True))
             
             if asrep_count > 3:
                 score += 35
@@ -6488,7 +6490,9 @@ class MacroMalwareStrategy(HuntStrategy):
                 flags.append('download_capability')
             
             # Check for obfuscation
-            if content_str.count('chr(') > 5 or content_str.count('&') > 20:
+            OBFUSCATION_CHR_THRESHOLD = 5  # Multiple chr() calls suggest encoding
+            OBFUSCATION_CONCAT_THRESHOLD = 20  # Many & concatenations suggest obfuscation
+            if content_str.count('chr(') > OBFUSCATION_CHR_THRESHOLD or content_str.count('&') > OBFUSCATION_CONCAT_THRESHOLD:
                 score += 25
                 flags.append('obfuscated_code')
             
@@ -6647,11 +6651,11 @@ class NetworkCovertChannelStrategy(HuntStrategy):
                         score += 30
                         flags.append('consistent_packet_sizes')
             
-            # Check for protocol anomalies (e.g., HTTP on non-standard ports)
-            if protocol_str == 'HTTP':
-                # This would need port info, but we'll approximate
+            # Check for HTTP protocol (potential for anomalies)
+            # Note: Without port information, we flag HTTP as potentially suspicious in context
+            if protocol_str == 'HTTP' and packet_count > 50:
                 score += 15
-                flags.append('protocol_on_unusual_port')
+                flags.append('http_protocol_detected')
             
             # High packet count with small sizes (potential steganography)
             if size_col and size_col in group.columns:

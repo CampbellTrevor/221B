@@ -103,6 +103,9 @@ class WatsonDashboard:
                 with open(self.tables_cache_file, 'r') as f:
                     cache_data = json.load(f)
                 cache_time = datetime.datetime.fromisoformat(cache_data['timestamp'])
+                # Ensure timezone-naive comparison
+                if cache_time.tzinfo is not None:
+                    cache_time = cache_time.replace(tzinfo=None)
                 age_seconds = (datetime.datetime.now() - cache_time).total_seconds()
                 return age_seconds / 86400  # Convert to days
             except:
@@ -143,6 +146,9 @@ class WatsonDashboard:
                 
                 # Check cache timestamp
                 cache_time = datetime.datetime.fromisoformat(cache_data['timestamp'])
+                # Ensure timezone-naive comparison
+                if cache_time.tzinfo is not None:
+                    cache_time = cache_time.replace(tzinfo=None)
                 age_seconds = (datetime.datetime.now() - cache_time).total_seconds()
                 age_days = age_seconds / 86400  # Convert seconds to days
                 
@@ -1899,6 +1905,20 @@ class WatsonDashboard:
         # Create output area for the table
         table_output = widgets.Output()
         
+        def apply_text_search(df, search_term, use_regex):
+            """Apply text search to dataframe (helper to avoid duplication)."""
+            mask = pd.Series([False] * len(df), index=df.index)
+            search_term_lower = search_term.lower()
+            
+            for col in df.columns:
+                if use_regex:
+                    # Regex search (case-insensitive)
+                    mask |= df[col].astype(str).str.contains(search_term, na=False, regex=True, case=False)
+                else:
+                    # Plain text search (case-insensitive)
+                    mask |= df[col].astype(str).str.lower().str.contains(search_term_lower, na=False, regex=False)
+            return df[mask]
+        
         def get_sorted_df():
             """Get the dataframe with current sorting and filtering applied (cached)."""
             # First apply text search if present
@@ -1906,27 +1926,12 @@ class WatsonDashboard:
                 search_term = current_search['text']
                 use_regex = current_search.get('regex', False)
                 
-                # Optimize: only search in columns that are already strings or can be strings
-                # Create mask by checking each column individually
-                mask = pd.Series([False] * len(full_df), index=full_df.index)
-                
                 try:
-                    for col in full_df.columns:
-                        # Convert to string only for this column, then search
-                        if use_regex:
-                            # Regex search (case-insensitive)
-                            mask |= full_df[col].astype(str).str.contains(search_term, na=False, regex=True, case=False)
-                        else:
-                            # Plain text search (case-insensitive)
-                            mask |= full_df[col].astype(str).str.lower().str.contains(search_term.lower(), na=False, regex=False)
-                    filtered_df = full_df[mask]
+                    filtered_df = apply_text_search(full_df, search_term, use_regex)
                 except re.error as e:
                     # Invalid regex pattern, fall back to plain text search
                     print(f"⚠️ Invalid regex pattern: {e}. Using plain text search.")
-                    search_term_lower = search_term.lower()
-                    for col in full_df.columns:
-                        mask |= full_df[col].astype(str).str.lower().str.contains(search_term_lower, na=False, regex=False)
-                    filtered_df = full_df[mask]
+                    filtered_df = apply_text_search(full_df, search_term, use_regex=False)
             else:
                 filtered_df = full_df
             

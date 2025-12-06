@@ -32,6 +32,8 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 **Enhanced User Experience:**
 - 🆕 **13 Quick Action Buttons** - Now includes Threat Velocity gauge for real-time monitoring
+- 🆕 **Regex Search Mode** - Enable advanced pattern matching for powerful data filtering (e.g., `192\.168\..*` or `malware|trojan`)
+- 🆕 **Cache Freshness Indicators** - See cache age with visual warnings when data is getting stale
 - One-click severity filtering for rapid threat triage
 - Dual export formats: CSV for traditional analysis, JSON for automation and SIEM integration
 - Better visual feedback for high-priority threats
@@ -617,12 +619,29 @@ dashboard.display()
 - **ORANGE rows with MED badge** = Suspicious activity worth investigating (score 50-74)
 - **GREEN rows with LOW badge** = Lower priority anomalies (score <50)
 
+**Advanced Search Features:**
+- **Plain Text Search**: Enter any text to search across all columns (case-insensitive)
+- **Regex Search**: Enable "Regex Mode" checkbox to use regular expressions
+  - Example: `192\.168\..*` to find all 192.168.x.x IPs
+  - Example: `malware|trojan|virus` to find rows containing any of these terms
+  - Example: `\d{3}-\d{3}-\d{4}` to find phone number patterns
+- Search is applied across ALL columns simultaneously for maximum flexibility
+- Invalid regex patterns automatically fall back to plain text search
+
 **Exporting Filtered Results:**
 - Apply any filters and sorting you want
 - Click the "📥 Export CSV" button to export as CSV (traditional analysis)
 - Click the "📦 Export JSON" button to export as JSON (SIEM integration, APIs)
 - The exported file will contain only the filtered and sorted results
 - JSON format includes ISO-formatted timestamps perfect for programmatic processing
+
+**Cache Management:**
+- Table list is automatically cached for 7 days to improve performance
+- Cache age is shown when loading tables with freshness indicators:
+  - ✅ Fresh - Cache is recent and reliable
+  - ⚠️ Consider refreshing soon - Cache is approaching expiry (>80% of cache_days)
+- Delete `.221b_cache/` directory to force refresh
+- Or adjust `cache_days` parameter when initializing dashboard
 - Files are timestamped for easy tracking
 
 ### Analyst Workflow Best Practices
