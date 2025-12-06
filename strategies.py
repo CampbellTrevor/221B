@@ -1843,3 +1843,517 @@ class TimeAnomalyStrategy(HuntStrategy):
             'most_active_hours': 'Top 3 most active hours with activity counts',
             'anomaly_score': 'Overall time-based anomaly score (0-100). Higher scores indicate suspicious off-hours access patterns typical of unauthorized access, insider threats, or compromised credentials. Scores ≥50 warrant investigation into why this account is active at unusual times'
         }
+
+
+class GeoAnomalyStrategy(HuntStrategy):
+    """
+    Geo-Anomaly Detector - Identifies connections from suspicious geographic locations.
+    
+    Detects potential compromised accounts and unauthorized access by flagging
+    connections from unexpected countries, high-risk regions, or impossible travel
+    scenarios (same account from different countries in short timeframes).
+    """
+    
+    MIN_ANOMALY_SCORE = 50
+    # High-risk country codes (simplified list - real implementation would be more comprehensive)
+    HIGH_RISK_COUNTRIES = ['CN', 'RU', 'KP', 'IR', 'SY', 'XX']  # XX = Unknown/Anonymous
+    # Suspicious TLDs often used in attacks
+    SUSPICIOUS_TLDS = ['.ru', '.cn', '.tk', '.ml', '.ga', '.cf', '.gq', '.top', '.xyz']
+    # Time window for impossible travel detection (hours)
+    IMPOSSIBLE_TRAVEL_HOURS = 2
+    # Minimum distance for impossible travel (km)
+    MIN_IMPOSSIBLE_DISTANCE_KM = 500
+    
+    def _get_name(self) -> str:
+        return "Geo-Anomaly Detector (Suspicious Locations)"
+    
+    def _get_required_inputs(self) -> list:
+        return ['source_ip', 'country_code']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze geographic patterns to detect anomalies.
+        
+        Args:
+            df: DataFrame with connection logs including geographic data
+            col_map: Mapping of column names. Optional 'timestamp' for impossible travel detection
+        
+        Returns:
+            DataFrame with suspicious geographic activity
+        """
+        src_col = col_map['source_ip']
+        country_col = col_map['country_code']
+        
+        df = df.copy()
+        df[country_col] = df[country_col].fillna('XX').astype(str).str.upper()
+        
+        # Check if timestamp is available for impossible travel detection
+        has_timestamp = 'timestamp' in col_map and col_map['timestamp'] in df.columns
+        if has_timestamp:
+            ts_col = col_map['timestamp']
+            df[ts_col] = pd.to_datetime(df[ts_col])
+        
+        results = []
+        
+        # Group by source IP
+        for src_ip, group in df.groupby(src_col):
+            unique_countries = group[country_col].nunique()
+            total_connections = len(group)
+            countries_list = group[country_col].unique().tolist()
+            
+            # Calculate geo anomaly score (0-100)
+            geo_score = 0.0
+            flags = []
+            
+            # Factor 1: High-risk countries (40 points)
+            high_risk_countries_found = [c for c in countries_list if c in self.HIGH_RISK_COUNTRIES]
+            if high_risk_countries_found:
+                geo_score += 40
+                flags.append(f"High-risk countries: {', '.join(high_risk_countries_found)}")
+            
+            # Factor 2: Multiple countries (30 points)
+            # Accessing from multiple countries is suspicious
+            if unique_countries >= 5:
+                geo_score += 30
+                flags.append(f"{unique_countries} different countries")
+            elif unique_countries >= 3:
+                geo_score += 20
+                flags.append(f"{unique_countries} different countries")
+            elif unique_countries >= 2:
+                geo_score += 10
+                flags.append(f"{unique_countries} different countries")
+            
+            # Factor 3: Rapid country switching (30 points if timestamp available)
+            if has_timestamp and unique_countries >= 2:
+                # Sort by time and check for rapid country changes
+                group_sorted = group.sort_values(ts_col)
+                prev_country = None
+                prev_time = None
+                rapid_switches = 0
+                
+                for _, row in group_sorted.iterrows():
+                    curr_country = row[country_col]
+                    curr_time = row[ts_col]
+                    
+                    if prev_country is not None and prev_country != curr_country:
+                        time_diff = (curr_time - prev_time).total_seconds() / 3600  # hours
+                        if time_diff < self.IMPOSSIBLE_TRAVEL_HOURS:
+                            rapid_switches += 1
+                    
+                    prev_country = curr_country
+                    prev_time = curr_time
+                
+                if rapid_switches >= 3:
+                    geo_score += 30
+                    flags.append(f"Impossible travel: {rapid_switches} rapid country switches")
+                elif rapid_switches >= 1:
+                    geo_score += 15
+                    flags.append(f"Suspicious travel: {rapid_switches} rapid country switches")
+            
+            # Only include if score meets threshold
+            if geo_score >= self.MIN_ANOMALY_SCORE:
+                results.append({
+                    'source_ip': src_ip,
+                    'unique_countries': unique_countries,
+                    'countries': ', '.join(countries_list),
+                    'total_connections': total_connections,
+                    'high_risk_countries': ', '.join(high_risk_countries_found) if high_risk_countries_found else 'None',
+                    'flags': ' | '.join(flags),
+                    'geo_anomaly_score': min(geo_score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('geo_anomaly_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate geo-anomaly visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=result_df['unique_countries'],
+            y=result_df['geo_anomaly_score'],
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=result_df['geo_anomaly_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Geo<br>Anomaly<br>Score")
+            ),
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Countries: {result_df.iloc[i]['unique_countries']}<br>Flags: {result_df.iloc[i]['flags']}<br>Score: {result_df.iloc[i]['geo_anomaly_score']:.0f}" 
+                  for i in range(len(result_df))],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title="Geo-Anomaly Detection: Country Diversity vs Suspicion Score",
+            xaxis_title="Unique Countries",
+            yaxis_title="Geo-Anomaly Score (0-100)",
+            hovermode='closest',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for GeoAnomalyStrategy output columns."""
+        return {
+            'source_ip': 'The IP address with suspicious geographic patterns',
+            'unique_countries': 'Number of different countries this IP has connected from',
+            'countries': 'List of all countries detected for this IP',
+            'total_connections': 'Total number of connections observed',
+            'high_risk_countries': 'Any high-risk countries detected (CN, RU, KP, IR, etc.)',
+            'flags': 'Specific anomalies detected (rapid country switching, impossible travel, etc.)',
+            'geo_anomaly_score': 'Overall geographic anomaly score (0-100). Higher scores indicate suspicious location patterns such as connections from high-risk countries, impossible travel scenarios, or compromised accounts being accessed from multiple geographic locations. Scores ≥50 suggest potential account compromise or VPN/proxy abuse'
+        }
+
+
+class UserAgentAnomalyStrategy(HuntStrategy):
+    """
+    User-Agent Anomaly Detector - Identifies suspicious user agents.
+    
+    Detects automated tools, malicious bots, and suspicious user agent patterns
+    that may indicate scanning, scraping, or attack activity.
+    """
+    
+    MIN_ANOMALY_SCORE = 50
+    # Common attack tools and scanners
+    ATTACK_TOOL_SIGNATURES = [
+        'sqlmap', 'nmap', 'nikto', 'masscan', 'nessus', 'burp', 'metasploit',
+        'acunetix', 'appscan', 'w3af', 'skipfish', 'wpscan', 'havij', 'pangolin'
+    ]
+    # Suspicious patterns
+    SUSPICIOUS_PATTERNS = [
+        'python', 'curl', 'wget', 'libwww', 'bot', 'crawler', 'spider',
+        'scraper', 'scan', 'test', 'benchmark', 'load', 'stress'
+    ]
+    
+    def _get_name(self) -> str:
+        return "User-Agent Anomaly Detector (Bot & Attack Detection)"
+    
+    def _get_required_inputs(self) -> list:
+        return ['source_ip', 'user_agent']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze user agent strings to detect anomalies.
+        
+        Args:
+            df: DataFrame with HTTP logs including user agent strings
+            col_map: Mapping of column names
+        
+        Returns:
+            DataFrame with suspicious user agent activity
+        """
+        src_col = col_map['source_ip']
+        ua_col = col_map['user_agent']
+        
+        df = df.copy()
+        df[ua_col] = df[ua_col].fillna('').astype(str)
+        
+        results = []
+        
+        # Group by source IP
+        for src_ip, group in df.groupby(src_col):
+            unique_agents = group[ua_col].nunique()
+            total_requests = len(group)
+            
+            # Analyze user agents
+            attack_tools_found = []
+            suspicious_agents = []
+            empty_agents = 0
+            very_short_agents = 0
+            
+            for ua in group[ua_col].unique():
+                ua_lower = ua.lower()
+                
+                # Check for empty or very short user agents
+                if len(ua) == 0:
+                    empty_agents += 1
+                    continue
+                elif len(ua) < 10:
+                    very_short_agents += 1
+                
+                # Check for attack tools
+                for tool in self.ATTACK_TOOL_SIGNATURES:
+                    if tool in ua_lower:
+                        attack_tools_found.append(tool)
+                        break
+                
+                # Check for suspicious patterns
+                for pattern in self.SUSPICIOUS_PATTERNS:
+                    if pattern in ua_lower:
+                        suspicious_agents.append(ua[:50])  # Truncate for display
+                        break
+            
+            # Calculate anomaly score (0-100)
+            ua_score = 0.0
+            flags = []
+            
+            # Factor 1: Attack tools detected (50 points - immediate red flag)
+            if attack_tools_found:
+                ua_score += 50
+                flags.append(f"Attack tools: {', '.join(set(attack_tools_found))}")
+            
+            # Factor 2: Suspicious patterns (30 points)
+            if len(suspicious_agents) > 0:
+                ua_score += 30
+                flags.append(f"{len(suspicious_agents)} suspicious user agents")
+            
+            # Factor 3: Empty or malformed user agents (20 points)
+            if empty_agents > 0:
+                ua_score += 20
+                flags.append(f"{empty_agents} empty user agents")
+            elif very_short_agents >= 3:
+                ua_score += 15
+                flags.append(f"{very_short_agents} suspiciously short user agents")
+            
+            # Factor 4: Too many different user agents (bonus 10 points)
+            # Legitimate users typically have 1-3 user agents
+            if unique_agents >= 10:
+                ua_score += 10
+                flags.append(f"{unique_agents} different user agents")
+            
+            # Only include if score meets threshold
+            if ua_score >= self.MIN_ANOMALY_SCORE:
+                # Get sample of suspicious user agents
+                sample_agents = list(set(suspicious_agents + [ua[:50] for ua in group[ua_col].head(3) if ua]))[:3]
+                
+                results.append({
+                    'source_ip': src_ip,
+                    'unique_user_agents': unique_agents,
+                    'total_requests': total_requests,
+                    'attack_tools_detected': ', '.join(set(attack_tools_found)) if attack_tools_found else 'None',
+                    'suspicious_count': len(suspicious_agents),
+                    'empty_agents': empty_agents,
+                    'sample_agents': ' | '.join(sample_agents),
+                    'flags': ' | '.join(flags),
+                    'ua_anomaly_score': min(ua_score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('ua_anomaly_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate user agent anomaly visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=result_df['total_requests'],
+            y=result_df['unique_user_agents'],
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=result_df['ua_anomaly_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="UA<br>Anomaly<br>Score")
+            ),
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Requests: {result_df.iloc[i]['total_requests']}<br>Unique UAs: {result_df.iloc[i]['unique_user_agents']}<br>Flags: {result_df.iloc[i]['flags']}<br>Score: {result_df.iloc[i]['ua_anomaly_score']:.0f}" 
+                  for i in range(len(result_df))],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title="User-Agent Anomaly Detection: Request Volume vs UA Diversity",
+            xaxis_title="Total Requests",
+            yaxis_title="Unique User Agents",
+            hovermode='closest',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for UserAgentAnomalyStrategy output columns."""
+        return {
+            'source_ip': 'The IP address with suspicious user agent patterns',
+            'unique_user_agents': 'Number of different user agent strings used. Normal users typically have 1-3; high values suggest automated tools or scanning',
+            'total_requests': 'Total number of HTTP requests observed',
+            'attack_tools_detected': 'Specific attack tools identified in user agents (sqlmap, nmap, nikto, etc.)',
+            'suspicious_count': 'Number of suspicious user agent strings detected',
+            'empty_agents': 'Number of requests with empty/missing user agent strings, often indicating automated tools',
+            'sample_agents': 'Sample of suspicious user agent strings found',
+            'flags': 'Specific anomalies detected in user agent patterns',
+            'ua_anomaly_score': 'Overall user agent anomaly score (0-100). Higher scores indicate automated scanning tools, malicious bots, or attack frameworks. Scores ≥50 strongly suggest reconnaissance or attack activity requiring immediate investigation'
+        }
+
+
+class CryptoMiningStrategy(HuntStrategy):
+    """
+    Crypto Mining Detector - Identifies cryptocurrency mining activity.
+    
+    Detects potential cryptojacking and unauthorized cryptocurrency mining by
+    analyzing network traffic patterns, connection destinations, and resource usage
+    indicators typical of mining operations.
+    """
+    
+    MIN_MINING_SCORE = 50
+    # Known mining pool domains and IPs (simplified - real list would be much larger)
+    MINING_POOL_PATTERNS = [
+        'pool', 'stratum', 'mining', 'minergate', 'nicehash', 'nanopool',
+        'ethermine', 'sparkpool', 'f2pool', 'antpool', 'slushpool', 'coinhive'
+    ]
+    # Common mining ports
+    MINING_PORTS = [3333, 4444, 5555, 7777, 8888, 9332, 9999, 14433, 14444, 45560]
+    # Minimum connections for detection
+    MIN_CONNECTIONS = 10
+    
+    def _get_name(self) -> str:
+        return "Crypto Mining Detector (Cryptojacking)"
+    
+    def _get_required_inputs(self) -> list:
+        return ['source_ip', 'dest_ip', 'dest_port']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze traffic patterns to detect cryptocurrency mining.
+        
+        Args:
+            df: DataFrame with connection logs
+            col_map: Mapping of column names. Optional 'dest_domain' for domain analysis
+        
+        Returns:
+            DataFrame with suspicious mining activity
+        """
+        src_col = col_map['source_ip']
+        dst_col = col_map['dest_ip']
+        port_col = col_map['dest_port']
+        
+        df = df.copy()
+        df[port_col] = pd.to_numeric(df[port_col], errors='coerce')
+        df = df.dropna(subset=[port_col])
+        
+        # Check if domain column is available
+        has_domain = 'dest_domain' in col_map and col_map['dest_domain'] in df.columns
+        if has_domain:
+            domain_col = col_map['dest_domain']
+            df[domain_col] = df[domain_col].fillna('').astype(str).str.lower()
+        
+        results = []
+        
+        # Group by source IP
+        for src_ip, group in df.groupby(src_col):
+            total_connections = len(group)
+            
+            # Need minimum connections for meaningful analysis
+            if total_connections < self.MIN_CONNECTIONS:
+                continue
+            
+            unique_dests = group[dst_col].nunique()
+            ports_used = group[port_col].unique().tolist()
+            
+            # Calculate mining score (0-100)
+            mining_score = 0.0
+            flags = []
+            mining_pool_matches = []
+            
+            # Factor 1: Known mining ports (40 points)
+            mining_ports_found = [p for p in ports_used if p in self.MINING_PORTS]
+            if mining_ports_found:
+                mining_score += 40
+                flags.append(f"Mining ports: {', '.join(map(str, mining_ports_found))}")
+            
+            # Factor 2: Domain patterns (30 points if domain available)
+            if has_domain:
+                for domain in group[domain_col].unique():
+                    for pattern in self.MINING_POOL_PATTERNS:
+                        if pattern in domain:
+                            mining_pool_matches.append(domain)
+                            break
+                
+                if mining_pool_matches:
+                    mining_score += 30
+                    flags.append(f"Mining pool domains: {len(mining_pool_matches)} found")
+            
+            # Factor 3: Long-lived connections to few destinations (20 points)
+            # Mining maintains persistent connections
+            if unique_dests <= 5 and total_connections >= 50:
+                mining_score += 20
+                flags.append(f"Persistent connections: {total_connections} to {unique_dests} destinations")
+            elif unique_dests <= 10 and total_connections >= 100:
+                mining_score += 15
+                flags.append(f"Many connections to few destinations")
+            
+            # Factor 4: Regular connection patterns (10 points)
+            # Check if connections are evenly distributed (consistent timing)
+            if unique_dests > 0:
+                connections_per_dest = total_connections / unique_dests
+                if connections_per_dest >= 20:
+                    mining_score += 10
+                    flags.append(f"Regular pattern: {connections_per_dest:.1f} connections per destination")
+            
+            # Only include if score meets threshold
+            if mining_score >= self.MIN_MINING_SCORE:
+                results.append({
+                    'source_ip': src_ip,
+                    'total_connections': total_connections,
+                    'unique_destinations': unique_dests,
+                    'mining_ports_used': ', '.join(map(str, mining_ports_found)) if mining_ports_found else 'None',
+                    'mining_pool_matches': ', '.join(mining_pool_matches[:3]) if mining_pool_matches else 'None',
+                    'flags': ' | '.join(flags),
+                    'mining_score': min(mining_score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('mining_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate crypto mining visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=result_df['total_connections'],
+            y=result_df['unique_destinations'],
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=result_df['mining_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Mining<br>Score")
+            ),
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Connections: {result_df.iloc[i]['total_connections']}<br>Destinations: {result_df.iloc[i]['unique_destinations']}<br>Flags: {result_df.iloc[i]['flags']}<br>Score: {result_df.iloc[i]['mining_score']:.0f}" 
+                  for i in range(len(result_df))],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title="Crypto Mining Detection: Connection Volume vs Destination Diversity",
+            xaxis_title="Total Connections",
+            yaxis_title="Unique Destinations",
+            hovermode='closest',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for CryptoMiningStrategy output columns."""
+        return {
+            'source_ip': 'The IP address potentially engaged in cryptocurrency mining',
+            'total_connections': 'Total number of connections observed',
+            'unique_destinations': 'Number of different destination IPs contacted. Mining typically maintains connections to few mining pools',
+            'mining_ports_used': 'Known cryptocurrency mining ports detected (3333, 4444, etc.)',
+            'mining_pool_matches': 'Mining pool domains or patterns identified in connection destinations',
+            'flags': 'Specific mining indicators detected',
+            'mining_score': 'Overall cryptocurrency mining suspiciousness score (0-100). Higher scores indicate likely cryptojacking or unauthorized mining activity. Scores ≥50 suggest active mining operations that consume resources and may indicate malware infection or policy violations'
+        }

@@ -18,7 +18,10 @@ from strategies import (
     TunnelingStrategy,
     LateralMovementStrategy,
     DataHoardingStrategy,
-    TimeAnomalyStrategy
+    TimeAnomalyStrategy,
+    GeoAnomalyStrategy,
+    UserAgentAnomalyStrategy,
+    CryptoMiningStrategy
 )
 
 
@@ -575,6 +578,263 @@ class TestTimeAnomalyStrategy(unittest.TestCase):
         self.assertIn('off_hours_percentage', explanations)
 
 
+class TestGeoAnomalyStrategy(unittest.TestCase):
+    """Test the Geo-Anomaly Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = GeoAnomalyStrategy()
+    
+    def test_high_risk_country_detection(self):
+        """Test that high-risk countries are detected."""
+        # Create mock data with high-risk country
+        # Need to add multiple countries to reach threshold (40 + 10 = 50)
+        data = []
+        for i in range(10):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'country_code': 'CN'  # High-risk country
+            })
+        for i in range(5):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'country_code': 'US'  # Normal country  
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'country_code': 'country_code'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect geo anomaly
+        self.assertFalse(result.empty)
+        self.assertIn('CN', result.iloc[0]['countries'])
+        self.assertGreaterEqual(result.iloc[0]['geo_anomaly_score'], 50)
+    
+    def test_multiple_countries_detection(self):
+        """Test that multiple countries are detected."""
+        # Create mock data with many countries (5+ countries = 30 points)
+        # Adding a high-risk country to reach threshold (30 + 40 = 70)
+        data = []
+        countries = ['US', 'UK', 'DE', 'FR', 'CN']  # CN is high-risk
+        for i, country in enumerate(countries):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'country_code': country
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'country_code': 'country_code'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect geo anomaly
+        self.assertFalse(result.empty)
+        self.assertEqual(result.iloc[0]['unique_countries'], 5)
+        self.assertGreaterEqual(result.iloc[0]['geo_anomaly_score'], 50)
+    
+    def test_normal_country_not_flagged(self):
+        """Test that normal single-country access is not flagged."""
+        # Create mock data with safe country
+        data = [
+            {'source_ip': '192.168.1.100', 'country_code': 'US'},
+            {'source_ip': '192.168.1.100', 'country_code': 'US'},
+        ]
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'country_code': 'country_code'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not detect geo anomaly
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('geo_anomaly_score', explanations)
+        self.assertIn('unique_countries', explanations)
+
+
+class TestUserAgentAnomalyStrategy(unittest.TestCase):
+    """Test the User-Agent Anomaly Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = UserAgentAnomalyStrategy()
+    
+    def test_attack_tool_detection(self):
+        """Test that attack tools are detected."""
+        # Create mock data with attack tool user agents
+        data = []
+        for i in range(20):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'user_agent': 'sqlmap/1.0 (http://sqlmap.org)'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'user_agent': 'user_agent'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect user agent anomaly
+        self.assertFalse(result.empty)
+        self.assertIn('sqlmap', result.iloc[0]['attack_tools_detected'])
+        self.assertGreaterEqual(result.iloc[0]['ua_anomaly_score'], 50)
+    
+    def test_suspicious_pattern_detection(self):
+        """Test that suspicious patterns are detected."""
+        # Create mock data with suspicious user agents
+        # Need empty agents (20 points) + suspicious pattern (30 points) = 50
+        data = []
+        for i in range(10):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'user_agent': 'python-requests/2.28.0'  # Suspicious
+            })
+        for i in range(5):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'user_agent': ''  # Empty - suspicious
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'user_agent': 'user_agent'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect user agent anomaly
+        self.assertFalse(result.empty)
+        self.assertGreaterEqual(result.iloc[0]['ua_anomaly_score'], 50)
+    
+    def test_normal_user_agent_not_flagged(self):
+        """Test that normal user agents are not flagged."""
+        # Create mock data with normal browser user agent
+        data = [
+            {'source_ip': '192.168.1.100', 
+             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
+            {'source_ip': '192.168.1.100', 
+             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
+        ]
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'user_agent': 'user_agent'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not detect anomaly
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('ua_anomaly_score', explanations)
+        self.assertIn('attack_tools_detected', explanations)
+
+
+class TestCryptoMiningStrategy(unittest.TestCase):
+    """Test the Crypto Mining Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = CryptoMiningStrategy()
+    
+    def test_mining_port_detection(self):
+        """Test that mining ports are detected."""
+        # Create mock data with mining port connections
+        data = []
+        for i in range(50):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'dest_ip': '10.0.0.1',
+                'dest_port': 3333  # Known mining port
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'dest_ip': 'dest_ip',
+            'dest_port': 'dest_port'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect mining activity
+        self.assertFalse(result.empty)
+        self.assertIn('3333', result.iloc[0]['mining_ports_used'])
+        self.assertGreaterEqual(result.iloc[0]['mining_score'], 50)
+    
+    def test_persistent_connections_detection(self):
+        """Test that persistent connections to few destinations are detected."""
+        # Create mock data with many connections to one destination
+        data = []
+        for i in range(100):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'dest_ip': '10.0.0.1',
+                'dest_port': 4444  # Mining port
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'dest_ip': 'dest_ip',
+            'dest_port': 'dest_port'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect mining activity
+        self.assertFalse(result.empty)
+        self.assertEqual(result.iloc[0]['unique_destinations'], 1)
+        self.assertGreaterEqual(result.iloc[0]['mining_score'], 50)
+    
+    def test_normal_traffic_not_flagged(self):
+        """Test that normal traffic is not flagged."""
+        # Create mock data with standard ports and few connections
+        data = [
+            {'source_ip': '192.168.1.100', 'dest_ip': '10.0.0.1', 'dest_port': 80},
+            {'source_ip': '192.168.1.100', 'dest_ip': '10.0.0.2', 'dest_port': 443},
+        ]
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'dest_ip': 'dest_ip',
+            'dest_port': 'dest_port'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not detect mining (insufficient connections)
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('mining_score', explanations)
+        self.assertIn('mining_ports_used', explanations)
+
+
 class TestStrategyRequirements(unittest.TestCase):
     """Test that all strategies meet basic requirements."""
     
@@ -589,7 +849,10 @@ class TestStrategyRequirements(unittest.TestCase):
             TunnelingStrategy(),
             LateralMovementStrategy(),
             DataHoardingStrategy(),
-            TimeAnomalyStrategy()
+            TimeAnomalyStrategy(),
+            GeoAnomalyStrategy(),
+            UserAgentAnomalyStrategy(),
+            CryptoMiningStrategy()
         ]
         
         for strategy in strategies:
@@ -607,7 +870,10 @@ class TestStrategyRequirements(unittest.TestCase):
             TunnelingStrategy(),
             LateralMovementStrategy(),
             DataHoardingStrategy(),
-            TimeAnomalyStrategy()
+            TimeAnomalyStrategy(),
+            GeoAnomalyStrategy(),
+            UserAgentAnomalyStrategy(),
+            CryptoMiningStrategy()
         ]
         
         for strategy in strategies:
@@ -625,7 +891,10 @@ class TestStrategyRequirements(unittest.TestCase):
             TunnelingStrategy(),
             LateralMovementStrategy(),
             DataHoardingStrategy(),
-            TimeAnomalyStrategy()
+            TimeAnomalyStrategy(),
+            GeoAnomalyStrategy(),
+            UserAgentAnomalyStrategy(),
+            CryptoMiningStrategy()
         ]
         
         for strategy in strategies:
