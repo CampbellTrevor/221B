@@ -923,7 +923,7 @@ class WatsonDashboard:
                         'timestamp': ts,
                         'strategy': strategy_name.split('(')[0].strip()[:25],
                         'score': row[score_col],
-                        'severity': 'High' if row[score_col] >= 75 else 'Medium' if row[score_col] >= 50 else 'Low'
+                        'severity': 'High' if row[score_col] >= HIGH_SEVERITY_THRESHOLD else 'Medium' if row[score_col] >= MEDIUM_SEVERITY_THRESHOLD else 'Low'
                     })
                 except:
                     pass
@@ -1549,8 +1549,8 @@ class WatsonDashboard:
             score_cols = [col for col in df.columns if col.endswith('_score')]
             if score_cols:
                 score_col = score_cols[0]
-                high_count = len(df[df[score_col] >= 75])
-                medium_count = len(df[(df[score_col] >= 50) & (df[score_col] < 75)])
+                high_count = len(df[df[score_col] >= HIGH_SEVERITY_THRESHOLD])
+                medium_count = len(df[(df[score_col] >= MEDIUM_SEVERITY_THRESHOLD) & (df[score_col] < HIGH_SEVERITY_THRESHOLD)])
                 
                 if high_count > 0:
                     high_severity_strategies.append((strategy_name, high_count))
@@ -1728,9 +1728,9 @@ class WatsonDashboard:
         # Add severity breakdown if score columns exist
         if score_cols:
             score_col = score_cols[0]  # Use first score column
-            high_severity = len(df[df[score_col] >= 75])
-            medium_severity = len(df[(df[score_col] >= 50) & (df[score_col] < 75)])
-            low_severity = len(df[df[score_col] < 50])
+            high_severity = len(df[df[score_col] >= HIGH_SEVERITY_THRESHOLD])
+            medium_severity = len(df[(df[score_col] >= MEDIUM_SEVERITY_THRESHOLD) & (df[score_col] < HIGH_SEVERITY_THRESHOLD)])
+            low_severity = len(df[df[score_col] < MEDIUM_SEVERITY_THRESHOLD])
             max_score = df[score_col].max()
             
             summary_html += f"""
@@ -1747,7 +1747,7 @@ class WatsonDashboard:
                     <div style="font-size: 0.9em; opacity: 0.95;">Average Score</div>
                 </div>
                 <div style="background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
-                    <div style="font-size: 2.5em; font-weight: bold; color: {'#fca5a5' if max_score >= 75 else '#fcd34d' if max_score >= 50 else '#86efac'}; margin-bottom: 4px;">{max_score:.1f}</div>
+                    <div style="font-size: 2.5em; font-weight: bold; color: {'#fca5a5' if max_score >= HIGH_SEVERITY_THRESHOLD else '#fcd34d' if max_score >= MEDIUM_SEVERITY_THRESHOLD else '#86efac'}; margin-bottom: 4px;">{max_score:.1f}</div>
                     <div style="font-size: 0.9em; opacity: 0.95;">Highest Score</div>
                 </div>
             """
@@ -1980,11 +1980,11 @@ class WatsonDashboard:
             # Then apply severity filtering
             if has_score_column and current_filter['level'] != 'All':
                 if current_filter['level'] == 'High (≥75)':
-                    filtered_df = filtered_df[filtered_df[score_col] >= 75]
+                    filtered_df = filtered_df[filtered_df[score_col] >= HIGH_SEVERITY_THRESHOLD]
                 elif current_filter['level'] == 'Medium (50-74)':
-                    filtered_df = filtered_df[(filtered_df[score_col] >= 50) & (filtered_df[score_col] < 75)]
+                    filtered_df = filtered_df[(filtered_df[score_col] >= MEDIUM_SEVERITY_THRESHOLD) & (filtered_df[score_col] < HIGH_SEVERITY_THRESHOLD)]
                 elif current_filter['level'] == 'Low (<50)':
-                    filtered_df = filtered_df[filtered_df[score_col] < 50]
+                    filtered_df = filtered_df[filtered_df[score_col] < MEDIUM_SEVERITY_THRESHOLD]
             
             # Then apply sorting
             if current_sort['column'] != '(unsorted)':
@@ -2028,10 +2028,10 @@ class WatsonDashboard:
                 for idx, row in page_df.iterrows():
                     score = row[score_col]
                     # Color code based on severity with enhanced modern styling
-                    if score >= 75:
+                    if score >= HIGH_SEVERITY_THRESHOLD:
                         bg_color = COLOR_HIGH_SEVERITY_BG
                         badge = f'<span style="background: {COLOR_HIGH_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🔴 HIGH</span>'
-                    elif score >= 50:
+                    elif score >= MEDIUM_SEVERITY_THRESHOLD:
                         bg_color = COLOR_MEDIUM_SEVERITY_BG
                         badge = f'<span style="background: {COLOR_MEDIUM_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🟡 MED</span>'
                     else:
