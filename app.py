@@ -2110,15 +2110,27 @@ class WatsonDashboard:
             style={'description_width': 'initial'}
         )
         
+        # Check if scanner detection was performed
+        has_scanner_column = 'is_likely_scanner' in full_df.columns
+        
         # Create severity filter buttons (only if score column exists)
         filter_buttons = None
         if has_score_column:
+            # Add scanner filter option if scanner detection was performed
+            if has_scanner_column:
+                filter_options = ['All', 'High (≥75)', 'Medium (50-74)', 'Low (<50)', 'Hide Scanners', 'Only Scanners']
+                filter_tooltips = ['Show all results', 'Show only high severity', 'Show only medium severity', 
+                                  'Show only low severity', 'Hide scanner false positives', 'Show only scanner detections']
+            else:
+                filter_options = ['All', 'High (≥75)', 'Medium (50-74)', 'Low (<50)']
+                filter_tooltips = ['Show all results', 'Show only high severity', 'Show only medium severity', 'Show only low severity']
+            
             filter_buttons = widgets.ToggleButtons(
-                options=['All', 'High (≥75)', 'Medium (50-74)', 'Low (<50)'],
+                options=filter_options,
                 value='All',
                 description='Filter:',
                 button_style='',
-                tooltips=['Show all results', 'Show only high severity', 'Show only medium severity', 'Show only low severity'],
+                tooltips=filter_tooltips,
                 style={'description_width': 'initial', 'button_width': 'auto'}
             )
         
@@ -2197,6 +2209,12 @@ class WatsonDashboard:
                     filtered_df = filtered_df[(filtered_df[score_col] >= MEDIUM_SEVERITY_THRESHOLD) & (filtered_df[score_col] < HIGH_SEVERITY_THRESHOLD)]
                 elif current_filter['level'] == 'Low (<50)':
                     filtered_df = filtered_df[filtered_df[score_col] < MEDIUM_SEVERITY_THRESHOLD]
+                elif current_filter['level'] == 'Hide Scanners' and has_scanner_column:
+                    # Filter out scanner detections
+                    filtered_df = filtered_df[~filtered_df['is_likely_scanner']]
+                elif current_filter['level'] == 'Only Scanners' and has_scanner_column:
+                    # Show only scanner detections
+                    filtered_df = filtered_df[filtered_df['is_likely_scanner']]
             
             # Then apply sorting
             if current_sort['column'] != '(unsorted)':
@@ -2234,30 +2252,50 @@ class WatsonDashboard:
                 table_html = '<table border="1" class="dataframe" style="border-collapse: collapse; width: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;">\n'
                 table_html += f'  <thead>\n    <tr style="text-align: right; background: {GRADIENT_BLUE_PURPLE}; color: white; font-weight: bold;">\n'
                 for col in page_df.columns:
-                    table_html += f'      <th style="{CSS_CONTENT_BOX}">{col}</th>\n'
+                    # Skip scanner detection columns in header
+                    if col not in ['is_likely_scanner', 'scanner_reason']:
+                        table_html += f'      <th style="{CSS_CONTENT_BOX}">{html_lib.escape(str(col))}</th>\n'
                 table_html += '    </tr>\n  </thead>\n  <tbody>\n'
                 
                 for idx, row in page_df.iterrows():
                     score = row[score_col]
-                    # Color code based on severity with enhanced modern styling
-                    if score >= HIGH_SEVERITY_THRESHOLD:
-                        bg_color = COLOR_HIGH_SEVERITY_BG
-                        badge = f'<span style="background: {COLOR_HIGH_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🔴 HIGH</span>'
-                    elif score >= MEDIUM_SEVERITY_THRESHOLD:
-                        bg_color = COLOR_MEDIUM_SEVERITY_BG
-                        badge = f'<span style="background: {COLOR_MEDIUM_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🟡 MED</span>'
-                    else:
-                        bg_color = COLOR_LOW_SEVERITY_BG
-                        badge = f'<span style="background: {COLOR_LOW_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🟢 LOW</span>'
+                    is_scanner = row.get('is_likely_scanner', False) if 'is_likely_scanner' in page_df.columns else False
+                    scanner_reason = row.get('scanner_reason', '') if 'scanner_reason' in page_df.columns else ''
                     
-                    table_html += f'    <tr style="background-color: {bg_color};">\n'
+                    # Check if this is a likely scanner - scanner highlighting takes precedence
+                    if is_scanner:
+                        # Yellow/amber background for scanners with distinct styling
+                        bg_color = '#fff9e6'  # Light yellow
+                        border_style = 'border-left: 4px solid #f59e0b;'  # Amber left border
+                        scanner_badge = f'<span style="background: #f59e0b; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;" title="{html_lib.escape(scanner_reason)}">🔍 SCANNER</span>'
+                    else:
+                        # Color code based on severity with enhanced modern styling
+                        border_style = ''
+                        scanner_badge = ''
+                        if score >= HIGH_SEVERITY_THRESHOLD:
+                            bg_color = COLOR_HIGH_SEVERITY_BG
+                            badge = f'<span style="background: {COLOR_HIGH_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🔴 HIGH</span>'
+                        elif score >= MEDIUM_SEVERITY_THRESHOLD:
+                            bg_color = COLOR_MEDIUM_SEVERITY_BG
+                            badge = f'<span style="background: {COLOR_MEDIUM_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🟡 MED</span>'
+                        else:
+                            bg_color = COLOR_LOW_SEVERITY_BG
+                            badge = f'<span style="background: {COLOR_LOW_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🟢 LOW</span>'
+                    
+                    table_html += f'    <tr style="background-color: {bg_color}; {border_style}">\n'
                     for col in page_df.columns:
                         value = row[col]
+                        # Skip displaying scanner detection columns in table
+                        if col in ['is_likely_scanner', 'scanner_reason']:
+                            continue
                         # Format score column with badge
                         if col == score_col:
-                            table_html += f'      <td style="{CSS_CONTENT_BOX}">{value:.1f} {badge}</td>\n'
+                            if is_scanner:
+                                table_html += f'      <td style="{CSS_CONTENT_BOX}">{value:.1f} {scanner_badge} {badge if "badge" in locals() else ""}</td>\n'
+                            else:
+                                table_html += f'      <td style="{CSS_CONTENT_BOX}">{value:.1f} {badge}</td>\n'
                         else:
-                            table_html += f'      <td style="{CSS_CONTENT_BOX}">{value}</td>\n'
+                            table_html += f'      <td style="{CSS_CONTENT_BOX}">{html_lib.escape(str(value))}</td>\n'
                     table_html += '    </tr>\n'
                 
                 table_html += '  </tbody>\n</table>'
@@ -2906,6 +2944,133 @@ class WatsonDashboard:
             # Standard single-threaded analysis
             return strategy.analyze(df, col_map)
     
+    def _detect_scanners(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Detect potential security/compliance/vulnerability scanners in results.
+        
+        Scanners (like Nessus, ACAS, Qualys, etc.) often exhibit patterns:
+        - Sequential or paired IP addresses (e.g., 192.168.0.1 and 192.168.0.2)
+        - High connection/scan volume from single source
+        - Connections to many consecutive ports
+        - User agents containing scanner signatures
+        - Predictable timing patterns (automated scans)
+        
+        Args:
+            df: Results DataFrame from strategy analysis
+            
+        Returns:
+            DataFrame with added 'is_likely_scanner' and 'scanner_reason' columns
+        """
+        if df.empty:
+            return df
+        
+        df = df.copy()
+        df['is_likely_scanner'] = False
+        df['scanner_reason'] = ''
+        
+        # Check for IP-based scanner patterns
+        ip_columns = ['source_ip', 'dest_ip']
+        for ip_col in ip_columns:
+            if ip_col in df.columns:
+                # Pattern 1: Sequential/Paired IPs
+                # Extract IPs and check for sequential patterns
+                ips = df[ip_col].dropna().unique()
+                sequential_ips = set()
+                
+                for ip in ips:
+                    try:
+                        # Parse IP address
+                        parts = str(ip).split('.')
+                        if len(parts) == 4:
+                            # Check if last octet differs by 1 from any other IP
+                            base = '.'.join(parts[:3])
+                            last_octet = int(parts[3])
+                            
+                            # Check for adjacent IPs in the dataset
+                            for offset in [-1, 1]:
+                                adjacent_ip = f"{base}.{last_octet + offset}"
+                                if adjacent_ip in ips:
+                                    sequential_ips.add(ip)
+                                    sequential_ips.add(adjacent_ip)
+                    except (ValueError, IndexError):
+                        continue
+                
+                # Mark sequential IPs as potential scanners
+                mask = df[ip_col].isin(sequential_ips)
+                df.loc[mask, 'is_likely_scanner'] = True
+                df.loc[mask, 'scanner_reason'] = df.loc[mask, 'scanner_reason'].apply(
+                    lambda x: (x + '; ' if x else '') + f'Sequential {ip_col} pattern'
+                )
+        
+        # Pattern 2: High volume from single source (top 5% by connection count)
+        if 'connection_count' in df.columns:
+            threshold_95 = df['connection_count'].quantile(0.95)
+            high_volume_mask = df['connection_count'] >= threshold_95
+            if high_volume_mask.any():
+                df.loc[high_volume_mask, 'is_likely_scanner'] = True
+                df.loc[high_volume_mask, 'scanner_reason'] = df.loc[high_volume_mask, 'scanner_reason'].apply(
+                    lambda x: (x + '; ' if x else '') + 'High connection volume'
+                )
+        
+        # Pattern 3: Port scan indicators (many unique ports)
+        if 'unique_ports' in df.columns:
+            # More than 20 unique ports from one source is suspicious
+            port_scan_mask = df['unique_ports'] > 20
+            if port_scan_mask.any():
+                df.loc[port_scan_mask, 'is_likely_scanner'] = True
+                df.loc[port_scan_mask, 'scanner_reason'] = df.loc[port_scan_mask, 'scanner_reason'].apply(
+                    lambda x: (x + '; ' if x else '') + 'Port scanning pattern'
+                )
+        
+        # Pattern 4: Scanner user agents
+        if 'user_agent' in df.columns:
+            scanner_signatures = [
+                'nessus', 'qualys', 'openvas', 'nexpose', 'acunetix', 
+                'burp', 'nikto', 'w3af', 'scanner', 'vulnerability',
+                'acas', 'tenable', 'rapid7', 'metasploit'
+            ]
+            ua_mask = df['user_agent'].str.lower().str.contains(
+                '|'.join(scanner_signatures), na=False, regex=True
+            )
+            if ua_mask.any():
+                df.loc[ua_mask, 'is_likely_scanner'] = True
+                df.loc[ua_mask, 'scanner_reason'] = df.loc[ua_mask, 'scanner_reason'].apply(
+                    lambda x: (x + '; ' if x else '') + 'Scanner user agent'
+                )
+        
+        # Pattern 5: Consistent timing (very low coefficient of variation in beaconing)
+        # This is for scanners that probe on very regular intervals
+        if 'coeff_variation' in df.columns:
+            # CV < 0.05 is extremely regular, likely automated
+            timing_mask = df['coeff_variation'] < 0.05
+            if timing_mask.any():
+                df.loc[timing_mask, 'is_likely_scanner'] = True
+                df.loc[timing_mask, 'scanner_reason'] = df.loc[timing_mask, 'scanner_reason'].apply(
+                    lambda x: (x + '; ' if x else '') + 'Automated timing pattern'
+                )
+        
+        # Pattern 6: RFC 1918 private IP ranges commonly used for internal scanners
+        for ip_col in ip_columns:
+            if ip_col in df.columns:
+                # Check for common scanner IP ranges
+                scanner_ranges = [
+                    r'^10\.0\.0\.[12]$',  # 10.0.0.1, 10.0.0.2
+                    r'^192\.168\.0\.[12]$',  # 192.168.0.1, 192.168.0.2
+                    r'^172\.16\.0\.[12]$',  # 172.16.0.1, 172.16.0.2
+                ]
+                for pattern in scanner_ranges:
+                    range_mask = df[ip_col].astype(str).str.match(pattern, na=False)
+                    if range_mask.any():
+                        df.loc[range_mask, 'is_likely_scanner'] = True
+                        df.loc[range_mask, 'scanner_reason'] = df.loc[range_mask, 'scanner_reason'].apply(
+                            lambda x: (x + '; ' if x else '') + f'Common scanner IP range ({ip_col})'
+                        )
+        
+        # Clean up empty scanner reasons
+        df.loc[~df['is_likely_scanner'], 'scanner_reason'] = ''
+        
+        return df
+    
     def _run_analysis(self, button, tab_index: int):
         """
         Execute the selected hunt strategy on the selected table.
@@ -3063,6 +3228,14 @@ class WatsonDashboard:
                 rows_per_sec = len(df) / analysis_duration if analysis_duration > 0 else 0
                 print(f"⏱️  Analysis time: {analysis_duration:.2f} seconds ({rows_per_sec:.0f} rows/sec)")
                 print()
+                
+                # Detect potential security scanners in results
+                result_df = self._detect_scanners(result_df)
+                scanner_count = len(result_df[result_df.get('is_likely_scanner', False)]) if 'is_likely_scanner' in result_df.columns else 0
+                if scanner_count > 0:
+                    print(f"🔍 Scanner Detection: {scanner_count} results flagged as potential security scanners (Nessus, ACAS, etc.)")
+                    print(f"   These are highlighted in yellow and can be filtered out as false positives.")
+                    print()
                 
                 # Store results for correlation analysis
                 self.strategy_results[strategy.name] = {
