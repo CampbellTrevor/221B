@@ -105,8 +105,248 @@ class WatsonDashboard:
         # Performance tracking for strategy execution
         self.strategy_performance = {}  # Dict to store execution time and stats
         
+        # Load data dictionary for recommendations
+        self.data_dictionary = self._load_data_dictionary()
+        
         # Initialize UI
         self._initialize_ui()
+    
+    def _load_data_dictionary(self) -> dict:
+        """
+        Load hard-coded data source recommendations from GN Data Dictionary.
+        
+        Returns:
+            Dictionary with data source information
+        """
+        # Hard-coded data sources from GN Data Dictionary V3.5.1
+        data_sources = {
+            # Network/Connection data sources
+            'zeek_conn_c': {
+                'description': 'Zeek connection logs capturing network traffic metadata including source/destination IPs, ports, protocols, and byte counts',
+                'tags': 'zeek,network,conn,flow',
+                'category': 'network'
+            },
+            'zeek_conn_e': {
+                'description': 'Zeek connection logs from Europe region capturing network traffic metadata',
+                'tags': 'zeek,network,conn,flow',
+                'category': 'network'
+            },
+            'cisco_asa_c': {
+                'description': 'Cisco ASA firewall logs capturing network traffic and security events including connection attempts, blocks, and policy violations',
+                'tags': 'cisco,network,firewall',
+                'category': 'network'
+            },
+            'cisco_asa_e': {
+                'description': 'Cisco ASA firewall logs from Europe capturing network security events',
+                'tags': 'cisco,network,firewall',
+                'category': 'network'
+            },
+            'palo_alto_c': {
+                'description': 'Palo Alto Networks firewall logs with traffic, threat, and URL filtering data',
+                'tags': 'firewall,network,security',
+                'category': 'network'
+            },
+            
+            # DNS data sources
+            'cpb_zeek_dns_mission': {
+                'description': 'Zeek DNS logs capturing domain name queries and responses for network activity analysis',
+                'tags': 'zeek,network,dns,domain',
+                'category': 'dns'
+            },
+            'cpb_zeek_dns_exercise': {
+                'description': 'Zeek DNS logs from exercise environments for DNS query analysis',
+                'tags': 'zeek,network,dns,domain',
+                'category': 'dns'
+            },
+            'dns_c': {
+                'description': 'DNS server logs with query details and internal processing from CONUS region',
+                'tags': 'dns,query,domain',
+                'category': 'dns'
+            },
+            'dns_e': {
+                'description': 'DNS server logs from Europe region capturing domain queries',
+                'tags': 'dns,query,domain',
+                'category': 'dns'
+            },
+            
+            # Authentication/Access data sources
+            'a365_il4_audit_signin': {
+                'description': 'Office 365 sign-in audit logs with user authentication attempts and results',
+                'tags': 'azure,m365,o365,cloud,auth,login',
+                'category': 'auth'
+            },
+            'a365_il5_audit_signin': {
+                'description': 'Office 365 IL5 sign-in audit logs for authentication tracking',
+                'tags': 'azure,m365,o365,cloud,auth,login',
+                'category': 'auth'
+            },
+            'windows_security_c': {
+                'description': 'Windows Security event logs capturing authentication, access control, and security events',
+                'tags': 'windows,security,auth,endpoint',
+                'category': 'auth'
+            },
+            'windows_security_e': {
+                'description': 'Windows Security logs from Europe capturing authentication and security events',
+                'tags': 'windows,security,auth,endpoint',
+                'category': 'auth'
+            },
+            
+            # Web/HTTP data sources
+            'zeek_http_c': {
+                'description': 'Zeek HTTP logs capturing web traffic including URLs, methods, user agents, and response codes',
+                'tags': 'zeek,http,web,proxy',
+                'category': 'web'
+            },
+            'zeek_http_e': {
+                'description': 'Zeek HTTP logs from Europe capturing web activity',
+                'tags': 'zeek,http,web,proxy',
+                'category': 'web'
+            },
+            'bluecoat_proxy_c': {
+                'description': 'Blue Coat proxy logs with web traffic, URL filtering, and user activity',
+                'tags': 'proxy,web,http,url',
+                'category': 'web'
+            },
+            
+            # Cloud/Azure/O365 data sources
+            'a365_il4_alerts': {
+                'description': 'Office 365 security alerts from Microsoft Cloud App Security indicating various security threats',
+                'tags': 'azure,m365,o365,cloud,alerts',
+                'category': 'cloud'
+            },
+            'a365_il4_audit_directory': {
+                'description': 'Azure AD directory audit logs capturing changes and actions in the directory service',
+                'tags': 'azure,m365,o365,cloud,directory',
+                'category': 'cloud'
+            },
+            'a365_il4_application_devices': {
+                'description': 'Azure AD application registration and device configuration data',
+                'tags': 'azure,m365,o365,cloud,inventory,application',
+                'category': 'cloud'
+            },
+            
+            # Endpoint/Process data sources
+            'windows_sysmon_c': {
+                'description': 'Windows Sysmon logs capturing detailed process creation, network connections, and file operations',
+                'tags': 'windows,sysmon,process,endpoint',
+                'category': 'endpoint'
+            },
+            'windows_sysmon_e': {
+                'description': 'Windows Sysmon logs from Europe with process and file activity',
+                'tags': 'windows,sysmon,process,endpoint',
+                'category': 'endpoint'
+            },
+            'windows_powershell_c': {
+                'description': 'Windows PowerShell logs capturing script execution and command activity',
+                'tags': 'windows,powershell,process,endpoint',
+                'category': 'endpoint'
+            },
+            
+            # File/Email data sources
+            'zeek_files_c': {
+                'description': 'Zeek file logs capturing file transfers over network protocols with hashes',
+                'tags': 'zeek,file,hash,network',
+                'category': 'file'
+            },
+            'email_logs': {
+                'description': 'Email gateway logs with sender, recipient, attachments, and delivery status',
+                'tags': 'email,smtp,attachment',
+                'category': 'email'
+            },
+            
+            # Vulnerability data sources
+            'acas_c': {
+                'description': 'ACAS vulnerability scan results with CVE details and host information',
+                'tags': 'vulnerabilities,CVEs,scan',
+                'category': 'vulnerability'
+            },
+            'acas_e': {
+                'description': 'ACAS vulnerability scans from Europe region',
+                'tags': 'vulnerabilities,CVEs,scan',
+                'category': 'vulnerability'
+            },
+        }
+        
+        print(f"📚 Loaded {len(data_sources)} hard-coded data source recommendations")
+        return data_sources
+    
+    def _get_recommended_data_sources(self, strategy_name: str) -> list:
+        """
+        Get recommended data sources for a given strategy based on keywords.
+        
+        Args:
+            strategy_name: Name of the hunting strategy
+            
+        Returns:
+            List of recommended data source dictionaries
+        """
+        if not self.data_dictionary:
+            return []
+        
+        # Define keyword mappings for different strategy types
+        strategy_keywords = {
+            'beacon': ['network', 'conn', 'connection', 'flow', 'firewall', 'zeek'],
+            'entropy': ['dns', 'domain', 'query', 'network'],
+            'exfiltration': ['network', 'conn', 'flow', 'firewall', 'proxy'],
+            'port': ['network', 'conn', 'scan', 'firewall'],
+            'brute': ['auth', 'login', 'signin', 'authentication', 'security'],
+            'tunnel': ['network', 'conn', 'protocol', 'flow'],
+            'web': ['http', 'web', 'proxy', 'url'],
+            'shell': ['file', 'process', 'windows', 'endpoint'],
+            'credential': ['auth', 'login', 'security', 'kerberos', 'windows'],
+            'ransomware': ['file', 'process', 'endpoint', 'windows', 'sysmon'],
+            'privilege': ['windows', 'process', 'security', 'endpoint'],
+            'fileless': ['process', 'powershell', 'windows', 'endpoint', 'sysmon'],
+            'api': ['api', 'application', 'cloud', 'azure', 'm365', 'o365'],
+            'shadow': ['cloud', 'application', 'azure', 'o365'],
+            'supply': ['file', 'hash', 'zeek'],
+            'container': ['docker', 'kubernetes', 'container', 'endpoint'],
+            'dns': ['dns', 'query', 'domain'],
+            'process': ['process', 'windows', 'endpoint', 'sysmon'],
+            'lol': ['process', 'powershell', 'windows', 'endpoint'],
+            'oauth': ['oauth', 'application', 'cloud', 'azure', 'o365'],
+            'insider': ['auth', 'file', 'cloud', 'azure'],
+            'zero': ['vulnerability', 'cve', 'acas', 'network'],
+            'cloud': ['cloud', 'azure', 'o365', 'm365'],
+            'kerberos': ['kerberos', 'auth', 'security', 'windows'],
+            'macro': ['file', 'email', 'attachment'],
+            'covert': ['network', 'protocol', 'conn']
+        }
+        
+        # Find matching keywords
+        matched_keywords = []
+        strategy_lower = strategy_name.lower()
+        for key, keywords in strategy_keywords.items():
+            if key in strategy_lower:
+                matched_keywords.extend(keywords)
+        
+        # If no keywords matched, use generic network/process keywords
+        if not matched_keywords:
+            matched_keywords = ['network', 'conn', 'flow', 'process', 'windows', 'endpoint']
+        
+        # Search data dictionary
+        recommendations = []
+        for source_name, source_info in self.data_dictionary.items():
+            description = source_info['description'].lower()
+            tags = source_info['tags'].lower()
+            
+            # Check if any keyword matches
+            match_score = 0
+            for keyword in matched_keywords:
+                if keyword in source_name.lower() or keyword in description or keyword in tags:
+                    match_score += 1
+            
+            if match_score > 0:
+                recommendations.append({
+                    'source': source_name,
+                    'description': source_info['description'][:200],
+                    'tags': source_info['tags'],
+                    'score': match_score
+                })
+        
+        # Sort by match score and return top 5
+        recommendations.sort(key=lambda x: x['score'], reverse=True)
+        return recommendations[:5]
     
     def _initialize_ui(self):
         """Set up the initial UI components."""
@@ -343,6 +583,24 @@ class WatsonDashboard:
                     button_style='success',
                     icon='search'
                 ),
+                'save_config_button': widgets.Button(
+                    description='💾 Save Configuration',
+                    button_style='info',
+                    icon='save',
+                    layout=widgets.Layout(width='200px')
+                ),
+                'load_config_button': widgets.Button(
+                    description='📂 Load Configuration',
+                    button_style='warning',
+                    icon='folder-open',
+                    layout=widgets.Layout(width='200px')
+                ),
+                'config_name_input': widgets.Text(
+                    placeholder='Enter config name...',
+                    description='Config Name:',
+                    style={'description_width': 'initial'},
+                    layout=widgets.Layout(width='300px')
+                ),
                 'output_widget': widgets.Output(),
                 'available_columns': []
             }
@@ -364,10 +622,18 @@ class WatsonDashboard:
             def make_date_filter_handler(tab_idx):
                 return lambda change: self._on_date_filter_toggle(change, tab_idx)
             
+            def make_save_config_handler(tab_idx):
+                return lambda btn: self._save_strategy_config(btn, tab_idx)
+            
+            def make_load_config_handler(tab_idx):
+                return lambda btn: self._load_strategy_config(btn, tab_idx)
+            
             tab_data['table_search'].observe(make_table_search_handler(i), names='value')
             tab_data['load_table_button'].on_click(make_load_table_handler(i))
             tab_data['run_button'].on_click(make_run_analysis_handler(i))
             tab_data['enable_date_filter'].observe(make_date_filter_handler(i), names='value')
+            tab_data['save_config_button'].on_click(make_save_config_handler(i))
+            tab_data['load_config_button'].on_click(make_load_config_handler(i))
             
             # Create strategy description with input details
             input_descriptions = self._get_input_descriptions(strategy)
@@ -410,6 +676,10 @@ class WatsonDashboard:
                 widgets.HTML("<hr>"),
                 widgets.HTML("<h4>Column Mapping</h4>"),
                 tab_data['column_mapping_container'],
+                widgets.HTML("<hr>"),
+                widgets.HTML("<h4>Configuration Management</h4>"),
+                tab_data['config_name_input'],
+                widgets.HBox([tab_data['save_config_button'], tab_data['load_config_button']]),
                 widgets.HTML("<hr>"),
                 widgets.HTML("<h4>Query Options</h4>"),
                 tab_data['limit_input'],
@@ -683,115 +953,6 @@ class WatsonDashboard:
         )
         
         display(fig)
-    
-    def _show_threat_velocity_gauge(self):
-        """
-        Display a real-time threat velocity gauge showing threats detected per time period.
-        """
-        if not self.strategy_results:
-            print("⚠️ No analysis results available. Run some strategies first to see velocity metrics.")
-            return
-        
-        print("=" * 80)
-        print("⚡ THREAT VELOCITY METRICS")
-        print("=" * 80)
-        print()
-        
-        # Collect all threats with timestamps
-        all_threats = []
-        for strategy_name, result_data in self.strategy_results.items():
-            df = result_data['dataframe']
-            
-            # Find timestamp columns
-            timestamp_cols = [col for col in df.columns if 'timestamp' in col.lower() or 'time' in col.lower()]
-            
-            if timestamp_cols:
-                ts_col = timestamp_cols[0]
-                for idx, row in df.iterrows():
-                    ts = row[ts_col]
-                    if pd.notna(ts):
-                        all_threats.append({
-                            'timestamp': ts,
-                            'strategy': strategy_name
-                        })
-        
-        if not all_threats:
-            print("⚠️ No timestamp data available for velocity calculation")
-            return
-        
-        # Convert to DataFrame
-        threats_df = pd.DataFrame(all_threats)
-        threats_df['timestamp'] = pd.to_datetime(threats_df['timestamp'])
-        
-        # Calculate time span
-        min_time = threats_df['timestamp'].min()
-        max_time = threats_df['timestamp'].max()
-        time_span_hours = (max_time - min_time).total_seconds() / 3600
-        time_span_days = time_span_hours / 24
-        
-        total_count = len(threats_df)
-        
-        # Calculate velocities
-        threats_per_hour = total_count / time_span_hours if time_span_hours > 0 else 0
-        threats_per_day = total_count / time_span_days if time_span_days > 0 else 0
-        
-        # Display metrics
-        print(f"📊 Time Range: {min_time.strftime('%Y-%m-%d %H:%M')} to {max_time.strftime('%Y-%m-%d %H:%M')}")
-        print(f"⏱️  Duration: {time_span_days:.1f} days ({time_span_hours:.1f} hours)")
-        print(f"🎯 Total Threats: {total_count:,}")
-        print()
-        print("⚡ Threat Velocity:")
-        print(f"   • Per Hour: {threats_per_hour:.1f} threats/hour")
-        print(f"   • Per Day: {threats_per_day:.1f} threats/day")
-        print()
-        
-        # Show trend over time (by hour)
-        if HAS_PLOTLY and time_span_hours > 1:
-            threats_df['hour'] = threats_df['timestamp'].dt.floor('H')
-            hourly_counts = threats_df.groupby('hour').size()
-            
-            fig = go.Figure()
-            
-            # Line chart for trend
-            fig.add_trace(go.Scatter(
-                x=hourly_counts.index,
-                y=hourly_counts.values,
-                mode='lines+markers',
-                name='Threats per Hour',
-                line=dict(color='#ef4444', width=3),
-                marker=dict(size=8, color='#dc2626'),
-                fill='tozeroy',
-                fillcolor='rgba(239, 68, 68, 0.2)'
-            ))
-            
-            # Add average line
-            avg_line = [threats_per_hour] * len(hourly_counts)
-            fig.add_trace(go.Scatter(
-                x=hourly_counts.index,
-                y=avg_line,
-                mode='lines',
-                name=f'Average ({threats_per_hour:.1f}/hr)',
-                line=dict(color='#f59e0b', width=2, dash='dash')
-            ))
-            
-            fig.update_layout(
-                title='Threat Detection Velocity Over Time',
-                xaxis_title='Time',
-                yaxis_title='Threats Detected',
-                height=400,
-                hovermode='x unified',
-                showlegend=True
-            )
-            
-            display(fig)
-        
-        # Show top strategies by detection rate
-        strategy_counts = threats_df['strategy'].value_counts()
-        print("🏆 Top 5 Most Active Strategies:")
-        for i, (strategy, count) in enumerate(strategy_counts.head(5).items(), 1):
-            rate_per_day = count / time_span_days if time_span_days > 0 else 0
-            print(f"   {i}. {strategy}: {count} threats ({rate_per_day:.1f}/day)")
-        print()
     
     def _show_performance_statistics(self):
         """
@@ -1765,6 +1926,9 @@ class WatsonDashboard:
         
         display(HTML(summary_html))
         
+        # Add recommended data sources for this strategy
+        self._display_recommended_data_sources(strategy)
+        
         # Add score distribution visualization if plotly is available and we have scores
         if score_cols and HAS_PLOTLY:
             try:
@@ -1809,6 +1973,48 @@ class WatsonDashboard:
                 pass
         
         print()
+    
+    def _display_recommended_data_sources(self, strategy: HuntStrategy):
+        """
+        Display recommended data sources for a given strategy.
+        
+        Args:
+            strategy: The strategy to get recommendations for
+        """
+        recommendations = self._get_recommended_data_sources(strategy.name)
+        
+        if not recommendations:
+            return
+        
+        # Build HTML for recommendations
+        rec_html = f"""
+        <div style="background: {GRADIENT_GREEN_SUCCESS}; color: white; padding: 16px; border-radius: 12px; margin: 10px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h4 style="margin-top: 0; color: white;">📊 Recommended Data Sources for {html_lib.escape(strategy.name)}</h4>
+            <p style="color: rgba(255,255,255,0.95); margin-bottom: 12px;">Based on strategy analysis, these data sources are most relevant:</p>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+        """
+        
+        for i, rec in enumerate(recommendations, 1):
+            rec_html += f"""
+                <div style="background: rgba(255,255,255,0.2); padding: 12px; border-radius: 8px;">
+                    <div style="font-weight: bold; color: white; margin-bottom: 4px;">
+                        {i}. {html_lib.escape(rec['source'])}
+                    </div>
+                    <div style="font-size: 0.9em; color: rgba(255,255,255,0.9); margin-bottom: 4px;">
+                        {html_lib.escape(rec['description'])}
+                    </div>
+                    <div style="font-size: 0.85em; color: rgba(255,255,255,0.8);">
+                        Tags: {html_lib.escape(rec['tags'])}
+                    </div>
+                </div>
+            """
+        
+        rec_html += """
+            </div>
+        </div>
+        """
+        
+        display(HTML(rec_html))
     
     def _display_collapsible_explanations(self, explanations: dict, df: pd.DataFrame):
         """
@@ -2396,9 +2602,79 @@ class WatsonDashboard:
         
         return fields
     
+    def _suggest_fields_for_input(self, required_input: str, available_columns: list) -> list:
+        """
+        Suggest field matches for a required input based on keyword matching.
+        
+        Args:
+            required_input: The required input name (e.g., 'source_ip', 'timestamp')
+            available_columns: List of available column names in the table
+            
+        Returns:
+            List of suggested column names
+        """
+        # Define keyword mappings for common input types
+        input_keywords = {
+            'source_ip': ['source', 'src', 'orig', 'client', 'ip', 'addr', 'from'],
+            'dest_ip': ['dest', 'dst', 'resp', 'server', 'target', 'ip', 'addr', 'to'],
+            'timestamp': ['time', 'ts', 'date', 'datetime', 'created', 'occurred', 'start'],
+            'source_port': ['source', 'src', 'orig', 'sport', 'port'],
+            'dest_port': ['dest', 'dst', 'resp', 'dport', 'port'],
+            'bytes': ['bytes', 'size', 'length', 'data'],
+            'domain': ['domain', 'hostname', 'host', 'dns', 'fqdn'],
+            'query': ['query', 'search', 'request', 'dns'],
+            'user': ['user', 'username', 'account', 'login', 'principal'],
+            'result': ['result', 'status', 'outcome', 'success', 'failure', 'response'],
+            'process': ['process', 'proc', 'cmd', 'command', 'executable', 'exe'],
+            'file': ['file', 'path', 'filename', 'document'],
+            'action': ['action', 'operation', 'event', 'activity', 'type'],
+            'protocol': ['protocol', 'proto', 'service'],
+            'hash': ['hash', 'md5', 'sha', 'checksum'],
+            'url': ['url', 'uri', 'link', 'address']
+        }
+        
+        # Get keywords for this input type
+        keywords = []
+        input_lower = required_input.lower()
+        
+        # Direct match
+        if input_lower in input_keywords:
+            keywords = input_keywords[input_lower]
+        else:
+            # Try partial matches
+            for key, kws in input_keywords.items():
+                if key in input_lower or input_lower in key:
+                    keywords.extend(kws)
+        
+        if not keywords:
+            keywords = [input_lower]
+        
+        # Score and rank columns
+        suggestions = []
+        for col in available_columns:
+            col_lower = col.lower()
+            score = 0
+            
+            # Exact match is best
+            if col_lower == input_lower:
+                score = 100
+            else:
+                # Count keyword matches
+                for keyword in keywords:
+                    if keyword in col_lower:
+                        score += 10
+            
+            if score > 0:
+                suggestions.append((col, score))
+        
+        # Sort by score and return top matches
+        suggestions.sort(key=lambda x: x[1], reverse=True)
+        return [col for col, _ in suggestions[:3]]
+    
     def _build_column_mappings(self, tab_index: int):
         """
         Build dropdown widgets for mapping strategy inputs to table columns.
+        Now includes suggested field matches displayed next to each input.
         
         Args:
             tab_index: Index of the tab
@@ -2411,21 +2687,183 @@ class WatsonDashboard:
             tab_data['column_mapping_container'].children = []
             return
         
-        # Create a dropdown for each required input
-        dropdowns = []
+        # Create a dropdown and suggestion label for each required input
+        mapping_widgets = []
         tab_data['column_dropdowns'] = {}
         
         for required_input in strategy.required_inputs:
+            # Get field suggestions
+            suggestions = self._suggest_fields_for_input(required_input, available_columns)
+            
+            # Create dropdown
             dropdown = widgets.Dropdown(
                 options=available_columns,
                 description=f'{required_input}:',
-                style={'description_width': 'initial'}
+                style={'description_width': 'initial'},
+                layout=widgets.Layout(width='300px')
             )
-            dropdowns.append(dropdown)
+            
+            # Pre-select the top suggestion if available
+            if suggestions:
+                dropdown.value = suggestions[0]
+            
             tab_data['column_dropdowns'][required_input] = dropdown
+            
+            # Create suggestion label
+            if suggestions:
+                suggestion_text = f"💡 Suggested: {', '.join(suggestions[:3])}"
+                suggestion_label = widgets.HTML(
+                    value=f'<span style="color: #10b981; font-size: 0.9em; margin-left: 10px;">{suggestion_text}</span>',
+                    layout=widgets.Layout(width='auto')
+                )
+                
+                # Combine dropdown and suggestion in HBox
+                row = widgets.HBox([dropdown, suggestion_label])
+            else:
+                row = dropdown
+            
+            mapping_widgets.append(row)
         
         # Update container
-        tab_data['column_mapping_container'].children = dropdowns
+        tab_data['column_mapping_container'].children = mapping_widgets
+    
+    def _save_strategy_config(self, button, tab_index: int):
+        """
+        Save the current strategy configuration to cache for later reuse.
+        
+        Args:
+            button: Button widget that triggered this callback
+            tab_index: Index of the tab
+        """
+        tab_data = self.strategy_tab_contents[tab_index]
+        strategy = tab_data['strategy']
+        config_name = tab_data['config_name_input'].value
+        
+        if not config_name:
+            print("⚠️ Please enter a configuration name.")
+            return
+        
+        # Sanitize config name
+        config_name = re.sub(r'[^\w\-_\. ]', '', config_name)
+        
+        # Build configuration
+        config = {
+            'strategy_name': strategy.name,
+            'table': tab_data['table_dropdown'].value,
+            'column_mappings': {},
+            'limit': tab_data['limit_input'].value,
+            'enable_date_filter': tab_data['enable_date_filter'].value,
+            'start_date': str(tab_data['start_date'].value) if tab_data['start_date'].value else None,
+            'end_date': str(tab_data['end_date'].value) if tab_data['end_date'].value else None,
+            'saved_at': datetime.datetime.now().isoformat()
+        }
+        
+        # Save column mappings
+        for req_input, dropdown in tab_data['column_dropdowns'].items():
+            config['column_mappings'][req_input] = dropdown.value
+        
+        # Save to cache directory
+        config_dir = os.path.join(self.cache_dir, 'saved_configs')
+        os.makedirs(config_dir, exist_ok=True)
+        
+        config_file = os.path.join(config_dir, f"{config_name}.json")
+        
+        try:
+            with open(config_file, 'w') as f:
+                json.dump(config, f, indent=2)
+            print(f"✅ Configuration saved: {config_name}")
+            print(f"💾 Location: {config_file}")
+        except Exception as e:
+            print(f"❌ Failed to save configuration: {e}")
+    
+    def _load_strategy_config(self, button, tab_index: int):
+        """
+        Load a saved strategy configuration from cache.
+        
+        Args:
+            button: Button widget that triggered this callback
+            tab_index: Index of the tab
+        """
+        tab_data = self.strategy_tab_contents[tab_index]
+        strategy = tab_data['strategy']
+        config_name = tab_data['config_name_input'].value
+        
+        if not config_name:
+            # List available configs if no name provided
+            config_dir = os.path.join(self.cache_dir, 'saved_configs')
+            if os.path.exists(config_dir):
+                configs = [f.replace('.json', '') for f in os.listdir(config_dir) if f.endswith('.json')]
+                if configs:
+                    print("📂 Available saved configurations:")
+                    for cfg in sorted(configs):
+                        print(f"   • {cfg}")
+                    print()
+                    print("💡 Enter a config name and click 'Load Configuration' to load it.")
+                else:
+                    print("⚠️ No saved configurations found.")
+            else:
+                print("⚠️ No saved configurations found.")
+            return
+        
+        # Sanitize config name
+        config_name = re.sub(r'[^\w\-_\. ]', '', config_name)
+        
+        config_file = os.path.join(self.cache_dir, 'saved_configs', f"{config_name}.json")
+        
+        if not os.path.exists(config_file):
+            print(f"❌ Configuration not found: {config_name}")
+            return
+        
+        try:
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+            
+            # Verify it's for the correct strategy
+            if config['strategy_name'] != strategy.name:
+                print(f"⚠️ Configuration is for '{config['strategy_name']}', but current tab is '{strategy.name}'")
+                print("   Load anyway? The column mappings may not match.")
+                return
+            
+            # Load table
+            if config['table'] in tab_data['table_dropdown'].options:
+                tab_data['table_dropdown'].value = config['table']
+                
+                # Load table schema
+                tab_data['available_columns'] = self._get_table_columns(config['table'])
+                self._build_column_mappings(tab_index)
+                
+                # Load column mappings
+                for req_input, col_value in config['column_mappings'].items():
+                    if req_input in tab_data['column_dropdowns']:
+                        dropdown = tab_data['column_dropdowns'][req_input]
+                        if col_value in dropdown.options:
+                            dropdown.value = col_value
+                
+                # Load other settings
+                tab_data['limit_input'].value = config['limit']
+                tab_data['enable_date_filter'].value = config['enable_date_filter']
+                
+                if config['start_date']:
+                    try:
+                        tab_data['start_date'].value = date.fromisoformat(config['start_date'])
+                    except (ValueError, TypeError):
+                        pass
+                
+                if config['end_date']:
+                    try:
+                        tab_data['end_date'].value = date.fromisoformat(config['end_date'])
+                    except (ValueError, TypeError):
+                        pass
+                
+                saved_at = datetime.datetime.fromisoformat(config['saved_at'])
+                print(f"✅ Configuration loaded: {config_name}")
+                print(f"📅 Saved: {saved_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                print(f"📊 Table: {config['table']}")
+                print(f"🎯 Ready to run analysis!")
+            else:
+                print(f"❌ Table '{config['table']}' not found in available tables.")
+        except Exception as e:
+            print(f"❌ Failed to load configuration: {e}")
     
     def _run_parallel_analysis(self, strategy: HuntStrategy, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
         """
