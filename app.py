@@ -57,16 +57,16 @@ GRADIENT_PURPLE_VIOLET = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"  # 
 GRADIENT_PINK_MAGENTA = "linear-gradient(135deg, #ec4899 0%, #db2777 100%)"  # Pink/magenta
 
 # Common CSS style patterns - consolidated to improve maintainability
-CSS_METRIC_VALUE = "font-size: 3em; font-weight: bold; margin-bottom: 8px;"
-CSS_METRIC_LABEL = "font-size: 0.95em; opacity: 0.95;"
-CSS_METRIC_SUBLABEL = "font-size: 0.85em; opacity: 0.8; margin-top: 4px;"
-CSS_STAT_BOX = "background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;"
-CSS_CARD_TRANSLUCENT = "background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);"
-CSS_HEADING_LARGE = "font-size: 2em; font-weight: bold;"
-CSS_TEXT_SUBTLE = "font-size: 0.9em; opacity: 0.9;"
-CSS_TEXT_MUTED = "font-size: 0.9em; opacity: 0.95;"
-CSS_CONTENT_BOX = "padding: 8px; border: 1px solid #ddd;"
-CSS_LINE_HEIGHT = "line-height: 1.8;"
+CSS_METRIC_VALUE = "font-size: 3em; font-weight: bold; margin-bottom: 8px"
+CSS_METRIC_LABEL = "font-size: 0.95em; opacity: 0.95"
+CSS_METRIC_SUBLABEL = "font-size: 0.85em; opacity: 0.8; margin-top: 4px"
+CSS_STAT_BOX = "background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px"
+CSS_CARD_TRANSLUCENT = "background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2)"
+CSS_HEADING_LARGE = "font-size: 2em; font-weight: bold"
+CSS_TEXT_SUBTLE = "font-size: 0.9em; opacity: 0.9"
+CSS_TEXT_MUTED = "font-size: 0.9em; opacity: 0.95"
+CSS_CONTENT_BOX = "padding: 8px; border: 1px solid #ddd"
+CSS_LINE_HEIGHT = "line-height: 1.8"
 
 
 class WatsonDashboard:
@@ -2780,11 +2780,11 @@ class WatsonDashboard:
                     <div style="{CSS_TEXT_SUBTLE}">Correlated IPs</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
-                    <div style="{CSS_HEADING_LARGE} color: #ff6b6b;">{critical_count}</div>
+                    <div style="{CSS_HEADING_LARGE}; color: #ff6b6b">{critical_count}</div>
                     <div style="{CSS_TEXT_SUBTLE}">Critical Threats</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
-                    <div style="{CSS_HEADING_LARGE} color: #ffd93d;">{high_count}</div>
+                    <div style="{CSS_HEADING_LARGE}; color: #ffd93d">{high_count}</div>
                     <div style="{CSS_TEXT_SUBTLE}">High Priority</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
