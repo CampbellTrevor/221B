@@ -2028,7 +2028,7 @@ class WatsonDashboard:
                 table_html = '<table border="1" class="dataframe" style="border-collapse: collapse; width: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;">\n'
                 table_html += f'  <thead>\n    <tr style="text-align: right; background: {GRADIENT_BLUE_PURPLE}; color: white; font-weight: bold;">\n'
                 for col in page_df.columns:
-                    table_html += f'      <th style="padding: 8px; border: 1px solid #ddd;">{col}</th>\n'
+                    table_html += f'      <th style="{CSS_CONTENT_BOX}">{col}</th>\n'
                 table_html += '    </tr>\n  </thead>\n  <tbody>\n'
                 
                 for idx, row in page_df.iterrows():
@@ -2049,9 +2049,9 @@ class WatsonDashboard:
                         value = row[col]
                         # Format score column with badge
                         if col == score_col:
-                            table_html += f'      <td style="padding: 8px; border: 1px solid #ddd;">{value:.1f} {badge}</td>\n'
+                            table_html += f'      <td style="{CSS_CONTENT_BOX}">{value:.1f} {badge}</td>\n'
                         else:
-                            table_html += f'      <td style="padding: 8px; border: 1px solid #ddd;">{value}</td>\n'
+                            table_html += f'      <td style="{CSS_CONTENT_BOX}">{value}</td>\n'
                     table_html += '    </tr>\n'
                 
                 table_html += '  </tbody>\n</table>'
@@ -2805,7 +2805,7 @@ class WatsonDashboard:
         table_html = '<table border="1" class="dataframe" style="border-collapse: collapse; width: 100%;">\n'
         table_html += '  <thead>\n    <tr style="text-align: right; background-color: #e74c3c; color: white;">\n'
         for col in corr_df.columns:
-            table_html += f'      <th style="padding: 8px; border: 1px solid #ddd;">{html_lib.escape(str(col))}</th>\n'
+            table_html += f'      <th style="{CSS_CONTENT_BOX}">{html_lib.escape(str(col))}</th>\n'
         table_html += '    </tr>\n  </thead>\n  <tbody>\n'
         
         for _, row in corr_df.iterrows():
@@ -2826,10 +2826,10 @@ class WatsonDashboard:
                 if col == 'Threat Level':
                     # Threat level is our own controlled value, safe to insert
                     badge = f'<span style="background: {badge_color}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">{html_lib.escape(str(value))}</span>'
-                    table_html += f'      <td style="padding: 8px; border: 1px solid #ddd;">{badge}</td>\n'
+                    table_html += f'      <td style="{CSS_CONTENT_BOX}">{badge}</td>\n'
                 else:
                     # Escape all other values
-                    table_html += f'      <td style="padding: 8px; border: 1px solid #ddd;">{html_lib.escape(str(value))}</td>\n'
+                    table_html += f'      <td style="{CSS_CONTENT_BOX}">{html_lib.escape(str(value))}</td>\n'
             table_html += '    </tr>\n'
         
         table_html += '  </tbody>\n</table>'
@@ -3464,7 +3464,7 @@ class WatsonDashboard:
                 <h3 style="margin-top: 0;">💡 Quick Tips & Best Practices</h3>
                 
                 <h4>🚀 Quick Start Workflow:</h4>
-                <ol style="line-height: 1.8;">
+                <ol style="{CSS_LINE_HEIGHT}">
                     <li><strong>Select a Strategy Tab</strong> - Choose from {strategy_count} comprehensive threat hunting strategies</li>
                     <li><strong>Read the Recommendation</strong> - Each strategy shows when to use it and what data works best</li>
                     <li><strong>Load Data</strong> - Pick a table and map required columns</li>
@@ -3473,7 +3473,7 @@ class WatsonDashboard:
                 </ol>
                 
                 <h4>🎯 Power User Features:</h4>
-                <ul style="line-height: 1.8;">
+                <ul style="{CSS_LINE_HEIGHT}">
                     <li><strong>Threat Overview Dashboard:</strong> 🔥 Click 📊 Threat Overview to see ALL strategies at a glance with comprehensive visualizations</li>
                     <li><strong>Threat Velocity Gauge:</strong> 🆕 Click ⚡ Threat Velocity to monitor real-time threat detection rates and trends</li>
                     <li><strong>Metrics Dashboard:</strong> Click 📊 to view real-time threat intelligence with aggregated statistics and strategy comparisons</li>
@@ -3491,7 +3491,7 @@ class WatsonDashboard:
                 </ul>
                 
                 <h4>🔍 Investigation Strategy:</h4>
-                <ul style="line-height: 1.8;">
+                <ul style="{CSS_LINE_HEIGHT}">
                     <li><strong>Start Broad:</strong> Run multiple strategies on your data to get different perspectives</li>
                     <li><strong>Correlate:</strong> Use correlation analysis to identify systematic attackers</li>
                     <li><strong>Triage:</strong> Focus on high-severity (≥75 score) findings first</li>
@@ -3499,7 +3499,7 @@ class WatsonDashboard:
                 </ul>
                 
                 <h4>⚡ Performance Tips:</h4>
-                <ul style="line-height: 1.8;">
+                <ul style="{CSS_LINE_HEIGHT}">
                     <li>Use date filters to limit data range and improve speed</li>
                     <li>Start with smaller row limits (10,000) for initial exploration</li>
                     <li>Cache is automatically used for table listings (refreshes every 7 days)</li>
@@ -3507,7 +3507,7 @@ class WatsonDashboard:
                 </ul>
                 
                 <h4>📊 Understanding Scores:</h4>
-                <ul style="line-height: 1.8;">
+                <ul style="{CSS_LINE_HEIGHT}">
                     <li><strong>75-100 (Critical):</strong> Strong evidence of malicious activity - investigate immediately</li>
                     <li><strong>50-74 (High):</strong> Suspicious behavior worth investigating</li>
                     <li><strong>&lt;50 (Medium/Low):</strong> Anomalies that may be benign but worth noting</li>
