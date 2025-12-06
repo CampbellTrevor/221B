@@ -684,6 +684,295 @@ class WatsonDashboard:
             except Exception as e:
                 print(f"⚠️ Could not generate performance charts: {e}")
     
+    def _show_threat_timeline(self):
+        """
+        Display a temporal threat activity heatmap showing when threats were detected.
+        """
+        if not self.strategy_results:
+            print("⚠️ No threat data available yet. Run some strategies first.")
+            return
+        
+        print("=" * 80)
+        print("📅 TEMPORAL THREAT ACTIVITY ANALYSIS")
+        print("=" * 80)
+        print()
+        
+        # Collect all timestamps from results
+        timeline_data = []
+        
+        for strategy_name, result_data in self.strategy_results.items():
+            df = result_data['dataframe']
+            
+            # Look for timestamp columns
+            timestamp_cols = [col for col in df.columns if 'time' in col.lower() or 'date' in col.lower() or col == 'timestamp']
+            
+            if not timestamp_cols:
+                continue
+            
+            ts_col = timestamp_cols[0]
+            
+            # Find score column
+            score_cols = [col for col in df.columns if col.endswith('_score')]
+            if not score_cols:
+                continue
+            
+            score_col = score_cols[0]
+            
+            # Extract data
+            for _, row in df.iterrows():
+                try:
+                    ts = pd.to_datetime(row[ts_col])
+                    timeline_data.append({
+                        'timestamp': ts,
+                        'strategy': strategy_name.split('(')[0].strip()[:25],
+                        'score': row[score_col],
+                        'severity': 'High' if row[score_col] >= 75 else 'Medium' if row[score_col] >= 50 else 'Low'
+                    })
+                except:
+                    pass
+        
+        if not timeline_data:
+            print("⚠️ No timestamp data available in results. Strategies need timestamp columns for timeline analysis.")
+            return
+        
+        timeline_df = pd.DataFrame(timeline_data)
+        
+        # Display summary statistics
+        print(f"📊 Timeline Summary:")
+        print(f"   • Total threat events: {len(timeline_df):,}")
+        print(f"   • Date range: {timeline_df['timestamp'].min()} to {timeline_df['timestamp'].max()}")
+        print(f"   • Strategies with timeline data: {timeline_df['strategy'].nunique()}")
+        print()
+        
+        # Group by date and severity
+        timeline_df['date'] = timeline_df['timestamp'].dt.date
+        timeline_df['hour'] = timeline_df['timestamp'].dt.hour
+        
+        # Daily severity breakdown
+        daily_summary = timeline_df.groupby(['date', 'severity']).size().unstack(fill_value=0)
+        
+        print("📅 Daily Threat Activity:")
+        print("-" * 80)
+        display(HTML(daily_summary.to_html(classes='table')))
+        print()
+        
+        # Hourly heatmap if plotly available
+        if HAS_PLOTLY:
+            try:
+                # Create hourly heatmap
+                hourly_activity = timeline_df.groupby(['date', 'hour']).size().reset_index(name='count')
+                
+                # Pivot for heatmap
+                heatmap_data = hourly_activity.pivot(index='date', columns='hour', values='count').fillna(0)
+                
+                fig = go.Figure(data=go.Heatmap(
+                    z=heatmap_data.values,
+                    x=[f"{h:02d}:00" for h in heatmap_data.columns],
+                    y=[str(d) for d in heatmap_data.index],
+                    colorscale='YlOrRd',
+                    hoverongaps=False,
+                    colorbar=dict(title="Threat Count")
+                ))
+                
+                fig.update_layout(
+                    title='Threat Activity Heatmap (by Date and Hour)',
+                    xaxis_title='Hour of Day',
+                    yaxis_title='Date',
+                    height=400,
+                    yaxis={'autorange': 'reversed'}
+                )
+                
+                display(fig)
+                print()
+                
+                # Strategy timeline
+                strategy_timeline = timeline_df.groupby(['date', 'strategy', 'severity']).size().reset_index(name='count')
+                
+                fig2 = go.Figure()
+                
+                for severity in ['High', 'Medium', 'Low']:
+                    severity_data = strategy_timeline[strategy_timeline['severity'] == severity]
+                    
+                    color = '#ef4444' if severity == 'High' else '#f59e0b' if severity == 'Medium' else '#10b981'
+                    
+                    for strategy in severity_data['strategy'].unique():
+                        strat_data = severity_data[severity_data['strategy'] == strategy]
+                        
+                        fig2.add_trace(go.Scatter(
+                            x=strat_data['date'],
+                            y=strat_data['count'],
+                            mode='lines+markers',
+                            name=f"{strategy} ({severity})",
+                            line=dict(color=color, width=2),
+                            marker=dict(size=8),
+                            stackgroup='one' if severity == 'High' else None
+                        ))
+                
+                fig2.update_layout(
+                    title='Threat Detection Timeline by Strategy',
+                    xaxis_title='Date',
+                    yaxis_title='Threat Count',
+                    height=500,
+                    hovermode='x unified'
+                )
+                
+                display(fig2)
+                
+            except Exception as e:
+                print(f"⚠️ Could not generate timeline charts: {e}")
+        
+        print()
+        print("💡 Timeline Analysis Tips:")
+        print("   • Look for unusual spikes in activity")
+        print("   • Identify patterns in time-of-day attacks")
+        print("   • Correlate timeline with known incidents")
+        print("   • Use this to tune detection windows")
+    
+    def _show_smart_recommendations(self):
+        """
+        Provide intelligent recommendations for next steps based on current findings.
+        """
+        if not self.strategy_results:
+            print("⚠️ No analysis results yet. Run some strategies first to get recommendations.")
+            return
+        
+        print("=" * 80)
+        print("🎯 SMART RECOMMENDATIONS")
+        print("=" * 80)
+        print()
+        
+        # Analyze what's been detected so far
+        high_severity_strategies = []
+        medium_severity_strategies = []
+        run_strategies = set()
+        
+        for strategy_name, result_data in self.strategy_results.items():
+            df = result_data['dataframe']
+            run_strategies.add(strategy_name)
+            
+            # Find score column
+            score_cols = [col for col in df.columns if col.endswith('_score')]
+            if score_cols:
+                score_col = score_cols[0]
+                high_count = len(df[df[score_col] >= 75])
+                medium_count = len(df[(df[score_col] >= 50) & (df[score_col] < 75)])
+                
+                if high_count > 0:
+                    high_severity_strategies.append((strategy_name, high_count))
+                if medium_count > 0:
+                    medium_severity_strategies.append((strategy_name, medium_count))
+        
+        # Recommendation logic based on detection patterns
+        recommendations = []
+        
+        # Check which strategies have been run
+        all_strategy_names = [s.name for s in self.strategies]
+        unrun_strategies = [s for s in all_strategy_names if s not in run_strategies]
+        
+        # Provide context-aware recommendations
+        if any('Beacon' in s for s in high_severity_strategies):
+            recommendations.append({
+                'priority': 'HIGH',
+                'strategy': 'Port Scan Detector or Lateral Movement Detector',
+                'reason': 'Beaconing detected - check for reconnaissance and lateral movement',
+                'icon': '🔴'
+            })
+        
+        if any('Privilege Escalation' in s[0] for s in high_severity_strategies):
+            recommendations.append({
+                'priority': 'HIGH',
+                'strategy': 'Credential Dumping Detector',
+                'reason': 'Privilege escalation detected - check for credential theft',
+                'icon': '🔴'
+            })
+        
+        if any('Credential Dumping' in s[0] for s in high_severity_strategies):
+            recommendations.append({
+                'priority': 'HIGH',
+                'strategy': 'Lateral Movement Detector or Account Takeover Detector',
+                'reason': 'Credentials compromised - check for account misuse',
+                'icon': '🔴'
+            })
+        
+        if any('Webshell' in s[0] for s in high_severity_strategies):
+            recommendations.append({
+                'priority': 'HIGH',
+                'strategy': 'Data Staging Detector or Exfiltration Monitor',
+                'reason': 'Web shell detected - check for data theft preparation',
+                'icon': '🔴'
+            })
+        
+        if any('Ransomware' in s[0] for s in high_severity_strategies):
+            recommendations.append({
+                'priority': 'CRITICAL',
+                'strategy': 'Immediately isolate affected systems',
+                'reason': 'Ransomware indicators - immediate incident response required',
+                'icon': '🚨'
+            })
+        
+        if any('Exfiltration' in s for s in high_severity_strategies) or any('Data Staging' in s[0] for s in high_severity_strategies):
+            recommendations.append({
+                'priority': 'HIGH',
+                'strategy': 'Shadow IT Detector',
+                'reason': 'Data movement detected - check for unauthorized cloud uploads',
+                'icon': '🔴'
+            })
+        
+        # General recommendations based on coverage
+        if len(run_strategies) < 5:
+            recommendations.append({
+                'priority': 'MEDIUM',
+                'strategy': 'Run more detection strategies',
+                'reason': 'Increase coverage by running additional threat hunting strategies',
+                'icon': '🟡'
+            })
+        
+        if unrun_strategies:
+            top_unrun = unrun_strategies[:3]
+            recommendations.append({
+                'priority': 'LOW',
+                'strategy': ', '.join([s.split('(')[0].strip() for s in top_unrun]),
+                'reason': 'Consider running these strategies for comprehensive coverage',
+                'icon': '🟢'
+            })
+        
+        # Display recommendations
+        if recommendations:
+            for rec in recommendations:
+                priority_color = {
+                    'CRITICAL': '#dc2626',
+                    'HIGH': '#f59e0b',
+                    'MEDIUM': '#3b82f6',
+                    'LOW': '#10b981'
+                }
+                
+                rec_html = f"""
+                <div style="background: {priority_color.get(rec['priority'], '#6366f1')}; 
+                            color: white; padding: 16px; border-radius: 12px; margin: 10px 0;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="font-size: 1.2em; font-weight: bold; margin-bottom: 8px;">
+                        {rec['icon']} {rec['priority']} PRIORITY
+                    </div>
+                    <div style="font-size: 1.1em; margin-bottom: 6px;">
+                        <strong>Recommended Action:</strong> {rec['strategy']}
+                    </div>
+                    <div style="opacity: 0.95;">
+                        <strong>Reason:</strong> {rec['reason']}
+                    </div>
+                </div>
+                """
+                display(HTML(rec_html))
+        else:
+            print("✅ No specific recommendations at this time.")
+            print("   Continue monitoring with periodic strategy runs.")
+        
+        print()
+        print("💡 Best Practices:")
+        print("   • Follow high-priority recommendations first")
+        print("   • Run related strategies to understand the full attack chain")
+        print("   • Use correlation analysis to connect findings")
+        print("   • Document your investigation path for reporting")
+    
     def _on_load_table(self, button, tab_index: int):
         """
         Load table schema when button is pressed.
@@ -2328,6 +2617,22 @@ class WatsonDashboard:
             layout=widgets.Layout(width='140px')
         )
         
+        timeline_button = widgets.Button(
+            description='📅 Timeline',
+            button_style='',
+            tooltip='View temporal threat activity heatmap',
+            icon='calendar',
+            layout=widgets.Layout(width='120px')
+        )
+        
+        recommend_button = widgets.Button(
+            description='🎯 Recommendations',
+            button_style='',
+            tooltip='Get smart recommendations for next steps',
+            icon='lightbulb-o',
+            layout=widgets.Layout(width='170px')
+        )
+        
         help_button = widgets.Button(
             description='❓ Tips',
             button_style='',
@@ -2357,6 +2662,8 @@ class WatsonDashboard:
                 <ul style="line-height: 1.8;">
                     <li><strong>Metrics Dashboard:</strong> Click 📊 to view real-time threat intelligence with aggregated statistics and strategy comparisons</li>
                     <li><strong>Performance Stats:</strong> Click ⚡ to see execution times, throughput rates, and detection efficiency for each strategy</li>
+                    <li><strong>Timeline Analysis:</strong> Click 📅 to visualize when threats occurred with interactive heatmaps and temporal patterns</li>
+                    <li><strong>Smart Recommendations:</strong> Click 🎯 to get AI-powered suggestions on which strategies to run next based on findings</li>
                     <li><strong>Text Search:</strong> Use the 🔍 search box to filter results across all columns - find IPs, domains, or any text instantly</li>
                     <li><strong>Quick Triage:</strong> After running multiple analyses, click the 🚨 button to see all critical threats at once</li>
                     <li><strong>Correlation Analysis:</strong> Click 🔗 to find IPs appearing in multiple strategies - these are your highest-priority targets</li>
@@ -2423,6 +2730,16 @@ class WatsonDashboard:
                 clear_output(wait=True)
                 self._show_performance_statistics()
         
+        def on_timeline_click(b):
+            with action_output:
+                clear_output(wait=True)
+                self._show_threat_timeline()
+        
+        def on_recommend_click(b):
+            with action_output:
+                clear_output(wait=True)
+                self._show_smart_recommendations()
+        
         def on_help_click(b):
             show_tips()
         
@@ -2432,17 +2749,27 @@ class WatsonDashboard:
         export_all_button.on_click(on_export_all_click)
         metrics_button.on_click(on_metrics_click)
         performance_button.on_click(on_performance_click)
+        timeline_button.on_click(on_timeline_click)
+        recommend_button.on_click(on_recommend_click)
         help_button.on_click(on_help_click)
         
-        action_buttons = widgets.HBox([
+        # Split buttons into two rows for better layout
+        action_row1 = widgets.HBox([
             triage_button,
             correlation_button,
             report_button,
             export_all_button,
-            metrics_button,
+            metrics_button
+        ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))
+        
+        action_row2 = widgets.HBox([
             performance_button,
+            timeline_button,
+            recommend_button,
             help_button
-        ], layout=widgets.Layout(justify_content='flex-start', margin='10px 0'))
+        ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))
+        
+        action_buttons = widgets.VBox([action_row1, action_row2])
         
         # Arrange layout with tabs
         dashboard = widgets.VBox([

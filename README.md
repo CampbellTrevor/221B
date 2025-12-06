@@ -26,9 +26,12 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 - One-click severity filtering for rapid threat triage
 - Export respects current filters and sorting
 - Better visual feedback for high-priority threats
-- Cleaner, more intuitive interface
+- Cleaner, more intuitive interface with reorganized quick actions
 - Real-time performance tracking with execution time and throughput metrics
 - Advanced text search across all result columns for instant filtering
+- Interactive timeline analysis with temporal heatmaps
+- Smart recommendations that suggest next investigation steps
+- Context-aware workflow guidance based on detections
 
 **🎯 NEW: Advanced Analyst Workflow Features:**
 - **Quick Triage Dashboard** - View all high-severity threats across all strategies in one place
@@ -391,6 +394,20 @@ dashboard.display()
    - Compare detection efficiency across strategies
    - Identify fastest strategies for real-time analysis
    - Visual performance charts with Plotly
+
+7. **📅 Timeline** - Temporal threat activity analysis ✨ NEW
+   - Interactive heatmaps showing when threats occurred
+   - Hourly and daily threat activity patterns
+   - Detection timeline by strategy and severity
+   - Identify time-based attack patterns
+   - Perfect for understanding attack progression
+
+8. **🎯 Recommendations** - Smart next-step suggestions ✨ NEW
+   - AI-powered recommendations based on current findings
+   - Context-aware strategy suggestions
+   - Attack chain analysis and follow-up actions
+   - Priority-based recommendations (CRITICAL, HIGH, MEDIUM, LOW)
+   - Helps analysts stay ahead of attackers
 
 **Filtering Results by Severity:**
 - After running an analysis, use the quick filter buttons at the top of results
