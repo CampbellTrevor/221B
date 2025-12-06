@@ -2981,3 +2981,529 @@ class DataStagingStrategy(HuntStrategy):
             'flags': 'Specific data staging indicators detected',
             'staging_score': 'Overall data staging suspiciousness score (0-100). Higher scores indicate likely preparation for data exfiltration. Scores ≥50 suggest an insider threat or compromised account collecting data before exfiltration. Immediate investigation recommended'
         }
+
+
+class FilelessMalwareStrategy(HuntStrategy):
+    """
+    Fileless Malware Detector - Identifies memory-resident attacks and living-off-the-land techniques.
+    
+    Detects PowerShell abuse, WMI execution, suspicious script activity, and use of
+    legitimate system tools for malicious purposes (LOLBins). Critical for detecting
+    modern attacks that avoid writing files to disk.
+    """
+    
+    MIN_FILELESS_SCORE = 50
+    # Suspicious processes and commands commonly used in fileless attacks
+    SUSPICIOUS_PROCESSES = [
+        'powershell.exe', 'cmd.exe', 'wscript.exe', 'cscript.exe', 'mshta.exe',
+        'regsvr32.exe', 'rundll32.exe', 'wmic.exe', 'certutil.exe', 'bitsadmin.exe',
+        'psexec.exe', 'wmiprvse.exe', 'schtasks.exe', 'at.exe', 'sc.exe'
+    ]
+    SUSPICIOUS_KEYWORDS = [
+        'invoke-expression', 'iex', 'downloadstring', 'downloadfile', 'webclient',
+        'net.webclient', 'bitstransfer', 'encoded', '-enc', '-e ', 'bypass',
+        'hidden', 'noprofile', '-w hidden', 'reflection.assembly', 'mimikatz',
+        'invoke-mimikatz', 'powersploit', 'empire', 'cobalt', 'metasploit'
+    ]
+    
+    def _get_name(self) -> str:
+        return "Fileless Malware Detector (LOLBins & Memory Attacks)"
+    
+    def _get_required_inputs(self) -> list:
+        return ['source_ip', 'process_name', 'command_line']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze process execution logs to detect fileless malware patterns.
+        
+        Args:
+            df: DataFrame with process execution logs
+            col_map: Column mapping including source_ip, process_name, command_line
+        
+        Returns:
+            DataFrame with suspicious fileless attack indicators
+        """
+        src_col = col_map['source_ip']
+        proc_col = col_map['process_name']
+        cmd_col = col_map['command_line']
+        
+        df = df.copy()
+        df[proc_col] = df[proc_col].fillna('').astype(str).str.lower()
+        df[cmd_col] = df[cmd_col].fillna('').astype(str).str.lower()
+        
+        results = []
+        
+        # Group by source IP
+        for src_ip, group in df.groupby(src_col):
+            total_events = len(group)
+            
+            if total_events < 5:  # Need minimum events for analysis
+                continue
+            
+            fileless_score = 0.0
+            flags = []
+            suspicious_procs = set()
+            keyword_matches = []
+            
+            # Factor 1: Suspicious process execution (30 points)
+            for proc in self.SUSPICIOUS_PROCESSES:
+                matching_events = group[group[proc_col].str.contains(proc, regex=False)]
+                if not matching_events.empty:
+                    suspicious_procs.add(proc)
+                    fileless_score += min(len(matching_events) * 5, 30)  # Cap at 30
+            
+            if suspicious_procs:
+                flags.append(f"Suspicious processes: {', '.join(list(suspicious_procs)[:3])}")
+            
+            # Factor 2: Malicious keywords in command lines (40 points)
+            for keyword in self.SUSPICIOUS_KEYWORDS:
+                matching_cmds = group[group[cmd_col].str.contains(keyword, regex=False, na=False)]
+                if not matching_cmds.empty:
+                    keyword_matches.append(keyword)
+                    fileless_score += min(len(matching_cmds) * 8, 40)  # Cap at 40
+            
+            if keyword_matches:
+                flags.append(f"Malicious keywords: {', '.join(keyword_matches[:3])}")
+            
+            # Factor 3: Encoded/obfuscated commands (20 points)
+            encoded_count = group[group[cmd_col].str.contains('encoded|base64|-enc', regex=True, na=False)].shape[0]
+            if encoded_count > 0:
+                fileless_score += min(encoded_count * 10, 20)
+                flags.append(f"Encoded commands: {encoded_count}")
+            
+            # Factor 4: Multiple LOLBin usage (10 points)
+            lolbins_used = len(suspicious_procs)
+            if lolbins_used >= 3:
+                fileless_score += 10
+                flags.append(f"Multiple LOLBins: {lolbins_used}")
+            
+            # Only include if score meets threshold
+            if fileless_score >= self.MIN_FILELESS_SCORE:
+                results.append({
+                    'source_ip': src_ip,
+                    'total_events': total_events,
+                    'suspicious_processes': ', '.join(list(suspicious_procs)[:5]) if suspicious_procs else 'None',
+                    'suspicious_keywords': ', '.join(keyword_matches[:5]) if keyword_matches else 'None',
+                    'encoded_commands': encoded_count,
+                    'lolbins_count': lolbins_used,
+                    'flags': ' | '.join(flags),
+                    'fileless_score': min(fileless_score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('fileless_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate fileless malware visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=result_df['total_events'],
+            y=result_df['lolbins_count'],
+            mode='markers',
+            marker=dict(
+                size=result_df['encoded_commands'] * 3 + 10,
+                color=result_df['fileless_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Fileless<br>Score")
+            ),
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Events: {result_df.iloc[i]['total_events']}<br>LOLBins: {result_df.iloc[i]['lolbins_count']}<br>Encoded: {result_df.iloc[i]['encoded_commands']}<br>Score: {result_df.iloc[i]['fileless_score']:.0f}" 
+                  for i in range(len(result_df))],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title="Fileless Malware Detection: Event Volume vs LOLBin Diversity",
+            xaxis_title="Total Suspicious Events",
+            yaxis_title="Number of Different LOLBins Used",
+            hovermode='closest',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for FilelessMalwareStrategy output columns."""
+        return {
+            'source_ip': 'The IP address or host executing suspicious processes',
+            'total_events': 'Total number of process execution events observed',
+            'suspicious_processes': 'Living-off-the-land binaries (LOLBins) and attack tools detected (PowerShell, WMI, etc.)',
+            'suspicious_keywords': 'Malicious keywords found in command lines (Invoke-Expression, downloadstring, bypass, etc.)',
+            'encoded_commands': 'Number of encoded or obfuscated commands detected, often used to evade detection',
+            'lolbins_count': 'Count of different LOLBins used. Multiple tools suggest sophisticated attack',
+            'flags': 'Specific fileless attack indicators detected',
+            'fileless_score': 'Overall fileless malware suspiciousness score (0-100). Higher scores indicate likely memory-resident malware or living-off-the-land attack techniques. Scores ≥50 suggest active fileless attack in progress. Immediate memory forensics and incident response recommended'
+        }
+
+
+class APIAbuseStrategy(HuntStrategy):
+    """
+    API Abuse Detector - Identifies excessive API usage, rate limit violations, and token abuse.
+    
+    Detects automated scraping, credential stuffing via APIs, token theft, and
+    abnormal API consumption patterns that may indicate account compromise or
+    malicious automation.
+    """
+    
+    MIN_ABUSE_SCORE = 50
+    # API-specific HTTP methods and patterns
+    API_PATTERNS = ['/api/', '/v1/', '/v2/', '/v3/', '/rest/', '/graphql', '/oauth', '/token']
+    HIGH_RATE_THRESHOLD = 100  # Requests per minute threshold
+    
+    def _get_name(self) -> str:
+        return "API Abuse Detector (Scraping & Rate Limit Violations)"
+    
+    def _get_required_inputs(self) -> list:
+        return ['source_ip', 'url_path', 'status_code']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze API access logs to detect abuse patterns.
+        
+        Args:
+            df: DataFrame with API access logs
+            col_map: Column mapping including source_ip, url_path, status_code
+                     Optional: 'timestamp', 'user_agent', 'auth_token'
+        
+        Returns:
+            DataFrame with suspicious API abuse patterns
+        """
+        src_col = col_map['source_ip']
+        url_col = col_map['url_path']
+        status_col = col_map['status_code']
+        
+        df = df.copy()
+        df[url_col] = df[url_col].fillna('').astype(str).str.lower()
+        df[status_col] = df[status_col].astype(str)
+        
+        # Check optional columns
+        has_timestamp = 'timestamp' in col_map and col_map['timestamp'] in df.columns
+        has_ua = 'user_agent' in col_map and col_map['user_agent'] in df.columns
+        has_token = 'auth_token' in col_map and col_map['auth_token'] in df.columns
+        
+        if has_timestamp:
+            ts_col = col_map['timestamp']
+            df[ts_col] = pd.to_datetime(df[ts_col], errors='coerce')
+            df = df.dropna(subset=[ts_col])
+        
+        results = []
+        
+        # Group by source IP
+        for src_ip, group in df.groupby(src_col):
+            total_requests = len(group)
+            
+            if total_requests < 20:  # Need minimum requests for analysis
+                continue
+            
+            abuse_score = 0.0
+            flags = []
+            
+            # Factor 1: High request volume (30 points)
+            if total_requests >= 1000:
+                abuse_score += 30
+                flags.append(f"High volume: {total_requests} requests")
+            elif total_requests >= 500:
+                abuse_score += 20
+                flags.append(f"Elevated volume: {total_requests} requests")
+            
+            # Factor 2: Rate limit errors (40 points)
+            rate_limit_errors = group[group[status_col].str.contains('429|509', regex=True)].shape[0]
+            if rate_limit_errors > 10:
+                abuse_score += 40
+                flags.append(f"Rate limit hits: {rate_limit_errors}")
+            elif rate_limit_errors > 0:
+                abuse_score += 20
+                flags.append(f"Some rate limiting: {rate_limit_errors}")
+            
+            # Factor 3: API endpoint diversity (15 points for low diversity = scraping)
+            unique_paths = group[url_col].nunique()
+            path_diversity = unique_paths / total_requests if total_requests > 0 else 0
+            if path_diversity < 0.1 and total_requests >= 100:
+                abuse_score += 15
+                flags.append(f"Low endpoint diversity: {unique_paths} unique paths")
+            
+            # Factor 4: Rapid-fire timing (15 points)
+            if has_timestamp:
+                time_span = (group[ts_col].max() - group[ts_col].min()).total_seconds() / 60
+                if time_span > 0:
+                    requests_per_minute = total_requests / time_span
+                    if requests_per_minute >= self.HIGH_RATE_THRESHOLD:
+                        abuse_score += 15
+                        flags.append(f"High rate: {requests_per_minute:.1f} req/min")
+            
+            # Factor 5: Authentication failures (20 points)
+            auth_failures = group[group[status_col].str.contains('401|403', regex=True)].shape[0]
+            if auth_failures > total_requests * 0.3:
+                abuse_score += 20
+                flags.append(f"Auth failures: {auth_failures}")
+            
+            # Factor 6: Token switching (10 points if available)
+            if has_token:
+                token_col = col_map['auth_token']
+                unique_tokens = group[token_col].nunique()
+                if unique_tokens >= 5:
+                    abuse_score += 10
+                    flags.append(f"Token switching: {unique_tokens} different tokens")
+            
+            # Only include if score meets threshold
+            if abuse_score >= self.MIN_ABUSE_SCORE:
+                result_data = {
+                    'source_ip': src_ip,
+                    'total_requests': total_requests,
+                    'unique_endpoints': unique_paths,
+                    'rate_limit_errors': rate_limit_errors,
+                    'auth_failures': auth_failures,
+                    'endpoint_diversity': f"{path_diversity:.2%}",
+                    'flags': ' | '.join(flags),
+                    'abuse_score': min(abuse_score, 100)
+                }
+                
+                if has_timestamp:
+                    result_data['requests_per_minute'] = round(requests_per_minute, 1) if time_span > 0 else 0
+                
+                results.append(result_data)
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('abuse_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate API abuse visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=result_df['total_requests'],
+            y=result_df['rate_limit_errors'],
+            mode='markers',
+            marker=dict(
+                size=result_df['auth_failures'] / 10 + 10,
+                color=result_df['abuse_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Abuse<br>Score")
+            ),
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Requests: {result_df.iloc[i]['total_requests']}<br>Rate Limits: {result_df.iloc[i]['rate_limit_errors']}<br>Auth Fails: {result_df.iloc[i]['auth_failures']}<br>Score: {result_df.iloc[i]['abuse_score']:.0f}" 
+                  for i in range(len(result_df))],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title="API Abuse Detection: Request Volume vs Rate Limiting",
+            xaxis_title="Total API Requests",
+            yaxis_title="Rate Limit Errors",
+            hovermode='closest',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for APIAbuseStrategy output columns."""
+        return {
+            'source_ip': 'The IP address making suspicious API requests',
+            'total_requests': 'Total number of API requests made',
+            'unique_endpoints': 'Number of different API endpoints accessed. Low diversity with high volume suggests scraping',
+            'rate_limit_errors': 'Number of 429/509 rate limit errors received. High counts indicate aggressive automated access',
+            'auth_failures': 'Number of 401/403 authentication failures. High rates suggest credential stuffing or token abuse',
+            'endpoint_diversity': 'Percentage of unique endpoints vs total requests. Low values indicate repetitive scraping',
+            'requests_per_minute': 'Average API request rate. Very high rates indicate bot activity',
+            'flags': 'Specific API abuse indicators detected',
+            'abuse_score': 'Overall API abuse suspiciousness score (0-100). Higher scores indicate likely automated scraping, credential stuffing, or API token abuse. Scores ≥50 suggest active API abuse that may impact service availability or indicate data theft attempt'
+        }
+
+
+class ShadowITStrategy(HuntStrategy):
+    """
+    Shadow IT Detector - Identifies unauthorized cloud services and unapproved SaaS usage.
+    
+    Detects employees using personal cloud storage, unapproved collaboration tools,
+    unauthorized file sharing services, and data synchronization to non-corporate accounts.
+    Critical for data loss prevention and compliance.
+    """
+    
+    MIN_SHADOW_SCORE = 50
+    # Common shadow IT services and personal cloud storage
+    PERSONAL_CLOUD = [
+        'dropbox.com', 'box.com', 'drive.google.com', 'docs.google.com', 
+        'onedrive.live.com', 'icloud.com', 'mega.nz', 'mediafire.com',
+        'wetransfer.com', 'sendspace.com', 'filemail.com', 'tresorit.com'
+    ]
+    COLLAB_TOOLS = [
+        'slack.com', 'discord.com', 'telegram.org', 'whatsapp.com',
+        'zoom.us', 'teams.live.com', 'skype.com', 'gotomeeting.com'
+    ]
+    FILE_SHARING = [
+        'pastebin.com', 'github.com', 'gist.github.com', 'justpaste.it',
+        'hastebin.com', 'dpaste.com', 'ghostbin.com'
+    ]
+    
+    def _get_name(self) -> str:
+        return "Shadow IT Detector (Unauthorized Cloud & SaaS)"
+    
+    def _get_required_inputs(self) -> list:
+        return ['source_ip', 'dest_domain']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze web traffic to detect shadow IT usage.
+        
+        Args:
+            df: DataFrame with web traffic logs
+            col_map: Column mapping including source_ip, dest_domain
+                     Optional: 'bytes_uploaded', 'user_agent'
+        
+        Returns:
+            DataFrame with suspicious shadow IT usage
+        """
+        src_col = col_map['source_ip']
+        domain_col = col_map['dest_domain']
+        
+        df = df.copy()
+        df[domain_col] = df[domain_col].fillna('').astype(str).str.lower()
+        
+        # Check optional columns
+        has_upload = 'bytes_uploaded' in col_map and col_map['bytes_uploaded'] in df.columns
+        if has_upload:
+            upload_col = col_map['bytes_uploaded']
+            df[upload_col] = pd.to_numeric(df[upload_col], errors='coerce').fillna(0)
+        
+        results = []
+        
+        # Group by source IP
+        for src_ip, group in df.groupby(src_col):
+            total_connections = len(group)
+            
+            if total_connections < 5:
+                continue
+            
+            shadow_score = 0.0
+            flags = []
+            cloud_services = set()
+            collab_services = set()
+            file_sharing_services = set()
+            
+            # Factor 1: Personal cloud storage usage (40 points)
+            for service in self.PERSONAL_CLOUD:
+                matching = group[group[domain_col].str.contains(service, regex=False, na=False)]
+                if not matching.empty:
+                    cloud_services.add(service)
+                    shadow_score += min(len(matching) * 5, 40)
+            
+            if cloud_services:
+                flags.append(f"Personal cloud: {', '.join(list(cloud_services)[:2])}")
+            
+            # Factor 2: Unauthorized collaboration tools (30 points)
+            for service in self.COLLAB_TOOLS:
+                matching = group[group[domain_col].str.contains(service, regex=False, na=False)]
+                if not matching.empty:
+                    collab_services.add(service)
+                    shadow_score += min(len(matching) * 3, 30)
+            
+            if collab_services:
+                flags.append(f"Collab tools: {', '.join(list(collab_services)[:2])}")
+            
+            # Factor 3: File sharing/paste sites (20 points)
+            for service in self.FILE_SHARING:
+                matching = group[group[domain_col].str.contains(service, regex=False, na=False)]
+                if not matching.empty:
+                    file_sharing_services.add(service)
+                    shadow_score += min(len(matching) * 4, 20)
+            
+            if file_sharing_services:
+                flags.append(f"File sharing: {', '.join(list(file_sharing_services)[:2])}")
+            
+            # Factor 4: Data upload volume (10 points)
+            if has_upload:
+                total_upload_mb = group[upload_col].sum() / (1024 * 1024)
+                if total_upload_mb >= 100:
+                    shadow_score += 10
+                    flags.append(f"Upload volume: {total_upload_mb:.1f} MB")
+            
+            # Factor 5: Multiple shadow IT services (10 points)
+            total_shadow_services = len(cloud_services) + len(collab_services) + len(file_sharing_services)
+            if total_shadow_services >= 3:
+                shadow_score += 10
+                flags.append(f"Multiple services: {total_shadow_services}")
+            
+            # Only include if score meets threshold
+            if shadow_score >= self.MIN_SHADOW_SCORE:
+                result_data = {
+                    'source_ip': src_ip,
+                    'total_connections': total_connections,
+                    'cloud_services': ', '.join(list(cloud_services)[:3]) if cloud_services else 'None',
+                    'collab_tools': ', '.join(list(collab_services)[:3]) if collab_services else 'None',
+                    'file_sharing': ', '.join(list(file_sharing_services)[:3]) if file_sharing_services else 'None',
+                    'total_shadow_services': total_shadow_services,
+                    'flags': ' | '.join(flags),
+                    'shadow_score': min(shadow_score, 100)
+                }
+                
+                if has_upload:
+                    result_data['upload_mb'] = round(total_upload_mb, 1)
+                
+                results.append(result_data)
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('shadow_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate shadow IT visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=result_df['total_connections'],
+            y=result_df['total_shadow_services'],
+            mode='markers',
+            marker=dict(
+                size=15,
+                color=result_df['shadow_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Shadow IT<br>Score")
+            ),
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Connections: {result_df.iloc[i]['total_connections']}<br>Services: {result_df.iloc[i]['total_shadow_services']}<br>Score: {result_df.iloc[i]['shadow_score']:.0f}" 
+                  for i in range(len(result_df))],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title="Shadow IT Detection: Connection Volume vs Service Diversity",
+            xaxis_title="Total Connections",
+            yaxis_title="Number of Different Shadow IT Services",
+            hovermode='closest',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for ShadowITStrategy output columns."""
+        return {
+            'source_ip': 'The IP address accessing unauthorized services',
+            'total_connections': 'Total number of connections to shadow IT services',
+            'cloud_services': 'Personal cloud storage services detected (Dropbox, Google Drive, OneDrive, etc.)',
+            'collab_tools': 'Unauthorized collaboration tools detected (Slack, Discord, Telegram, etc.)',
+            'file_sharing': 'File sharing and paste sites detected (Pastebin, GitHub Gist, etc.)',
+            'total_shadow_services': 'Total count of different shadow IT services used',
+            'upload_mb': 'Total data uploaded to shadow IT services in megabytes',
+            'flags': 'Specific shadow IT usage indicators detected',
+            'shadow_score': 'Overall shadow IT risk score (0-100). Higher scores indicate significant use of unauthorized cloud services and collaboration tools. Scores ≥50 suggest active data exfiltration risk or policy violations requiring immediate attention'
+        }
