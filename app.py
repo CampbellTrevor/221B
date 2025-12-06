@@ -14,7 +14,7 @@ import json
 import os
 import time
 import datetime
-from datetime import timedelta, date
+from datetime import date
 from multiprocessing import cpu_count
 from ionic_scripting_framework import isf
 from strategies import HuntStrategy
@@ -23,7 +23,6 @@ import html as html_lib  # For HTML escaping
 # Try to import plotly for visualizations (optional)
 try:
     import plotly.graph_objects as go
-    import plotly.express as px
     HAS_PLOTLY = True
 except ImportError:
     HAS_PLOTLY = False
@@ -122,7 +121,7 @@ class WatsonDashboard:
                     cache_time = cache_time.replace(tzinfo=None)
                 age_seconds = (datetime.datetime.now() - cache_time).total_seconds()
                 return age_seconds / 86400  # Convert to days
-            except:
+            except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError):
                 return -1
         return -1
     
@@ -729,7 +728,7 @@ class WatsonDashboard:
         print(f"⏱️  Duration: {time_span_days:.1f} days ({time_span_hours:.1f} hours)")
         print(f"🎯 Total Threats: {total_count:,}")
         print()
-        print(f"⚡ Threat Velocity:")
+        print("⚡ Threat Velocity:")
         print(f"   • Per Hour: {threats_per_hour:.1f} threats/hour")
         print(f"   • Per Day: {threats_per_day:.1f} threats/day")
         print()
@@ -925,7 +924,8 @@ class WatsonDashboard:
                         'score': row[score_col],
                         'severity': 'High' if row[score_col] >= HIGH_SEVERITY_THRESHOLD else 'Medium' if row[score_col] >= MEDIUM_SEVERITY_THRESHOLD else 'Low'
                     })
-                except:
+                except (ValueError, KeyError, TypeError):
+                    # Skip rows with invalid timestamps
                     pass
         
         if not timeline_data:
@@ -935,7 +935,7 @@ class WatsonDashboard:
         timeline_df = pd.DataFrame(timeline_data)
         
         # Display summary statistics
-        print(f"📊 Timeline Summary:")
+        print("📊 Timeline Summary:")
         print(f"   • Total threat events: {len(timeline_df):,}")
         print(f"   • Date range: {timeline_df['timestamp'].min()} to {timeline_df['timestamp'].max()}")
         print(f"   • Strategies with timeline data: {timeline_df['strategy'].nunique()}")
@@ -1087,7 +1087,7 @@ class WatsonDashboard:
         ip_summary = ip_summary.sort_values('Max Score', ascending=False)
         
         # Display top threatening IPs
-        print(f"📊 Top 20 Most Threatening IP Addresses:")
+        print("📊 Top 20 Most Threatening IP Addresses:")
         print("-" * 80)
         
         top_ips = ip_summary.head(20).copy()
@@ -1175,7 +1175,6 @@ class WatsonDashboard:
         
         for strategy_name, result_data in self.strategy_results.items():
             df = result_data['dataframe']
-            strategy = result_data['strategy']
             
             if df.empty:
                 continue
@@ -1246,8 +1245,6 @@ class WatsonDashboard:
         # Visualization if plotly available
         if HAS_PLOTLY and len(insights_df) > 0:
             try:
-                from plotly.subplots import make_subplots
-                
                 # Create stacked bar chart of severity distribution
                 fig = go.Figure()
                 
@@ -1408,9 +1405,9 @@ class WatsonDashboard:
             
             # Risk indicator
             if row['🔴 Critical'] > 0:
-                print(f"   ⚠️  CRITICAL findings detected - investigate immediately!")
+                print("   ⚠️  CRITICAL findings detected - investigate immediately!")
             elif row['🟠 High'] > 10:
-                print(f"   ⚠️  Multiple high-severity findings - prioritize review")
+                print("   ⚠️  Multiple high-severity findings - prioritize review")
             
             print()
         
@@ -1425,8 +1422,6 @@ class WatsonDashboard:
         if HAS_PLOTLY and len(overview_df) > 0:
             try:
                 # Create a comprehensive dashboard with multiple visualizations
-                from plotly.subplots import make_subplots
-                
                 # Stacked bar chart of severity distribution
                 fig1 = go.Figure()
                 
@@ -1730,7 +1725,6 @@ class WatsonDashboard:
             score_col = score_cols[0]  # Use first score column
             high_severity = len(df[df[score_col] >= HIGH_SEVERITY_THRESHOLD])
             medium_severity = len(df[(df[score_col] >= MEDIUM_SEVERITY_THRESHOLD) & (df[score_col] < HIGH_SEVERITY_THRESHOLD)])
-            low_severity = len(df[df[score_col] < MEDIUM_SEVERITY_THRESHOLD])
             max_score = df[score_col].max()
             
             summary_html += f"""
@@ -1798,7 +1792,7 @@ class WatsonDashboard:
                 )
                 
                 display(fig)
-            except Exception as e:
+            except Exception:
                 # Silently fail if visualization doesn't work
                 pass
         
@@ -3315,7 +3309,7 @@ class WatsonDashboard:
         
         print()
         print("=" * 80)
-        print(f"📊 Export Summary:")
+        print("📊 Export Summary:")
         print(f"   • Format: {export_format.upper()}")
         print(f"   • Files created: {export_count}")
         print(f"   • Total rows: {total_rows}")

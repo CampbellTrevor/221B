@@ -12,14 +12,12 @@ import re
 from scipy.stats import entropy
 from multiprocessing import Pool
 from concurrent.futures import ThreadPoolExecutor
-from functools import partial
 from datetime import timedelta
 from collections import Counter
 
 # Try to import plotly for visualizations (optional)
 try:
     import plotly.graph_objects as go
-    import plotly.express as px
     HAS_PLOTLY = True
 except ImportError:
     HAS_PLOTLY = False
@@ -2284,7 +2282,7 @@ class CryptoMiningStrategy(HuntStrategy):
                 flags.append(f"Persistent connections: {total_connections} to {unique_dests} destinations")
             elif unique_dests <= 10 and total_connections >= 100:
                 mining_score += 15
-                flags.append(f"Many connections to few destinations")
+                flags.append("Many connections to few destinations")
             
             # Factor 4: Regular connection patterns (10 points)
             # Check if connections are evenly distributed (consistent timing)
@@ -2390,7 +2388,6 @@ class DNSAnomalyStrategy(HuntStrategy):
             return pd.DataFrame()
         
         # Map columns
-        ts_col = col_map['timestamp']
         src_col = col_map['source_ip']
         query_col = col_map['query_name']
         resp_col = col_map['response_code']
@@ -2588,7 +2585,6 @@ class AccountTakeoverStrategy(HuntStrategy):
         ts_col = col_map['timestamp']
         user_col = col_map['username']
         ip_col = col_map['source_ip']
-        action_col = col_map['action']
         status_col = col_map['status']
         
         # Convert timestamp to datetime if needed
@@ -2607,7 +2603,6 @@ class AccountTakeoverStrategy(HuntStrategy):
             # Extract data
             timestamps = group[ts_col].tolist()
             ips = group[ip_col].astype(str).tolist()
-            actions = group[action_col].astype(str).tolist()
             statuses = group[status_col].astype(str).tolist()
             
             # Calculate metrics
@@ -2618,11 +2613,6 @@ class AccountTakeoverStrategy(HuntStrategy):
             failed_attempts = sum(1 for s in statuses 
                                  if 'fail' in str(s).lower() or 'denied' in str(s).lower() 
                                  or '401' in str(s) or '403' in str(s))
-            
-            # Count successful events
-            success_attempts = sum(1 for s in statuses 
-                                  if 'success' in str(s).lower() or 'ok' in str(s).lower() 
-                                  or '200' in str(s))
             
             # Calculate failure rate
             failure_rate = failed_attempts / total_events if total_events > 0 else 0
@@ -3191,7 +3181,6 @@ class APIAbuseStrategy(HuntStrategy):
         
         # Check optional columns
         has_timestamp = 'timestamp' in col_map and col_map['timestamp'] in df.columns
-        has_ua = 'user_agent' in col_map and col_map['user_agent'] in df.columns
         has_token = 'auth_token' in col_map and col_map['auth_token'] in df.columns
         
         if has_timestamp:
@@ -6259,7 +6248,6 @@ class KerberosAttackStrategy(HuntStrategy):
             # Check for Kerberoasting - weak encryption types
             if enc_col and enc_col in group.columns:
                 weak_enc_types = ['rc4-hmac', 'rc4', 'des', 'arcfour']  # Order matters for matching
-                enc_values = group[enc_col].astype(str).str.lower()
                 # Count unique rows with weak encryption (not individual matches)
                 weak_enc_count = sum(any(wt in str(val).lower() for wt in weak_enc_types) for val in group[enc_col])
                 
@@ -6442,9 +6430,6 @@ class MacroMalwareStrategy(HuntStrategy):
             process_str = str(process).lower() if pd.notna(process) else ''
             
             # Check for Office file formats
-            office_extensions = ['.doc', '.docx', '.docm', '.xls', '.xlsx', '.xlsm', '.ppt', '.pptx', '.pptm']
-            is_office_file = any(ext in filename_str for ext in office_extensions)
-            
             # Check for macro-enabled formats
             if any(ext in filename_str for ext in ['.docm', '.xlsm', '.pptm']):
                 score += 20
@@ -6459,7 +6444,7 @@ class MacroMalwareStrategy(HuntStrategy):
             suspicious_found = [kw for kw in vba_suspicious if kw in content_str]
             if suspicious_found:
                 score += 15 * min(len(suspicious_found), 4)  # Cap at 4 keywords
-                flags.append(f'suspicious_vba_keywords')
+                flags.append('suspicious_vba_keywords')
             
             # Check for AutoOpen/AutoExec
             if any(auto in content_str for auto in ['autoopen', 'autoexec', 'auto_open', 'workbook_open']):
