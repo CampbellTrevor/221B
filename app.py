@@ -77,6 +77,9 @@ class WatsonDashboard:
         # Results storage for cross-strategy correlation
         self.strategy_results = {}  # Dict to store results from each strategy
         
+        # Performance tracking for strategy execution
+        self.strategy_performance = {}  # Dict to store execution time and stats
+        
         # Initialize UI
         self._initialize_ui()
     
@@ -581,6 +584,105 @@ class WatsonDashboard:
         )
         
         display(fig)
+    
+    def _show_performance_statistics(self):
+        """
+        Display strategy performance statistics including execution time and detection rates.
+        """
+        if not self.strategy_performance:
+            print("⚠️ No performance data available yet. Run some strategies first.")
+            return
+        
+        print("=" * 80)
+        print("📊 STRATEGY PERFORMANCE STATISTICS")
+        print("=" * 80)
+        print()
+        
+        # Build performance table
+        perf_data = []
+        for strategy_name, perf in self.strategy_performance.items():
+            perf_data.append({
+                'Strategy': strategy_name.split('(')[0].strip()[:30],
+                'Exec Time (s)': f"{perf['execution_time']:.2f}",
+                'Rows/Sec': f"{perf['rows_per_second']:.0f}",
+                'Rows Analyzed': f"{perf['rows_analyzed']:,}",
+                'Detections': f"{perf['detections']:,}",
+                'Detection %': f"{perf['detection_rate']:.2f}%",
+                'Timestamp': perf['timestamp'].strftime('%H:%M:%S')
+            })
+        
+        perf_df = pd.DataFrame(perf_data)
+        
+        # Sort by execution time (fastest first)
+        perf_df = perf_df.sort_values('Exec Time (s)')
+        
+        # Display as formatted table
+        display(HTML(perf_df.to_html(index=False, escape=False, classes='table')))
+        
+        print()
+        print("💡 Performance Tips:")
+        print("   • Faster strategies are better for real-time analysis")
+        print("   • High detection rates may indicate noisy data or loose thresholds")
+        print("   • Low detection rates may indicate clean data or tight thresholds")
+        print()
+        
+        # Add visualization if plotly is available
+        if HAS_PLOTLY and len(perf_data) > 1:
+            try:
+                from plotly.subplots import make_subplots
+                
+                fig = make_subplots(
+                    rows=1, cols=2,
+                    subplot_titles=('Execution Time by Strategy', 'Throughput (Rows/Second)'),
+                    specs=[[{"type": "bar"}, {"type": "bar"}]]
+                )
+                
+                # Execution time chart
+                exec_times = [perf['execution_time'] for perf in self.strategy_performance.values()]
+                strategy_names = [name.split('(')[0].strip()[:20] for name in self.strategy_performance.keys()]
+                
+                fig.add_trace(
+                    go.Bar(
+                        x=strategy_names,
+                        y=exec_times,
+                        marker=dict(color=exec_times, colorscale='Viridis', showscale=False),
+                        name='Execution Time',
+                        text=[f"{t:.2f}s" for t in exec_times],
+                        textposition='outside'
+                    ),
+                    row=1, col=1
+                )
+                
+                # Throughput chart
+                throughputs = [perf['rows_per_second'] for perf in self.strategy_performance.values()]
+                
+                fig.add_trace(
+                    go.Bar(
+                        x=strategy_names,
+                        y=throughputs,
+                        marker=dict(color=throughputs, colorscale='Turbo', showscale=False),
+                        name='Rows/Second',
+                        text=[f"{int(t)}" for t in throughputs],
+                        textposition='outside'
+                    ),
+                    row=1, col=2
+                )
+                
+                fig.update_xaxes(tickangle=-45, row=1, col=1)
+                fig.update_xaxes(tickangle=-45, row=1, col=2)
+                fig.update_yaxes(title_text="Seconds", row=1, col=1)
+                fig.update_yaxes(title_text="Rows/Second", row=1, col=2)
+                
+                fig.update_layout(
+                    showlegend=False,
+                    height=450,
+                    margin=dict(b=120)
+                )
+                
+                display(fig)
+                
+            except Exception as e:
+                print(f"⚠️ Could not generate performance charts: {e}")
     
     def _on_load_table(self, button, tab_index: int):
         """
@@ -1434,10 +1536,15 @@ class WatsonDashboard:
                 print(f"✅ Retrieved {len(df)} rows from {current_table}")
                 print()
                 
-                # Run strategy analysis with multiprocessing support
+                # Run strategy analysis with multiprocessing support and time tracking
                 print(f"🔬 Analyzing data with {strategy.name}...")
                 progress_bar.value = 60
+                
+                # Track execution time
+                analysis_start_time = time.time()
                 result_df = self._run_parallel_analysis(strategy, df, col_map)
+                analysis_duration = time.time() - analysis_start_time
+                
                 progress_bar.value = 100
                 progress_label.value = "<b>Analysis complete!</b>"
                 progress_bar.bar_style = 'success'
@@ -1451,12 +1558,23 @@ class WatsonDashboard:
                     return
                 
                 print(f"✅ Analysis complete! Found {len(result_df)} results.")
+                print(f"⏱️  Analysis time: {analysis_duration:.2f} seconds ({len(df)/analysis_duration:.0f} rows/sec)")
                 print()
                 
                 # Store results for correlation analysis
                 self.strategy_results[strategy.name] = {
                     'dataframe': result_df.copy(),
                     'strategy': strategy,
+                    'timestamp': datetime.datetime.now()
+                }
+                
+                # Store performance metrics
+                self.strategy_performance[strategy.name] = {
+                    'execution_time': analysis_duration,
+                    'rows_analyzed': len(df),
+                    'rows_per_second': len(df) / analysis_duration if analysis_duration > 0 else 0,
+                    'detections': len(result_df),
+                    'detection_rate': len(result_df) / len(df) * 100 if len(df) > 0 else 0,
                     'timestamp': datetime.datetime.now()
                 }
                 
@@ -2202,6 +2320,14 @@ class WatsonDashboard:
             layout=widgets.Layout(width='180px')
         )
         
+        performance_button = widgets.Button(
+            description='⚡ Performance',
+            button_style='',
+            tooltip='View strategy execution performance statistics',
+            icon='clock-o',
+            layout=widgets.Layout(width='140px')
+        )
+        
         help_button = widgets.Button(
             description='❓ Tips',
             button_style='',
@@ -2230,6 +2356,7 @@ class WatsonDashboard:
                 <h4>🎯 Power User Features:</h4>
                 <ul style="line-height: 1.8;">
                     <li><strong>Metrics Dashboard:</strong> Click 📊 to view real-time threat intelligence with aggregated statistics and strategy comparisons</li>
+                    <li><strong>Performance Stats:</strong> Click ⚡ to see execution times, throughput rates, and detection efficiency for each strategy</li>
                     <li><strong>Text Search:</strong> Use the 🔍 search box to filter results across all columns - find IPs, domains, or any text instantly</li>
                     <li><strong>Quick Triage:</strong> After running multiple analyses, click the 🚨 button to see all critical threats at once</li>
                     <li><strong>Correlation Analysis:</strong> Click 🔗 to find IPs appearing in multiple strategies - these are your highest-priority targets</li>
@@ -2291,6 +2418,11 @@ class WatsonDashboard:
                 clear_output(wait=True)
                 self._show_threat_metrics_dashboard()
         
+        def on_performance_click(b):
+            with action_output:
+                clear_output(wait=True)
+                self._show_performance_statistics()
+        
         def on_help_click(b):
             show_tips()
         
@@ -2299,6 +2431,7 @@ class WatsonDashboard:
         report_button.on_click(on_report_click)
         export_all_button.on_click(on_export_all_click)
         metrics_button.on_click(on_metrics_click)
+        performance_button.on_click(on_performance_click)
         help_button.on_click(on_help_click)
         
         action_buttons = widgets.HBox([
@@ -2307,6 +2440,7 @@ class WatsonDashboard:
             report_button,
             export_all_button,
             metrics_button,
+            performance_button,
             help_button
         ], layout=widgets.Layout(justify_content='flex-start', margin='10px 0'))
         
