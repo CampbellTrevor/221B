@@ -772,7 +772,22 @@ class WatsonDashboard:
         current_page = {'value': 0}
         current_sort = {'column': '(unsorted)', 'ascending': False}
         current_filter = {'level': 'All'}
+        current_search = {'text': ''}
         cached_sorted_df = {'df': full_df, 'total_pages': 1}  # Cache for sorted DataFrame
+        
+        # Create text search box
+        search_box = widgets.Text(
+            placeholder='Search in results... (searches all columns)',
+            description='🔍 Search:',
+            style={'description_width': 'initial'},
+            layout=widgets.Layout(width='400px')
+        )
+        
+        clear_search_button = widgets.Button(
+            description='Clear',
+            button_style='',
+            layout=widgets.Layout(width='80px')
+        )
         
         # Create sorting controls
         sort_column = widgets.Dropdown(
@@ -833,18 +848,23 @@ class WatsonDashboard:
         
         def get_sorted_df():
             """Get the dataframe with current sorting and filtering applied (cached)."""
-            # First apply filtering
-            if has_score_column and current_filter['level'] != 'All':
-                if current_filter['level'] == 'High (≥75)':
-                    filtered_df = full_df[full_df[score_col] >= 75]
-                elif current_filter['level'] == 'Medium (50-74)':
-                    filtered_df = full_df[(full_df[score_col] >= 50) & (full_df[score_col] < 75)]
-                elif current_filter['level'] == 'Low (<50)':
-                    filtered_df = full_df[full_df[score_col] < 50]
-                else:
-                    filtered_df = full_df
+            # First apply text search if present
+            if current_search['text']:
+                search_term = current_search['text'].lower()
+                # Search across all string columns
+                mask = full_df.astype(str).apply(lambda x: x.str.lower().str.contains(search_term, na=False, regex=False)).any(axis=1)
+                filtered_df = full_df[mask]
             else:
                 filtered_df = full_df
+            
+            # Then apply severity filtering
+            if has_score_column and current_filter['level'] != 'All':
+                if current_filter['level'] == 'High (≥75)':
+                    filtered_df = filtered_df[filtered_df[score_col] >= 75]
+                elif current_filter['level'] == 'Medium (50-74)':
+                    filtered_df = filtered_df[(filtered_df[score_col] >= 50) & (filtered_df[score_col] < 75)]
+                elif current_filter['level'] == 'Low (<50)':
+                    filtered_df = filtered_df[filtered_df[score_col] < 50]
             
             # Then apply sorting
             if current_sort['column'] != '(unsorted)':
@@ -954,6 +974,21 @@ class WatsonDashboard:
                 current_page['value'] += 1
                 update_table()
         
+        def on_search_change(change):
+            """Handle search text changes."""
+            current_search['text'] = search_box.value
+            current_page['value'] = 0  # Reset to first page when searching
+            get_sorted_df()  # Refresh cache
+            update_table()
+        
+        def on_clear_search_click(b):
+            """Handle clear search button click."""
+            search_box.value = ''
+            current_search['text'] = ''
+            current_page['value'] = 0
+            get_sorted_df()
+            update_table()
+        
         def on_export_click(b):
             """Handle export button click."""
             with export_output:
@@ -974,6 +1009,8 @@ class WatsonDashboard:
                     print(f"❌ Export failed: {e}")
         
         # Attach observers and handlers
+        search_box.observe(on_search_change, names='value')
+        clear_search_button.on_click(on_clear_search_click)
         sort_column.observe(on_sort_change, names='value')
         sort_order.observe(on_sort_change, names='value')
         if filter_buttons:
@@ -995,12 +1032,17 @@ class WatsonDashboard:
             widgets.HTML("<h4>📊 Results</h4>"),
         ]
         
+        # Add search box
+        ui_components.append(widgets.HTML("<div style='margin: 10px 0;'><b>🔍 Text Search & Filters:</b></div>"))
+        ui_components.append(widgets.HBox([search_box, clear_search_button]))
+        
         # Add filter buttons if score column exists
         if filter_buttons:
-            ui_components.append(widgets.HTML("<div style='margin: 5px 0;'><b>Quick Filter:</b></div>"))
+            ui_components.append(widgets.HTML("<div style='margin: 10px 0 5px 0;'><b>Severity Filter:</b></div>"))
             ui_components.append(filter_buttons)
         
         ui_components.extend([
+            widgets.HTML("<div style='margin: 10px 0 5px 0;'><b>Sort & Export:</b></div>"),
             sort_controls,
             export_output,
             pagination_controls,
@@ -2184,10 +2226,12 @@ class WatsonDashboard:
                 <h4>🎯 Power User Features:</h4>
                 <ul style="line-height: 1.8;">
                     <li><strong>Metrics Dashboard:</strong> Click 📊 to view real-time threat intelligence with aggregated statistics and strategy comparisons</li>
+                    <li><strong>Text Search:</strong> Use the 🔍 search box to filter results across all columns - find IPs, domains, or any text instantly</li>
                     <li><strong>Quick Triage:</strong> After running multiple analyses, click the 🚨 button to see all critical threats at once</li>
                     <li><strong>Correlation Analysis:</strong> Click 🔗 to find IPs appearing in multiple strategies - these are your highest-priority targets</li>
                     <li><strong>HTML Reports:</strong> Generate professional reports with the 📄 button for management briefings</li>
                     <li><strong>Export Options:</strong> All views support CSV export for further analysis in Excel or other tools</li>
+                    <li><strong>Multi-Filter:</strong> Combine text search with severity filters and sorting for precise threat identification</li>
                 </ul>
                 
                 <h4>🔍 Investigation Strategy:</h4>
