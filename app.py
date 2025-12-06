@@ -105,8 +105,248 @@ class WatsonDashboard:
         # Performance tracking for strategy execution
         self.strategy_performance = {}  # Dict to store execution time and stats
         
+        # Load data dictionary for recommendations
+        self.data_dictionary = self._load_data_dictionary()
+        
         # Initialize UI
         self._initialize_ui()
+    
+    def _load_data_dictionary(self) -> dict:
+        """
+        Load hard-coded data source recommendations from GN Data Dictionary.
+        
+        Returns:
+            Dictionary with data source information
+        """
+        # Hard-coded data sources from GN Data Dictionary V3.5.1
+        data_sources = {
+            # Network/Connection data sources
+            'zeek_conn_c': {
+                'description': 'Zeek connection logs capturing network traffic metadata including source/destination IPs, ports, protocols, and byte counts',
+                'tags': 'zeek,network,conn,flow',
+                'category': 'network'
+            },
+            'zeek_conn_e': {
+                'description': 'Zeek connection logs from Europe region capturing network traffic metadata',
+                'tags': 'zeek,network,conn,flow',
+                'category': 'network'
+            },
+            'cisco_asa_c': {
+                'description': 'Cisco ASA firewall logs capturing network traffic and security events including connection attempts, blocks, and policy violations',
+                'tags': 'cisco,network,firewall',
+                'category': 'network'
+            },
+            'cisco_asa_e': {
+                'description': 'Cisco ASA firewall logs from Europe capturing network security events',
+                'tags': 'cisco,network,firewall',
+                'category': 'network'
+            },
+            'palo_alto_c': {
+                'description': 'Palo Alto Networks firewall logs with traffic, threat, and URL filtering data',
+                'tags': 'firewall,network,security',
+                'category': 'network'
+            },
+            
+            # DNS data sources
+            'cpb_zeek_dns_mission': {
+                'description': 'Zeek DNS logs capturing domain name queries and responses for network activity analysis',
+                'tags': 'zeek,network,dns,domain',
+                'category': 'dns'
+            },
+            'cpb_zeek_dns_exercise': {
+                'description': 'Zeek DNS logs from exercise environments for DNS query analysis',
+                'tags': 'zeek,network,dns,domain',
+                'category': 'dns'
+            },
+            'dns_c': {
+                'description': 'DNS server logs with query details and internal processing from CONUS region',
+                'tags': 'dns,query,domain',
+                'category': 'dns'
+            },
+            'dns_e': {
+                'description': 'DNS server logs from Europe region capturing domain queries',
+                'tags': 'dns,query,domain',
+                'category': 'dns'
+            },
+            
+            # Authentication/Access data sources
+            'a365_il4_audit_signin': {
+                'description': 'Office 365 sign-in audit logs with user authentication attempts and results',
+                'tags': 'azure,m365,o365,cloud,auth,login',
+                'category': 'auth'
+            },
+            'a365_il5_audit_signin': {
+                'description': 'Office 365 IL5 sign-in audit logs for authentication tracking',
+                'tags': 'azure,m365,o365,cloud,auth,login',
+                'category': 'auth'
+            },
+            'windows_security_c': {
+                'description': 'Windows Security event logs capturing authentication, access control, and security events',
+                'tags': 'windows,security,auth,endpoint',
+                'category': 'auth'
+            },
+            'windows_security_e': {
+                'description': 'Windows Security logs from Europe capturing authentication and security events',
+                'tags': 'windows,security,auth,endpoint',
+                'category': 'auth'
+            },
+            
+            # Web/HTTP data sources
+            'zeek_http_c': {
+                'description': 'Zeek HTTP logs capturing web traffic including URLs, methods, user agents, and response codes',
+                'tags': 'zeek,http,web,proxy',
+                'category': 'web'
+            },
+            'zeek_http_e': {
+                'description': 'Zeek HTTP logs from Europe capturing web activity',
+                'tags': 'zeek,http,web,proxy',
+                'category': 'web'
+            },
+            'bluecoat_proxy_c': {
+                'description': 'Blue Coat proxy logs with web traffic, URL filtering, and user activity',
+                'tags': 'proxy,web,http,url',
+                'category': 'web'
+            },
+            
+            # Cloud/Azure/O365 data sources
+            'a365_il4_alerts': {
+                'description': 'Office 365 security alerts from Microsoft Cloud App Security indicating various security threats',
+                'tags': 'azure,m365,o365,cloud,alerts',
+                'category': 'cloud'
+            },
+            'a365_il4_audit_directory': {
+                'description': 'Azure AD directory audit logs capturing changes and actions in the directory service',
+                'tags': 'azure,m365,o365,cloud,directory',
+                'category': 'cloud'
+            },
+            'a365_il4_application_devices': {
+                'description': 'Azure AD application registration and device configuration data',
+                'tags': 'azure,m365,o365,cloud,inventory,application',
+                'category': 'cloud'
+            },
+            
+            # Endpoint/Process data sources
+            'windows_sysmon_c': {
+                'description': 'Windows Sysmon logs capturing detailed process creation, network connections, and file operations',
+                'tags': 'windows,sysmon,process,endpoint',
+                'category': 'endpoint'
+            },
+            'windows_sysmon_e': {
+                'description': 'Windows Sysmon logs from Europe with process and file activity',
+                'tags': 'windows,sysmon,process,endpoint',
+                'category': 'endpoint'
+            },
+            'windows_powershell_c': {
+                'description': 'Windows PowerShell logs capturing script execution and command activity',
+                'tags': 'windows,powershell,process,endpoint',
+                'category': 'endpoint'
+            },
+            
+            # File/Email data sources
+            'zeek_files_c': {
+                'description': 'Zeek file logs capturing file transfers over network protocols with hashes',
+                'tags': 'zeek,file,hash,network',
+                'category': 'file'
+            },
+            'email_logs': {
+                'description': 'Email gateway logs with sender, recipient, attachments, and delivery status',
+                'tags': 'email,smtp,attachment',
+                'category': 'email'
+            },
+            
+            # Vulnerability data sources
+            'acas_c': {
+                'description': 'ACAS vulnerability scan results with CVE details and host information',
+                'tags': 'vulnerabilities,CVEs,scan',
+                'category': 'vulnerability'
+            },
+            'acas_e': {
+                'description': 'ACAS vulnerability scans from Europe region',
+                'tags': 'vulnerabilities,CVEs,scan',
+                'category': 'vulnerability'
+            },
+        }
+        
+        print(f"📚 Loaded {len(data_sources)} hard-coded data source recommendations")
+        return data_sources
+    
+    def _get_recommended_data_sources(self, strategy_name: str) -> list:
+        """
+        Get recommended data sources for a given strategy based on keywords.
+        
+        Args:
+            strategy_name: Name of the hunting strategy
+            
+        Returns:
+            List of recommended data source dictionaries
+        """
+        if not self.data_dictionary:
+            return []
+        
+        # Define keyword mappings for different strategy types
+        strategy_keywords = {
+            'beacon': ['network', 'conn', 'connection', 'flow', 'firewall', 'zeek'],
+            'entropy': ['dns', 'domain', 'query', 'network'],
+            'exfiltration': ['network', 'conn', 'flow', 'firewall', 'proxy'],
+            'port': ['network', 'conn', 'scan', 'firewall'],
+            'brute': ['auth', 'login', 'signin', 'authentication', 'security'],
+            'tunnel': ['network', 'conn', 'protocol', 'flow'],
+            'web': ['http', 'web', 'proxy', 'url'],
+            'shell': ['file', 'process', 'windows', 'endpoint'],
+            'credential': ['auth', 'login', 'security', 'kerberos', 'windows'],
+            'ransomware': ['file', 'process', 'endpoint', 'windows', 'sysmon'],
+            'privilege': ['windows', 'process', 'security', 'endpoint'],
+            'fileless': ['process', 'powershell', 'windows', 'endpoint', 'sysmon'],
+            'api': ['api', 'application', 'cloud', 'azure', 'm365', 'o365'],
+            'shadow': ['cloud', 'application', 'azure', 'o365'],
+            'supply': ['file', 'hash', 'zeek'],
+            'container': ['docker', 'kubernetes', 'container', 'endpoint'],
+            'dns': ['dns', 'query', 'domain'],
+            'process': ['process', 'windows', 'endpoint', 'sysmon'],
+            'lol': ['process', 'powershell', 'windows', 'endpoint'],
+            'oauth': ['oauth', 'application', 'cloud', 'azure', 'o365'],
+            'insider': ['auth', 'file', 'cloud', 'azure'],
+            'zero': ['vulnerability', 'cve', 'acas', 'network'],
+            'cloud': ['cloud', 'azure', 'o365', 'm365'],
+            'kerberos': ['kerberos', 'auth', 'security', 'windows'],
+            'macro': ['file', 'email', 'attachment'],
+            'covert': ['network', 'protocol', 'conn']
+        }
+        
+        # Find matching keywords
+        matched_keywords = []
+        strategy_lower = strategy_name.lower()
+        for key, keywords in strategy_keywords.items():
+            if key in strategy_lower:
+                matched_keywords.extend(keywords)
+        
+        # If no keywords matched, use generic network/process keywords
+        if not matched_keywords:
+            matched_keywords = ['network', 'conn', 'flow', 'process', 'windows', 'endpoint']
+        
+        # Search data dictionary
+        recommendations = []
+        for source_name, source_info in self.data_dictionary.items():
+            description = source_info['description'].lower()
+            tags = source_info['tags'].lower()
+            
+            # Check if any keyword matches
+            match_score = 0
+            for keyword in matched_keywords:
+                if keyword in source_name.lower() or keyword in description or keyword in tags:
+                    match_score += 1
+            
+            if match_score > 0:
+                recommendations.append({
+                    'source': source_name,
+                    'description': source_info['description'][:200],
+                    'tags': source_info['tags'],
+                    'score': match_score
+                })
+        
+        # Sort by match score and return top 5
+        recommendations.sort(key=lambda x: x['score'], reverse=True)
+        return recommendations[:5]
     
     def _initialize_ui(self):
         """Set up the initial UI components."""
@@ -343,6 +583,24 @@ class WatsonDashboard:
                     button_style='success',
                     icon='search'
                 ),
+                'save_config_button': widgets.Button(
+                    description='💾 Save Configuration',
+                    button_style='info',
+                    icon='save',
+                    layout=widgets.Layout(width='200px')
+                ),
+                'load_config_button': widgets.Button(
+                    description='📂 Load Configuration',
+                    button_style='warning',
+                    icon='folder-open',
+                    layout=widgets.Layout(width='200px')
+                ),
+                'config_name_input': widgets.Text(
+                    placeholder='Enter config name...',
+                    description='Config Name:',
+                    style={'description_width': 'initial'},
+                    layout=widgets.Layout(width='300px')
+                ),
                 'output_widget': widgets.Output(),
                 'available_columns': []
             }
@@ -364,10 +622,18 @@ class WatsonDashboard:
             def make_date_filter_handler(tab_idx):
                 return lambda change: self._on_date_filter_toggle(change, tab_idx)
             
+            def make_save_config_handler(tab_idx):
+                return lambda btn: self._save_strategy_config(btn, tab_idx)
+            
+            def make_load_config_handler(tab_idx):
+                return lambda btn: self._load_strategy_config(btn, tab_idx)
+            
             tab_data['table_search'].observe(make_table_search_handler(i), names='value')
             tab_data['load_table_button'].on_click(make_load_table_handler(i))
             tab_data['run_button'].on_click(make_run_analysis_handler(i))
             tab_data['enable_date_filter'].observe(make_date_filter_handler(i), names='value')
+            tab_data['save_config_button'].on_click(make_save_config_handler(i))
+            tab_data['load_config_button'].on_click(make_load_config_handler(i))
             
             # Create strategy description with input details
             input_descriptions = self._get_input_descriptions(strategy)
@@ -410,6 +676,10 @@ class WatsonDashboard:
                 widgets.HTML("<hr>"),
                 widgets.HTML("<h4>Column Mapping</h4>"),
                 tab_data['column_mapping_container'],
+                widgets.HTML("<hr>"),
+                widgets.HTML("<h4>Configuration Management</h4>"),
+                tab_data['config_name_input'],
+                widgets.HBox([tab_data['save_config_button'], tab_data['load_config_button']]),
                 widgets.HTML("<hr>"),
                 widgets.HTML("<h4>Query Options</h4>"),
                 tab_data['limit_input'],
@@ -683,115 +953,6 @@ class WatsonDashboard:
         )
         
         display(fig)
-    
-    def _show_threat_velocity_gauge(self):
-        """
-        Display a real-time threat velocity gauge showing threats detected per time period.
-        """
-        if not self.strategy_results:
-            print("⚠️ No analysis results available. Run some strategies first to see velocity metrics.")
-            return
-        
-        print("=" * 80)
-        print("⚡ THREAT VELOCITY METRICS")
-        print("=" * 80)
-        print()
-        
-        # Collect all threats with timestamps
-        all_threats = []
-        for strategy_name, result_data in self.strategy_results.items():
-            df = result_data['dataframe']
-            
-            # Find timestamp columns
-            timestamp_cols = [col for col in df.columns if 'timestamp' in col.lower() or 'time' in col.lower()]
-            
-            if timestamp_cols:
-                ts_col = timestamp_cols[0]
-                for idx, row in df.iterrows():
-                    ts = row[ts_col]
-                    if pd.notna(ts):
-                        all_threats.append({
-                            'timestamp': ts,
-                            'strategy': strategy_name
-                        })
-        
-        if not all_threats:
-            print("⚠️ No timestamp data available for velocity calculation")
-            return
-        
-        # Convert to DataFrame
-        threats_df = pd.DataFrame(all_threats)
-        threats_df['timestamp'] = pd.to_datetime(threats_df['timestamp'])
-        
-        # Calculate time span
-        min_time = threats_df['timestamp'].min()
-        max_time = threats_df['timestamp'].max()
-        time_span_hours = (max_time - min_time).total_seconds() / 3600
-        time_span_days = time_span_hours / 24
-        
-        total_count = len(threats_df)
-        
-        # Calculate velocities
-        threats_per_hour = total_count / time_span_hours if time_span_hours > 0 else 0
-        threats_per_day = total_count / time_span_days if time_span_days > 0 else 0
-        
-        # Display metrics
-        print(f"📊 Time Range: {min_time.strftime('%Y-%m-%d %H:%M')} to {max_time.strftime('%Y-%m-%d %H:%M')}")
-        print(f"⏱️  Duration: {time_span_days:.1f} days ({time_span_hours:.1f} hours)")
-        print(f"🎯 Total Threats: {total_count:,}")
-        print()
-        print("⚡ Threat Velocity:")
-        print(f"   • Per Hour: {threats_per_hour:.1f} threats/hour")
-        print(f"   • Per Day: {threats_per_day:.1f} threats/day")
-        print()
-        
-        # Show trend over time (by hour)
-        if HAS_PLOTLY and time_span_hours > 1:
-            threats_df['hour'] = threats_df['timestamp'].dt.floor('H')
-            hourly_counts = threats_df.groupby('hour').size()
-            
-            fig = go.Figure()
-            
-            # Line chart for trend
-            fig.add_trace(go.Scatter(
-                x=hourly_counts.index,
-                y=hourly_counts.values,
-                mode='lines+markers',
-                name='Threats per Hour',
-                line=dict(color='#ef4444', width=3),
-                marker=dict(size=8, color='#dc2626'),
-                fill='tozeroy',
-                fillcolor='rgba(239, 68, 68, 0.2)'
-            ))
-            
-            # Add average line
-            avg_line = [threats_per_hour] * len(hourly_counts)
-            fig.add_trace(go.Scatter(
-                x=hourly_counts.index,
-                y=avg_line,
-                mode='lines',
-                name=f'Average ({threats_per_hour:.1f}/hr)',
-                line=dict(color='#f59e0b', width=2, dash='dash')
-            ))
-            
-            fig.update_layout(
-                title='Threat Detection Velocity Over Time',
-                xaxis_title='Time',
-                yaxis_title='Threats Detected',
-                height=400,
-                hovermode='x unified',
-                showlegend=True
-            )
-            
-            display(fig)
-        
-        # Show top strategies by detection rate
-        strategy_counts = threats_df['strategy'].value_counts()
-        print("🏆 Top 5 Most Active Strategies:")
-        for i, (strategy, count) in enumerate(strategy_counts.head(5).items(), 1):
-            rate_per_day = count / time_span_days if time_span_days > 0 else 0
-            print(f"   {i}. {strategy}: {count} threats ({rate_per_day:.1f}/day)")
-        print()
     
     def _show_performance_statistics(self):
         """
@@ -1723,12 +1884,12 @@ class WatsonDashboard:
         
         # Build summary HTML with enhanced modern design
         summary_html = f"""
-        <div style="background: {GRADIENT_BLUE_PURPLE}; color: white; padding: 24px; border-radius: 16px; margin: 15px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-            <h3 style="margin-top: 0; font-size: 1.5em; display: flex; align-items: center; gap: 8px;">📊 Analysis Summary</h3>
+        <div style="background: {GRADIENT_BLUE_PURPLE}; color: #1a1a1a; padding: 24px; border-radius: 16px; margin: 15px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <h3 style="margin-top: 0; font-size: 1.5em; display: flex; align-items: center; gap: 8px; color: white;">📊 Analysis Summary</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 20px;">
                 <div style="{CSS_CARD_TRANSLUCENT}">
-                    <div style="font-size: 2.5em; font-weight: bold; margin-bottom: 4px;">{total_results}</div>
-                    <div style="{CSS_TEXT_MUTED}">Suspicious Activities</div>
+                    <div style="font-size: 2.5em; font-weight: bold; margin-bottom: 4px; color: white;">{total_results}</div>
+                    <div style="{CSS_TEXT_MUTED}; color: rgba(255,255,255,0.95);">Suspicious Activities</div>
                 </div>
         """
         
@@ -1742,19 +1903,19 @@ class WatsonDashboard:
             summary_html += f"""
                 <div style="{CSS_CARD_TRANSLUCENT}">
                     <div style="font-size: 2.5em; font-weight: bold; color: #fca5a5; margin-bottom: 4px;">🔴 {high_severity}</div>
-                    <div style="{CSS_TEXT_MUTED}">High Severity (≥75)</div>
+                    <div style="{CSS_TEXT_MUTED}; color: rgba(255,255,255,0.95);">High Severity (≥75)</div>
                 </div>
                 <div style="{CSS_CARD_TRANSLUCENT}">
                     <div style="font-size: 2.5em; font-weight: bold; color: #fcd34d; margin-bottom: 4px;">🟡 {medium_severity}</div>
-                    <div style="{CSS_TEXT_MUTED}">Medium Severity (50-74)</div>
+                    <div style="{CSS_TEXT_MUTED}; color: rgba(255,255,255,0.95);">Medium Severity (50-74)</div>
                 </div>
                 <div style="{CSS_CARD_TRANSLUCENT}">
-                    <div style="font-size: 2.5em; font-weight: bold; margin-bottom: 4px;">{df[score_col].mean():.1f}</div>
-                    <div style="{CSS_TEXT_MUTED}">Average Score</div>
+                    <div style="font-size: 2.5em; font-weight: bold; margin-bottom: 4px; color: white;">{df[score_col].mean():.1f}</div>
+                    <div style="{CSS_TEXT_MUTED}; color: rgba(255,255,255,0.95);">Average Score</div>
                 </div>
                 <div style="{CSS_CARD_TRANSLUCENT}">
                     <div style="font-size: 2.5em; font-weight: bold; color: {'#fca5a5' if max_score >= HIGH_SEVERITY_THRESHOLD else '#fcd34d' if max_score >= MEDIUM_SEVERITY_THRESHOLD else '#86efac'}; margin-bottom: 4px;">{max_score:.1f}</div>
-                    <div style="{CSS_TEXT_MUTED}">Highest Score</div>
+                    <div style="{CSS_TEXT_MUTED}; color: rgba(255,255,255,0.95);">Highest Score</div>
                 </div>
             """
         
@@ -1764,6 +1925,9 @@ class WatsonDashboard:
         """
         
         display(HTML(summary_html))
+        
+        # Add recommended data sources for this strategy
+        self._display_recommended_data_sources(strategy)
         
         # Add score distribution visualization if plotly is available and we have scores
         if score_cols and HAS_PLOTLY:
@@ -1809,6 +1973,48 @@ class WatsonDashboard:
                 pass
         
         print()
+    
+    def _display_recommended_data_sources(self, strategy: HuntStrategy):
+        """
+        Display recommended data sources for a given strategy.
+        
+        Args:
+            strategy: The strategy to get recommendations for
+        """
+        recommendations = self._get_recommended_data_sources(strategy.name)
+        
+        if not recommendations:
+            return
+        
+        # Build HTML for recommendations
+        rec_html = f"""
+        <div style="background: {GRADIENT_GREEN_SUCCESS}; color: white; padding: 16px; border-radius: 12px; margin: 10px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h4 style="margin-top: 0; color: white;">📊 Recommended Data Sources for {html_lib.escape(strategy.name)}</h4>
+            <p style="color: rgba(255,255,255,0.95); margin-bottom: 12px;">Based on strategy analysis, these data sources are most relevant:</p>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+        """
+        
+        for i, rec in enumerate(recommendations, 1):
+            rec_html += f"""
+                <div style="background: rgba(255,255,255,0.2); padding: 12px; border-radius: 8px;">
+                    <div style="font-weight: bold; color: white; margin-bottom: 4px;">
+                        {i}. {html_lib.escape(rec['source'])}
+                    </div>
+                    <div style="font-size: 0.9em; color: rgba(255,255,255,0.9); margin-bottom: 4px;">
+                        {html_lib.escape(rec['description'])}
+                    </div>
+                    <div style="font-size: 0.85em; color: rgba(255,255,255,0.8);">
+                        Tags: {html_lib.escape(rec['tags'])}
+                    </div>
+                </div>
+            """
+        
+        rec_html += """
+            </div>
+        </div>
+        """
+        
+        display(HTML(rec_html))
     
     def _display_collapsible_explanations(self, explanations: dict, df: pd.DataFrame):
         """
@@ -1904,15 +2110,27 @@ class WatsonDashboard:
             style={'description_width': 'initial'}
         )
         
+        # Check if scanner detection was performed
+        has_scanner_column = 'is_likely_scanner' in full_df.columns
+        
         # Create severity filter buttons (only if score column exists)
         filter_buttons = None
         if has_score_column:
+            # Add scanner filter option if scanner detection was performed
+            if has_scanner_column:
+                filter_options = ['All', 'High (≥75)', 'Medium (50-74)', 'Low (<50)', 'Hide Scanners', 'Only Scanners']
+                filter_tooltips = ['Show all results', 'Show only high severity', 'Show only medium severity', 
+                                  'Show only low severity', 'Hide scanner false positives', 'Show only scanner detections']
+            else:
+                filter_options = ['All', 'High (≥75)', 'Medium (50-74)', 'Low (<50)']
+                filter_tooltips = ['Show all results', 'Show only high severity', 'Show only medium severity', 'Show only low severity']
+            
             filter_buttons = widgets.ToggleButtons(
-                options=['All', 'High (≥75)', 'Medium (50-74)', 'Low (<50)'],
+                options=filter_options,
                 value='All',
                 description='Filter:',
                 button_style='',
-                tooltips=['Show all results', 'Show only high severity', 'Show only medium severity', 'Show only low severity'],
+                tooltips=filter_tooltips,
                 style={'description_width': 'initial', 'button_width': 'auto'}
             )
         
@@ -1991,6 +2209,12 @@ class WatsonDashboard:
                     filtered_df = filtered_df[(filtered_df[score_col] >= MEDIUM_SEVERITY_THRESHOLD) & (filtered_df[score_col] < HIGH_SEVERITY_THRESHOLD)]
                 elif current_filter['level'] == 'Low (<50)':
                     filtered_df = filtered_df[filtered_df[score_col] < MEDIUM_SEVERITY_THRESHOLD]
+                elif current_filter['level'] == 'Hide Scanners' and has_scanner_column:
+                    # Filter out scanner detections
+                    filtered_df = filtered_df[~filtered_df['is_likely_scanner']]
+                elif current_filter['level'] == 'Only Scanners' and has_scanner_column:
+                    # Show only scanner detections
+                    filtered_df = filtered_df[filtered_df['is_likely_scanner']]
             
             # Then apply sorting
             if current_sort['column'] != '(unsorted)':
@@ -2028,30 +2252,50 @@ class WatsonDashboard:
                 table_html = '<table border="1" class="dataframe" style="border-collapse: collapse; width: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;">\n'
                 table_html += f'  <thead>\n    <tr style="text-align: right; background: {GRADIENT_BLUE_PURPLE}; color: white; font-weight: bold;">\n'
                 for col in page_df.columns:
-                    table_html += f'      <th style="{CSS_CONTENT_BOX}">{col}</th>\n'
+                    # Skip scanner detection columns in header
+                    if col not in ['is_likely_scanner', 'scanner_reason']:
+                        table_html += f'      <th style="{CSS_CONTENT_BOX}">{html_lib.escape(str(col))}</th>\n'
                 table_html += '    </tr>\n  </thead>\n  <tbody>\n'
                 
                 for idx, row in page_df.iterrows():
                     score = row[score_col]
-                    # Color code based on severity with enhanced modern styling
-                    if score >= HIGH_SEVERITY_THRESHOLD:
-                        bg_color = COLOR_HIGH_SEVERITY_BG
-                        badge = f'<span style="background: {COLOR_HIGH_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🔴 HIGH</span>'
-                    elif score >= MEDIUM_SEVERITY_THRESHOLD:
-                        bg_color = COLOR_MEDIUM_SEVERITY_BG
-                        badge = f'<span style="background: {COLOR_MEDIUM_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🟡 MED</span>'
-                    else:
-                        bg_color = COLOR_LOW_SEVERITY_BG
-                        badge = f'<span style="background: {COLOR_LOW_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🟢 LOW</span>'
+                    is_scanner = row.get('is_likely_scanner', False) if 'is_likely_scanner' in page_df.columns else False
+                    scanner_reason = row.get('scanner_reason', '') if 'scanner_reason' in page_df.columns else ''
                     
-                    table_html += f'    <tr style="background-color: {bg_color};">\n'
+                    # Check if this is a likely scanner - scanner highlighting takes precedence
+                    if is_scanner:
+                        # Yellow/amber background for scanners with distinct styling
+                        bg_color = '#fff9e6'  # Light yellow
+                        border_style = 'border-left: 4px solid #f59e0b;'  # Amber left border
+                        scanner_badge = f'<span style="background: #f59e0b; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;" title="{html_lib.escape(scanner_reason)}">🔍 SCANNER</span>'
+                    else:
+                        # Color code based on severity with enhanced modern styling
+                        border_style = ''
+                        scanner_badge = ''
+                        if score >= HIGH_SEVERITY_THRESHOLD:
+                            bg_color = COLOR_HIGH_SEVERITY_BG
+                            badge = f'<span style="background: {COLOR_HIGH_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🔴 HIGH</span>'
+                        elif score >= MEDIUM_SEVERITY_THRESHOLD:
+                            bg_color = COLOR_MEDIUM_SEVERITY_BG
+                            badge = f'<span style="background: {COLOR_MEDIUM_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🟡 MED</span>'
+                        else:
+                            bg_color = COLOR_LOW_SEVERITY_BG
+                            badge = f'<span style="background: {COLOR_LOW_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🟢 LOW</span>'
+                    
+                    table_html += f'    <tr style="background-color: {bg_color}; {border_style}">\n'
                     for col in page_df.columns:
                         value = row[col]
+                        # Skip displaying scanner detection columns in table
+                        if col in ['is_likely_scanner', 'scanner_reason']:
+                            continue
                         # Format score column with badge
                         if col == score_col:
-                            table_html += f'      <td style="{CSS_CONTENT_BOX}">{value:.1f} {badge}</td>\n'
+                            if is_scanner:
+                                table_html += f'      <td style="{CSS_CONTENT_BOX}">{value:.1f} {scanner_badge} {badge if "badge" in locals() else ""}</td>\n'
+                            else:
+                                table_html += f'      <td style="{CSS_CONTENT_BOX}">{value:.1f} {badge}</td>\n'
                         else:
-                            table_html += f'      <td style="{CSS_CONTENT_BOX}">{value}</td>\n'
+                            table_html += f'      <td style="{CSS_CONTENT_BOX}">{html_lib.escape(str(value))}</td>\n'
                     table_html += '    </tr>\n'
                 
                 table_html += '  </tbody>\n</table>'
@@ -2396,9 +2640,79 @@ class WatsonDashboard:
         
         return fields
     
+    def _suggest_fields_for_input(self, required_input: str, available_columns: list) -> list:
+        """
+        Suggest field matches for a required input based on keyword matching.
+        
+        Args:
+            required_input: The required input name (e.g., 'source_ip', 'timestamp')
+            available_columns: List of available column names in the table
+            
+        Returns:
+            List of suggested column names
+        """
+        # Define keyword mappings for common input types
+        input_keywords = {
+            'source_ip': ['source', 'src', 'orig', 'client', 'ip', 'addr', 'from'],
+            'dest_ip': ['dest', 'dst', 'resp', 'server', 'target', 'ip', 'addr', 'to'],
+            'timestamp': ['time', 'ts', 'date', 'datetime', 'created', 'occurred', 'start'],
+            'source_port': ['source', 'src', 'orig', 'sport', 'port'],
+            'dest_port': ['dest', 'dst', 'resp', 'dport', 'port'],
+            'bytes': ['bytes', 'size', 'length', 'data'],
+            'domain': ['domain', 'hostname', 'host', 'dns', 'fqdn'],
+            'query': ['query', 'search', 'request', 'dns'],
+            'user': ['user', 'username', 'account', 'login', 'principal'],
+            'result': ['result', 'status', 'outcome', 'success', 'failure', 'response'],
+            'process': ['process', 'proc', 'cmd', 'command', 'executable', 'exe'],
+            'file': ['file', 'path', 'filename', 'document'],
+            'action': ['action', 'operation', 'event', 'activity', 'type'],
+            'protocol': ['protocol', 'proto', 'service'],
+            'hash': ['hash', 'md5', 'sha', 'checksum'],
+            'url': ['url', 'uri', 'link', 'address']
+        }
+        
+        # Get keywords for this input type
+        keywords = []
+        input_lower = required_input.lower()
+        
+        # Direct match
+        if input_lower in input_keywords:
+            keywords = input_keywords[input_lower]
+        else:
+            # Try partial matches
+            for key, kws in input_keywords.items():
+                if key in input_lower or input_lower in key:
+                    keywords.extend(kws)
+        
+        if not keywords:
+            keywords = [input_lower]
+        
+        # Score and rank columns
+        suggestions = []
+        for col in available_columns:
+            col_lower = col.lower()
+            score = 0
+            
+            # Exact match is best
+            if col_lower == input_lower:
+                score = 100
+            else:
+                # Count keyword matches
+                for keyword in keywords:
+                    if keyword in col_lower:
+                        score += 10
+            
+            if score > 0:
+                suggestions.append((col, score))
+        
+        # Sort by score and return top matches
+        suggestions.sort(key=lambda x: x[1], reverse=True)
+        return [col for col, _ in suggestions[:3]]
+    
     def _build_column_mappings(self, tab_index: int):
         """
         Build dropdown widgets for mapping strategy inputs to table columns.
+        Now includes suggested field matches displayed next to each input.
         
         Args:
             tab_index: Index of the tab
@@ -2411,21 +2725,183 @@ class WatsonDashboard:
             tab_data['column_mapping_container'].children = []
             return
         
-        # Create a dropdown for each required input
-        dropdowns = []
+        # Create a dropdown and suggestion label for each required input
+        mapping_widgets = []
         tab_data['column_dropdowns'] = {}
         
         for required_input in strategy.required_inputs:
+            # Get field suggestions
+            suggestions = self._suggest_fields_for_input(required_input, available_columns)
+            
+            # Create dropdown
             dropdown = widgets.Dropdown(
                 options=available_columns,
                 description=f'{required_input}:',
-                style={'description_width': 'initial'}
+                style={'description_width': 'initial'},
+                layout=widgets.Layout(width='300px')
             )
-            dropdowns.append(dropdown)
+            
+            # Pre-select the top suggestion if available
+            if suggestions:
+                dropdown.value = suggestions[0]
+            
             tab_data['column_dropdowns'][required_input] = dropdown
+            
+            # Create suggestion label
+            if suggestions:
+                suggestion_text = f"💡 Suggested: {', '.join(suggestions[:3])}"
+                suggestion_label = widgets.HTML(
+                    value=f'<span style="color: #10b981; font-size: 0.9em; margin-left: 10px;">{suggestion_text}</span>',
+                    layout=widgets.Layout(width='auto')
+                )
+                
+                # Combine dropdown and suggestion in HBox
+                row = widgets.HBox([dropdown, suggestion_label])
+            else:
+                row = dropdown
+            
+            mapping_widgets.append(row)
         
         # Update container
-        tab_data['column_mapping_container'].children = dropdowns
+        tab_data['column_mapping_container'].children = mapping_widgets
+    
+    def _save_strategy_config(self, button, tab_index: int):
+        """
+        Save the current strategy configuration to cache for later reuse.
+        
+        Args:
+            button: Button widget that triggered this callback
+            tab_index: Index of the tab
+        """
+        tab_data = self.strategy_tab_contents[tab_index]
+        strategy = tab_data['strategy']
+        config_name = tab_data['config_name_input'].value
+        
+        if not config_name:
+            print("⚠️ Please enter a configuration name.")
+            return
+        
+        # Sanitize config name
+        config_name = re.sub(r'[^\w\-_\. ]', '', config_name)
+        
+        # Build configuration
+        config = {
+            'strategy_name': strategy.name,
+            'table': tab_data['table_dropdown'].value,
+            'column_mappings': {},
+            'limit': tab_data['limit_input'].value,
+            'enable_date_filter': tab_data['enable_date_filter'].value,
+            'start_date': str(tab_data['start_date'].value) if tab_data['start_date'].value else None,
+            'end_date': str(tab_data['end_date'].value) if tab_data['end_date'].value else None,
+            'saved_at': datetime.datetime.now().isoformat()
+        }
+        
+        # Save column mappings
+        for req_input, dropdown in tab_data['column_dropdowns'].items():
+            config['column_mappings'][req_input] = dropdown.value
+        
+        # Save to cache directory
+        config_dir = os.path.join(self.cache_dir, 'saved_configs')
+        os.makedirs(config_dir, exist_ok=True)
+        
+        config_file = os.path.join(config_dir, f"{config_name}.json")
+        
+        try:
+            with open(config_file, 'w') as f:
+                json.dump(config, f, indent=2)
+            print(f"✅ Configuration saved: {config_name}")
+            print(f"💾 Location: {config_file}")
+        except Exception as e:
+            print(f"❌ Failed to save configuration: {e}")
+    
+    def _load_strategy_config(self, button, tab_index: int):
+        """
+        Load a saved strategy configuration from cache.
+        
+        Args:
+            button: Button widget that triggered this callback
+            tab_index: Index of the tab
+        """
+        tab_data = self.strategy_tab_contents[tab_index]
+        strategy = tab_data['strategy']
+        config_name = tab_data['config_name_input'].value
+        
+        if not config_name:
+            # List available configs if no name provided
+            config_dir = os.path.join(self.cache_dir, 'saved_configs')
+            if os.path.exists(config_dir):
+                configs = [f.replace('.json', '') for f in os.listdir(config_dir) if f.endswith('.json')]
+                if configs:
+                    print("📂 Available saved configurations:")
+                    for cfg in sorted(configs):
+                        print(f"   • {cfg}")
+                    print()
+                    print("💡 Enter a config name and click 'Load Configuration' to load it.")
+                else:
+                    print("⚠️ No saved configurations found.")
+            else:
+                print("⚠️ No saved configurations found.")
+            return
+        
+        # Sanitize config name
+        config_name = re.sub(r'[^\w\-_\. ]', '', config_name)
+        
+        config_file = os.path.join(self.cache_dir, 'saved_configs', f"{config_name}.json")
+        
+        if not os.path.exists(config_file):
+            print(f"❌ Configuration not found: {config_name}")
+            return
+        
+        try:
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+            
+            # Verify it's for the correct strategy
+            if config['strategy_name'] != strategy.name:
+                print(f"⚠️ Configuration is for '{config['strategy_name']}', but current tab is '{strategy.name}'")
+                print("   Load anyway? The column mappings may not match.")
+                return
+            
+            # Load table
+            if config['table'] in tab_data['table_dropdown'].options:
+                tab_data['table_dropdown'].value = config['table']
+                
+                # Load table schema
+                tab_data['available_columns'] = self._get_table_columns(config['table'])
+                self._build_column_mappings(tab_index)
+                
+                # Load column mappings
+                for req_input, col_value in config['column_mappings'].items():
+                    if req_input in tab_data['column_dropdowns']:
+                        dropdown = tab_data['column_dropdowns'][req_input]
+                        if col_value in dropdown.options:
+                            dropdown.value = col_value
+                
+                # Load other settings
+                tab_data['limit_input'].value = config['limit']
+                tab_data['enable_date_filter'].value = config['enable_date_filter']
+                
+                if config['start_date']:
+                    try:
+                        tab_data['start_date'].value = date.fromisoformat(config['start_date'])
+                    except (ValueError, TypeError):
+                        pass
+                
+                if config['end_date']:
+                    try:
+                        tab_data['end_date'].value = date.fromisoformat(config['end_date'])
+                    except (ValueError, TypeError):
+                        pass
+                
+                saved_at = datetime.datetime.fromisoformat(config['saved_at'])
+                print(f"✅ Configuration loaded: {config_name}")
+                print(f"📅 Saved: {saved_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                print(f"📊 Table: {config['table']}")
+                print(f"🎯 Ready to run analysis!")
+            else:
+                print(f"❌ Table '{config['table']}' not found in available tables.")
+        except Exception as e:
+            print(f"❌ Failed to load configuration: {e}")
     
     def _run_parallel_analysis(self, strategy: HuntStrategy, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
         """
@@ -2467,6 +2943,133 @@ class WatsonDashboard:
         else:
             # Standard single-threaded analysis
             return strategy.analyze(df, col_map)
+    
+    def _detect_scanners(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Detect potential security/compliance/vulnerability scanners in results.
+        
+        Scanners (like Nessus, ACAS, Qualys, etc.) often exhibit patterns:
+        - Sequential or paired IP addresses (e.g., 192.168.0.1 and 192.168.0.2)
+        - High connection/scan volume from single source
+        - Connections to many consecutive ports
+        - User agents containing scanner signatures
+        - Predictable timing patterns (automated scans)
+        
+        Args:
+            df: Results DataFrame from strategy analysis
+            
+        Returns:
+            DataFrame with added 'is_likely_scanner' and 'scanner_reason' columns
+        """
+        if df.empty:
+            return df
+        
+        df = df.copy()
+        df['is_likely_scanner'] = False
+        df['scanner_reason'] = ''
+        
+        # Check for IP-based scanner patterns
+        ip_columns = ['source_ip', 'dest_ip']
+        for ip_col in ip_columns:
+            if ip_col in df.columns:
+                # Pattern 1: Sequential/Paired IPs
+                # Extract IPs and check for sequential patterns
+                ips = df[ip_col].dropna().unique()
+                sequential_ips = set()
+                
+                for ip in ips:
+                    try:
+                        # Parse IP address
+                        parts = str(ip).split('.')
+                        if len(parts) == 4:
+                            # Check if last octet differs by 1 from any other IP
+                            base = '.'.join(parts[:3])
+                            last_octet = int(parts[3])
+                            
+                            # Check for adjacent IPs in the dataset
+                            for offset in [-1, 1]:
+                                adjacent_ip = f"{base}.{last_octet + offset}"
+                                if adjacent_ip in ips:
+                                    sequential_ips.add(ip)
+                                    sequential_ips.add(adjacent_ip)
+                    except (ValueError, IndexError):
+                        continue
+                
+                # Mark sequential IPs as potential scanners
+                mask = df[ip_col].isin(sequential_ips)
+                df.loc[mask, 'is_likely_scanner'] = True
+                df.loc[mask, 'scanner_reason'] = df.loc[mask, 'scanner_reason'].apply(
+                    lambda x: (x + '; ' if x else '') + f'Sequential {ip_col} pattern'
+                )
+        
+        # Pattern 2: High volume from single source (top 5% by connection count)
+        if 'connection_count' in df.columns:
+            threshold_95 = df['connection_count'].quantile(0.95)
+            high_volume_mask = df['connection_count'] >= threshold_95
+            if high_volume_mask.any():
+                df.loc[high_volume_mask, 'is_likely_scanner'] = True
+                df.loc[high_volume_mask, 'scanner_reason'] = df.loc[high_volume_mask, 'scanner_reason'].apply(
+                    lambda x: (x + '; ' if x else '') + 'High connection volume'
+                )
+        
+        # Pattern 3: Port scan indicators (many unique ports)
+        if 'unique_ports' in df.columns:
+            # More than 20 unique ports from one source is suspicious
+            port_scan_mask = df['unique_ports'] > 20
+            if port_scan_mask.any():
+                df.loc[port_scan_mask, 'is_likely_scanner'] = True
+                df.loc[port_scan_mask, 'scanner_reason'] = df.loc[port_scan_mask, 'scanner_reason'].apply(
+                    lambda x: (x + '; ' if x else '') + 'Port scanning pattern'
+                )
+        
+        # Pattern 4: Scanner user agents
+        if 'user_agent' in df.columns:
+            scanner_signatures = [
+                'nessus', 'qualys', 'openvas', 'nexpose', 'acunetix', 
+                'burp', 'nikto', 'w3af', 'scanner', 'vulnerability',
+                'acas', 'tenable', 'rapid7', 'metasploit'
+            ]
+            ua_mask = df['user_agent'].str.lower().str.contains(
+                '|'.join(scanner_signatures), na=False, regex=True
+            )
+            if ua_mask.any():
+                df.loc[ua_mask, 'is_likely_scanner'] = True
+                df.loc[ua_mask, 'scanner_reason'] = df.loc[ua_mask, 'scanner_reason'].apply(
+                    lambda x: (x + '; ' if x else '') + 'Scanner user agent'
+                )
+        
+        # Pattern 5: Consistent timing (very low coefficient of variation in beaconing)
+        # This is for scanners that probe on very regular intervals
+        if 'coeff_variation' in df.columns:
+            # CV < 0.05 is extremely regular, likely automated
+            timing_mask = df['coeff_variation'] < 0.05
+            if timing_mask.any():
+                df.loc[timing_mask, 'is_likely_scanner'] = True
+                df.loc[timing_mask, 'scanner_reason'] = df.loc[timing_mask, 'scanner_reason'].apply(
+                    lambda x: (x + '; ' if x else '') + 'Automated timing pattern'
+                )
+        
+        # Pattern 6: RFC 1918 private IP ranges commonly used for internal scanners
+        for ip_col in ip_columns:
+            if ip_col in df.columns:
+                # Check for common scanner IP ranges
+                scanner_ranges = [
+                    r'^10\.0\.0\.[12]$',  # 10.0.0.1, 10.0.0.2
+                    r'^192\.168\.0\.[12]$',  # 192.168.0.1, 192.168.0.2
+                    r'^172\.16\.0\.[12]$',  # 172.16.0.1, 172.16.0.2
+                ]
+                for pattern in scanner_ranges:
+                    range_mask = df[ip_col].astype(str).str.match(pattern, na=False)
+                    if range_mask.any():
+                        df.loc[range_mask, 'is_likely_scanner'] = True
+                        df.loc[range_mask, 'scanner_reason'] = df.loc[range_mask, 'scanner_reason'].apply(
+                            lambda x: (x + '; ' if x else '') + f'Common scanner IP range ({ip_col})'
+                        )
+        
+        # Clean up empty scanner reasons
+        df.loc[~df['is_likely_scanner'], 'scanner_reason'] = ''
+        
+        return df
     
     def _run_analysis(self, button, tab_index: int):
         """
@@ -2626,6 +3229,14 @@ class WatsonDashboard:
                 print(f"⏱️  Analysis time: {analysis_duration:.2f} seconds ({rows_per_sec:.0f} rows/sec)")
                 print()
                 
+                # Detect potential security scanners in results
+                result_df = self._detect_scanners(result_df)
+                scanner_count = len(result_df[result_df.get('is_likely_scanner', False)]) if 'is_likely_scanner' in result_df.columns else 0
+                if scanner_count > 0:
+                    print(f"🔍 Scanner Detection: {scanner_count} results flagged as potential security scanners (Nessus, ACAS, etc.)")
+                    print(f"   These are highlighted in yellow and can be filtered out as false positives.")
+                    print()
+                
                 # Store results for correlation analysis
                 self.strategy_results[strategy.name] = {
                     'dataframe': result_df.copy(),
@@ -2662,6 +3273,13 @@ class WatsonDashboard:
                 
                 print("📈 Results (sortable and exportable):")
                 print("-" * 80)
+                
+                # Show scanner detection legend if scanners were detected
+                if scanner_count > 0:
+                    print()
+                    print("🔍 Legend: Rows with yellow background = Likely scanner (Nessus, ACAS, etc.)")
+                    print("   Use 'Hide Scanners' filter to focus on real threats")
+                    print()
                 
                 # Display results in sortable table with export option
                 self._display_sortable_results(result_df, strategy.name)
@@ -2773,19 +3391,19 @@ class WatsonDashboard:
         
         summary_html = f"""
         <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
-            <h3 style="margin-top: 0;">🚨 Correlated Threats Summary</h3>
+            <h3 style="margin-top: 0; color: white;">🚨 Correlated Threats Summary</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
                 <div style="{CSS_STAT_BOX}">
-                    <div style="{CSS_HEADING_LARGE}">{len(multi_strategy_ips)}</div>
-                    <div style="{CSS_TEXT_SUBTLE}">Correlated IPs</div>
+                    <div style="{CSS_HEADING_LARGE}; color: white;">{len(multi_strategy_ips)}</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Correlated IPs</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: #ff6b6b">{critical_count}</div>
-                    <div style="{CSS_TEXT_SUBTLE}">Critical Threats</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Critical Threats</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: #ffd93d">{high_count}</div>
-                    <div style="{CSS_TEXT_SUBTLE}">High Priority</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">High Priority</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}">{len(self.strategy_results)}</div>
@@ -2964,19 +3582,19 @@ class WatsonDashboard:
         # Create summary
         summary_html = f"""
         <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
-            <h3 style="margin-top: 0;">🚨 Quick Triage Summary</h3>
+            <h3 style="margin-top: 0; color: white;">🚨 Quick Triage Summary</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
                 <div style="{CSS_STAT_BOX}">
-                    <div style="{CSS_HEADING_LARGE}">{len(high_severity_findings)}</div>
-                    <div style="{CSS_TEXT_SUBTLE}">Critical Threats</div>
+                    <div style="{CSS_HEADING_LARGE}; color: white;">{len(high_severity_findings)}</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Critical Threats</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
-                    <div style="{CSS_HEADING_LARGE}">{len(self.strategy_results)}</div>
-                    <div style="{CSS_TEXT_SUBTLE}">Strategies Analyzed</div>
+                    <div style="{CSS_HEADING_LARGE}; color: white;">{len(self.strategy_results)}</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Strategies Analyzed</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
-                    <div style="{CSS_HEADING_LARGE}">{len(set(f.get('Source IP', '') for f in high_severity_findings if f.get('Source IP')))}</div>
-                    <div style="{CSS_TEXT_SUBTLE}">Unique Source IPs</div>
+                    <div style="{CSS_HEADING_LARGE}; color: white;">{len(set(f.get('Source IP', '') for f in high_severity_findings if f.get('Source IP')))}</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Unique Source IPs</div>
                 </div>
             </div>
         </div>
@@ -3444,13 +4062,7 @@ class WatsonDashboard:
             layout=widgets.Layout(width='170px')
         )
         
-        velocity_button = widgets.Button(
-            description='⚡ Threat Velocity',
-            button_style='warning',
-            tooltip='View real-time threat detection velocity and trends',
-            icon='tachometer',
-            layout=widgets.Layout(width='160px')
-        )
+
         
         action_output = widgets.Output()
         
@@ -3461,10 +4073,10 @@ class WatsonDashboard:
             
             tips_html = f"""
             <div style="background: {GRADIENT_PURPLE_VIOLET}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
-                <h3 style="margin-top: 0;">💡 Quick Tips & Best Practices</h3>
+                <h3 style="margin-top: 0; color: white;">💡 Quick Tips & Best Practices</h3>
                 
-                <h4>🚀 Quick Start Workflow:</h4>
-                <ol style="{CSS_LINE_HEIGHT}">
+                <h4 style="color: white;">🚀 Quick Start Workflow:</h4>
+                <ol style="{CSS_LINE_HEIGHT}; color: white;">
                     <li><strong>Select a Strategy Tab</strong> - Choose from {strategy_count} comprehensive threat hunting strategies</li>
                     <li><strong>Read the Recommendation</strong> - Each strategy shows when to use it and what data works best</li>
                     <li><strong>Load Data</strong> - Pick a table and map required columns</li>
@@ -3472,10 +4084,9 @@ class WatsonDashboard:
                     <li><strong>Review Results</strong> - Use filters to focus on high-severity findings</li>
                 </ol>
                 
-                <h4>🎯 Power User Features:</h4>
-                <ul style="{CSS_LINE_HEIGHT}">
+                <h4 style="color: white;">🎯 Power User Features:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white;">
                     <li><strong>Threat Overview Dashboard:</strong> 🔥 Click 📊 Threat Overview to see ALL strategies at a glance with comprehensive visualizations</li>
-                    <li><strong>Threat Velocity Gauge:</strong> 🆕 Click ⚡ Threat Velocity to monitor real-time threat detection rates and trends</li>
                     <li><strong>Metrics Dashboard:</strong> Click 📊 to view real-time threat intelligence with aggregated statistics and strategy comparisons</li>
                     <li><strong>Performance Stats:</strong> Click ⚡ to see execution times, throughput rates, and detection efficiency for each strategy</li>
                     <li><strong>Timeline Analysis:</strong> Click 📅 to visualize when threats occurred with interactive heatmaps and temporal patterns</li>
@@ -3490,24 +4101,24 @@ class WatsonDashboard:
                     <li><strong>Multi-Filter:</strong> Combine text search with severity filters and sorting for precise threat identification</li>
                 </ul>
                 
-                <h4>🔍 Investigation Strategy:</h4>
-                <ul style="{CSS_LINE_HEIGHT}">
+                <h4 style="color: white;">🔍 Investigation Strategy:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white;">
                     <li><strong>Start Broad:</strong> Run multiple strategies on your data to get different perspectives</li>
                     <li><strong>Correlate:</strong> Use correlation analysis to identify systematic attackers</li>
                     <li><strong>Triage:</strong> Focus on high-severity (≥75 score) findings first</li>
                     <li><strong>Document:</strong> Export findings and generate reports for your records</li>
                 </ul>
                 
-                <h4>⚡ Performance Tips:</h4>
-                <ul style="{CSS_LINE_HEIGHT}">
+                <h4 style="color: white;">⚡ Performance Tips:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white;">
                     <li>Use date filters to limit data range and improve speed</li>
                     <li>Start with smaller row limits (10,000) for initial exploration</li>
                     <li>Cache is automatically used for table listings (refreshes every 7 days)</li>
                     <li>Results are stored in memory for correlation - no need to re-run analyses</li>
                 </ul>
                 
-                <h4>📊 Understanding Scores:</h4>
-                <ul style="{CSS_LINE_HEIGHT}">
+                <h4 style="color: white;">📊 Understanding Scores:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white;">
                     <li><strong>75-100 (Critical):</strong> Strong evidence of malicious activity - investigate immediately</li>
                     <li><strong>50-74 (High):</strong> Suspicious behavior worth investigating</li>
                     <li><strong>&lt;50 (Medium/Low):</strong> Anomalies that may be benign but worth noting</li>
@@ -3576,11 +4187,7 @@ class WatsonDashboard:
                 clear_output(wait=True)
                 self._show_threat_overview_dashboard()
         
-        def on_velocity_click(b):
-            with action_output:
-                clear_output(wait=True)
-                self._show_threat_velocity_gauge()
-        
+
         triage_button.on_click(on_triage_click)
         correlation_button.on_click(on_correlation_click)
         report_button.on_click(on_report_click)
@@ -3593,7 +4200,6 @@ class WatsonDashboard:
         heatmap_button.on_click(on_heatmap_click)
         insights_button.on_click(on_insights_click)
         overview_button.on_click(on_overview_click)
-        velocity_button.on_click(on_velocity_click)
         
         # Split buttons into three rows for better layout
         action_row1 = widgets.HBox([
@@ -3613,7 +4219,6 @@ class WatsonDashboard:
         ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))
         
         action_row3 = widgets.HBox([
-            velocity_button,
             recommend_button,
             help_button
         ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))

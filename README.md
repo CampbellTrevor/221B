@@ -26,7 +26,6 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 - Foundational strategies: Beacon Detection, Entropy Analysis, Exfiltration, Port Scanning, Brute Force, and more
 
 **Visual Display Improvements:**
-- 🆕 **Threat Velocity Gauge** - Real-time monitoring of threat detection rates with trend visualization
 - 🆕 **JSON Export** - Export results as JSON for SIEM integration alongside traditional CSV
 - Color-coded severity indicators with visual badges (HIGH/MED/LOW)
 - Smart row highlighting based on threat scores
@@ -35,10 +34,10 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 - Improved summary statistics dashboard
 - **IP Address Threat Heatmap** - Visualize which IPs generate the most threats across strategies
 - **Strategy Effectiveness Insights** - Compare detection rates and severity distributions
-- **Three-Row Quick Action Layout** - Better organized controls with 13 total buttons
+- **Three-Row Quick Action Layout** - Better organized controls with 12 total buttons
 
 **Enhanced User Experience:**
-- 🆕 **13 Quick Action Buttons** - Now includes Threat Velocity gauge for real-time monitoring
+- 🆕 **12 Quick Action Buttons** - Streamlined controls for efficient threat hunting
 - 🆕 **Regex Search Mode** - Enable advanced pattern matching for powerful data filtering (e.g., `192\.168\..*` or `malware|trojan`)
 - 🆕 **Cache Freshness Indicators** - See cache age with visual warnings when data is getting stale
 - One-click severity filtering for rapid threat triage
@@ -599,14 +598,7 @@ dashboard.display()
     - Unique source IP tracking across all strategies
     - Perfect for executive briefings and daily threat reviews
 
-12. **⚡ Threat Velocity** 🔥 NEW
-    - Real-time threat detection velocity metrics
-    - Threats per hour and per day calculations
-    - Interactive trend visualization over time
-    - Shows average detection rate with baseline
-    - Identifies top 5 most active detection strategies
-    - Perfect for understanding attack intensity and patterns
-    - Essential for capacity planning and resource allocation
+
 
 13. **❓ Tips** - Usage tips and best practices
     - Step-by-step usage guide
@@ -797,7 +789,7 @@ When adding new features or strategies:
 - **36 comprehensive threat hunting strategies** covering modern attack vectors
 - **114 unit tests** with 100% pass rate
 - **13,937 lines of code** across core modules
-- **13 quick action buttons** for one-click analysis including Threat Velocity and Overview
+- **12 quick action buttons** for one-click analysis including Threat Overview
 - **Multiple export formats** (CSV, JSON) for flexible integration
 - **Zero security vulnerabilities** detected by CodeQL analysis
 
