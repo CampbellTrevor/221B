@@ -9,9 +9,9 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 ### 🆕 What's New in This Release
 
 **Expanded Detection Coverage:**
-- 3 new advanced threat hunting strategies (Lateral Movement, Data Hoarding, Time Anomalies)
-- Now covering 9 comprehensive threat categories
-- Enhanced coverage for insider threats and APT behavior
+- 3 NEW cutting-edge threat hunting strategies (Geo-Anomaly, User-Agent Analysis, Crypto Mining Detection)
+- Now covering **12 comprehensive threat categories** (up from 9)
+- Enhanced coverage for insider threats, APT behavior, cryptojacking, and geographic anomalies
 
 **Visual Display Improvements:**
 - Color-coded severity indicators with visual badges (HIGH/MED/LOW)
@@ -37,7 +37,7 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 ### 🎯 Detection Strategies
 
-The dashboard includes **nine comprehensive threat hunting strategies**:
+The dashboard includes **twelve comprehensive threat hunting strategies**:
 
 **Beacon Hunter (C2 Detection)**
 - Detects command-and-control beaconing behavior by analyzing connection timing patterns
@@ -92,6 +92,27 @@ The dashboard includes **nine comprehensive threat hunting strategies**:
 - Detects weekend and late-night access patterns
 - Flags potential unauthorized access and insider threats
 - Essential for catching activity that doesn't match normal user behavior
+
+**Geo-Anomaly Detector (Suspicious Locations)** ⚡ NEW
+- Identifies connections from unusual or high-risk geographic locations
+- Detects impossible travel scenarios (same account from multiple countries rapidly)
+- Flags access from sanctioned or high-risk countries (CN, RU, KP, IR, etc.)
+- Essential for detecting account compromise and VPN/proxy abuse
+- Helps identify state-sponsored attacks and geographic anomalies
+
+**User-Agent Anomaly Detector (Bot & Attack Detection)** ⚡ NEW
+- Identifies attack tools and malicious user agents (sqlmap, nmap, nikto, etc.)
+- Detects automated bots, scrapers, and scanning activity
+- Flags empty or suspiciously short user agent strings
+- Analyzes user agent diversity patterns
+- Critical for identifying reconnaissance and automated attacks
+
+**Crypto Mining Detector (Cryptojacking)** ⚡ NEW
+- Detects unauthorized cryptocurrency mining activity
+- Identifies connections to known mining pools and stratum servers
+- Flags traffic on common mining ports (3333, 4444, 5555, etc.)
+- Analyzes persistent connections patterns typical of mining operations
+- Essential for detecting cryptojacking malware and policy violations
 
 ### 🔧 Interactive Controls
 
@@ -196,7 +217,10 @@ from strategies import (
     TunnelingStrategy,
     LateralMovementStrategy,
     DataHoardingStrategy,
-    TimeAnomalyStrategy
+    TimeAnomalyStrategy,
+    GeoAnomalyStrategy,
+    UserAgentAnomalyStrategy,
+    CryptoMiningStrategy
 )
 
 # Initialize dashboard with all strategies and custom cache settings
@@ -210,7 +234,10 @@ dashboard = WatsonDashboard(
         TunnelingStrategy(),
         LateralMovementStrategy(),
         DataHoardingStrategy(),
-        TimeAnomalyStrategy()
+        TimeAnomalyStrategy(),
+        GeoAnomalyStrategy(),
+        UserAgentAnomalyStrategy(),
+        CryptoMiningStrategy()
     ],
     cache_dir='.custom_cache',
     cache_days=3

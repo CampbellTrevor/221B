@@ -21,13 +21,13 @@ from strategies import HuntStrategy
 import html as html_lib  # For HTML escaping
 
 
-# Visual styling constants for severity indicators
-COLOR_HIGH_SEVERITY_BG = '#ffebee'  # Light red background
-COLOR_HIGH_SEVERITY_BADGE = '#f44336'  # Red badge
-COLOR_MEDIUM_SEVERITY_BG = '#fff3e0'  # Light orange background
-COLOR_MEDIUM_SEVERITY_BADGE = '#ff9800'  # Orange badge
-COLOR_LOW_SEVERITY_BG = '#e8f5e9'  # Light green background
-COLOR_LOW_SEVERITY_BADGE = '#4caf50'  # Green badge
+# Visual styling constants for severity indicators (enhanced with modern colors)
+COLOR_HIGH_SEVERITY_BG = '#fee2e2'  # Light red background (Tailwind red-100)
+COLOR_HIGH_SEVERITY_BADGE = '#dc2626'  # Red badge (Tailwind red-600)
+COLOR_MEDIUM_SEVERITY_BG = '#fef3c7'  # Light amber background (Tailwind amber-100)
+COLOR_MEDIUM_SEVERITY_BADGE = '#f59e0b'  # Amber badge (Tailwind amber-500)
+COLOR_LOW_SEVERITY_BG = '#d1fae5'  # Light green background (Tailwind green-100)
+COLOR_LOW_SEVERITY_BADGE = '#10b981'  # Green badge (Tailwind green-500)
 
 # Analysis and display constants
 HIGH_SEVERITY_THRESHOLD = 75  # Score threshold for high-severity threats
@@ -395,14 +395,14 @@ class WatsonDashboard:
         # Calculate basic stats
         total_results = len(df)
         
-        # Build summary HTML
+        # Build summary HTML with enhanced modern design
         summary_html = f"""
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
-            <h3 style="margin-top: 0;">📊 Analysis Summary</h3>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
-                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
-                    <div style="font-size: 2em; font-weight: bold;">{total_results}</div>
-                    <div style="font-size: 0.9em; opacity: 0.9;">Suspicious Activities</div>
+        <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; padding: 24px; border-radius: 16px; margin: 15px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <h3 style="margin-top: 0; font-size: 1.5em; display: flex; align-items: center; gap: 8px;">📊 Analysis Summary</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 20px;">
+                <div style="background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
+                    <div style="font-size: 2.5em; font-weight: bold; margin-bottom: 4px;">{total_results}</div>
+                    <div style="font-size: 0.9em; opacity: 0.95;">Suspicious Activities</div>
                 </div>
         """
         
@@ -413,17 +413,17 @@ class WatsonDashboard:
             medium_severity = len(df[(df[score_col] >= 50) & (df[score_col] < 75)])
             
             summary_html += f"""
-                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
-                    <div style="font-size: 2em; font-weight: bold; color: #ff6b6b;">{high_severity}</div>
-                    <div style="font-size: 0.9em; opacity: 0.9;">High Severity (≥75)</div>
+                <div style="background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
+                    <div style="font-size: 2.5em; font-weight: bold; color: #fca5a5; margin-bottom: 4px;">🔴 {high_severity}</div>
+                    <div style="font-size: 0.9em; opacity: 0.95;">High Severity (≥75)</div>
                 </div>
-                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
-                    <div style="font-size: 2em; font-weight: bold; color: #ffd93d;">{medium_severity}</div>
-                    <div style="font-size: 0.9em; opacity: 0.9;">Medium Severity (50-74)</div>
+                <div style="background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
+                    <div style="font-size: 2.5em; font-weight: bold; color: #fcd34d; margin-bottom: 4px;">🟡 {medium_severity}</div>
+                    <div style="font-size: 0.9em; opacity: 0.95;">Medium Severity (50-74)</div>
                 </div>
-                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
-                    <div style="font-size: 2em; font-weight: bold;">{df[score_col].mean():.1f}</div>
-                    <div style="font-size: 0.9em; opacity: 0.9;">Average Score</div>
+                <div style="background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
+                    <div style="font-size: 2.5em; font-weight: bold; margin-bottom: 4px;">{df[score_col].mean():.1f}</div>
+                    <div style="font-size: 0.9em; opacity: 0.95;">Average Score</div>
                 </div>
             """
         
@@ -595,25 +595,25 @@ class WatsonDashboard:
             
             # Add color-coded styling to table based on score if available
             if has_score_column and score_col in page_df.columns:
-                # Create styled HTML table with color-coded rows
-                table_html = '<table border="1" class="dataframe" style="border-collapse: collapse; width: 100%;">\n'
-                table_html += '  <thead>\n    <tr style="text-align: right; background-color: #667eea; color: white;">\n'
+                # Create styled HTML table with color-coded rows and modern design
+                table_html = '<table border="1" class="dataframe" style="border-collapse: collapse; width: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;">\n'
+                table_html += '  <thead>\n    <tr style="text-align: right; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; font-weight: bold;">\n'
                 for col in page_df.columns:
                     table_html += f'      <th style="padding: 8px; border: 1px solid #ddd;">{col}</th>\n'
                 table_html += '    </tr>\n  </thead>\n  <tbody>\n'
                 
                 for idx, row in page_df.iterrows():
                     score = row[score_col]
-                    # Color code based on severity
+                    # Color code based on severity with enhanced modern styling
                     if score >= 75:
                         bg_color = COLOR_HIGH_SEVERITY_BG
-                        badge = f'<span style="background: {COLOR_HIGH_SEVERITY_BADGE}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">HIGH</span>'
+                        badge = f'<span style="background: {COLOR_HIGH_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🔴 HIGH</span>'
                     elif score >= 50:
                         bg_color = COLOR_MEDIUM_SEVERITY_BG
-                        badge = f'<span style="background: {COLOR_MEDIUM_SEVERITY_BADGE}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">MED</span>'
+                        badge = f'<span style="background: {COLOR_MEDIUM_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🟡 MED</span>'
                     else:
                         bg_color = COLOR_LOW_SEVERITY_BG
-                        badge = f'<span style="background: {COLOR_LOW_SEVERITY_BADGE}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">LOW</span>'
+                        badge = f'<span style="background: {COLOR_LOW_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🟢 LOW</span>'
                     
                     table_html += f'    <tr style="background-color: {bg_color};">\n'
                     for col in page_df.columns:
