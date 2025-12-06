@@ -121,7 +121,7 @@ class WatsonDashboard:
                     cache_time = cache_time.replace(tzinfo=None)
                 age_seconds = (datetime.datetime.now() - cache_time).total_seconds()
                 return age_seconds / 86400  # Convert to days
-            except:
+            except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError):
                 return -1
         return -1
     
@@ -924,7 +924,8 @@ class WatsonDashboard:
                         'score': row[score_col],
                         'severity': 'High' if row[score_col] >= HIGH_SEVERITY_THRESHOLD else 'Medium' if row[score_col] >= MEDIUM_SEVERITY_THRESHOLD else 'Low'
                     })
-                except:
+                except (ValueError, KeyError, TypeError):
+                    # Skip rows with invalid timestamps
                     pass
         
         if not timeline_data:
