@@ -37,7 +37,11 @@ from strategies import (
     DNSExfiltrationStrategy,
     ProcessInjectionStrategy,
     LiveOffLandStrategy,
-    OAuthAbuseStrategy
+    OAuthAbuseStrategy,
+    InsiderThreatStrategy,
+    RansomwareBehaviorStrategy,
+    ZeroDayExploitStrategy,
+    CloudMisconfigStrategy
 )
 
 
@@ -883,7 +887,11 @@ class TestStrategyRequirements(unittest.TestCase):
         DNSExfiltrationStrategy,
         ProcessInjectionStrategy,
         LiveOffLandStrategy,
-        OAuthAbuseStrategy
+        OAuthAbuseStrategy,
+        InsiderThreatStrategy,
+        RansomwareBehaviorStrategy,
+        ZeroDayExploitStrategy,
+        CloudMisconfigStrategy
     ]
     
     def test_all_strategies_have_names(self):
@@ -2187,6 +2195,285 @@ class TestOAuthAbuseStrategy(unittest.TestCase):
         self.assertIn('oauth_abuse_score', explanations)
         self.assertIn('refresh_token_count', explanations)
         self.assertIn('unique_source_ips', explanations)
+
+
+class TestInsiderThreatStrategy(unittest.TestCase):
+    """Test the Insider Threat Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = InsiderThreatStrategy()
+    
+    def test_insider_threat_detection(self):
+        """Test that insider threat indicators are detected."""
+        # Create suspicious insider activity
+        base_time = datetime.now()
+        timestamps = []
+        for i in range(100):
+            # Mostly weekend/off-hours access
+            if i % 3 == 0:
+                timestamps.append(base_time + timedelta(days=i//24, hours=22))  # 10pm
+            else:
+                timestamps.append(base_time + timedelta(days=5, hours=i % 24))  # Weekend
+        
+        df = pd.DataFrame({
+            'timestamp': timestamps,
+            'username': ['insider.user'] * 100,
+            'source_ip': ['10.0.0.' + str(i % 10) for i in range(100)],  # Multiple IPs
+            'resource_accessed': ['confidential_file_' + str(i) for i in range(100)],
+            'bytes_transferred': [1024 * 1024 * 100] * 100  # 100MB each
+        })
+        
+        col_map = {
+            'timestamp': 'timestamp',
+            'username': 'username',
+            'source_ip': 'source_ip',
+            'resource_accessed': 'resource_accessed',
+            'bytes_transferred': 'bytes_transferred'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect insider threat
+        self.assertFalse(result.empty)
+        self.assertGreater(result.iloc[0]['insider_threat_score'], 50)
+        self.assertIn('excessive_off_hours', result.iloc[0]['flags'])
+    
+    def test_normal_access_not_flagged(self):
+        """Test that normal business hours access is not flagged."""
+        # Create normal activity
+        base_time = datetime(2024, 1, 15, 10, 0)  # Monday 10am
+        
+        df = pd.DataFrame({
+            'timestamp': [base_time + timedelta(hours=i) for i in range(10)],
+            'username': ['normal.user'] * 10,
+            'source_ip': ['10.0.0.5'] * 10,
+            'resource_accessed': ['file_' + str(i) for i in range(10)],
+            'bytes_transferred': [1024] * 10
+        })
+        
+        col_map = {
+            'timestamp': 'timestamp',
+            'username': 'username',
+            'source_ip': 'source_ip',
+            'resource_accessed': 'resource_accessed',
+            'bytes_transferred': 'bytes_transferred'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal usage
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('insider_threat_score', explanations)
+        self.assertIn('unique_resources', explanations)
+        self.assertIn('off_hours_ratio', explanations)
+
+
+class TestRansomwareBehaviorStrategy(unittest.TestCase):
+    """Test the Ransomware Behavior Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = RansomwareBehaviorStrategy()
+    
+    def test_ransomware_behavior_detection(self):
+        """Test that ransomware-like behavior is detected."""
+        base_time = datetime.now()
+        
+        # Create ransomware activity
+        df = pd.DataFrame({
+            'timestamp': [base_time + timedelta(seconds=i) for i in range(200)],
+            'source_ip': ['192.168.1.100'] * 200,
+            'process_name': ['malware.exe'] * 100 + ['vssadmin.exe'] * 50 + ['bcdedit.exe'] * 50,
+            'file_path': ['C:\\Users\\docs\\file_' + str(i) + '.encrypted' for i in range(150)] + 
+                        ['C:\\Users\\README_DECRYPT.txt'] * 50,
+            'operation': ['write'] * 150 + ['delete shadows'] * 50
+        })
+        
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'process_name': 'process_name',
+            'file_path': 'file_path',
+            'operation': 'operation'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect ransomware behavior
+        self.assertFalse(result.empty)
+        self.assertGreater(result.iloc[0]['ransomware_score'], 70)
+        self.assertIn('ransomware_extensions', result.iloc[0]['flags'])
+    
+    def test_normal_file_operations_not_flagged(self):
+        """Test that normal file operations are not flagged."""
+        base_time = datetime.now()
+        
+        df = pd.DataFrame({
+            'timestamp': [base_time + timedelta(minutes=i) for i in range(10)],
+            'source_ip': ['192.168.1.50'] * 10,
+            'process_name': ['word.exe'] * 10,
+            'file_path': ['C:\\Users\\docs\\document' + str(i) + '.docx' for i in range(10)],
+            'operation': ['write'] * 10
+        })
+        
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'process_name': 'process_name',
+            'file_path': 'file_path',
+            'operation': 'operation'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal operations
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('ransomware_score', explanations)
+        self.assertIn('ransomware_extension_count', explanations)
+        self.assertIn('ransom_note_count', explanations)
+
+
+class TestZeroDayExploitStrategy(unittest.TestCase):
+    """Test the Zero-Day Exploit Indicator strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = ZeroDayExploitStrategy()
+    
+    def test_exploitation_detection(self):
+        """Test that exploitation attempts are detected."""
+        base_time = datetime.now()
+        
+        # Create exploitation attempts
+        df = pd.DataFrame({
+            'timestamp': [base_time + timedelta(seconds=i) for i in range(50)],
+            'source_ip': ['203.0.113.10'] * 50,
+            'destination_ip': ['192.168.1.100'] * 50,
+            'protocol': ['TCP'] * 50,
+            'payload': ['metasploit/payload/windows/x64/meterpreter'] * 20 + 
+                      ['\\x90\\x90\\x90\\x31\\xc0\\xeb\\x'] * 30
+        })
+        
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'destination_ip': 'destination_ip',
+            'protocol': 'protocol',
+            'payload': 'payload'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect exploitation
+        self.assertFalse(result.empty)
+        self.assertGreater(result.iloc[0]['exploit_score'], 50)
+        self.assertIn('exploit_framework_detected', result.iloc[0]['flags'])
+    
+    def test_normal_traffic_not_flagged(self):
+        """Test that normal network traffic is not flagged."""
+        base_time = datetime.now()
+        
+        df = pd.DataFrame({
+            'timestamp': [base_time + timedelta(minutes=i) for i in range(10)],
+            'source_ip': ['192.168.1.50'] * 10,
+            'destination_ip': ['8.8.8.8'] * 10,
+            'protocol': ['TCP'] * 10,
+            'payload': ['GET /index.html HTTP/1.1'] * 10
+        })
+        
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'destination_ip': 'destination_ip',
+            'protocol': 'protocol',
+            'payload': 'payload'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal traffic
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('exploit_score', explanations)
+        self.assertIn('exploit_signature_hits', explanations)
+        self.assertIn('shellcode_hits', explanations)
+
+
+class TestCloudMisconfigStrategy(unittest.TestCase):
+    """Test the Cloud Misconfiguration Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = CloudMisconfigStrategy()
+    
+    def test_misconfiguration_detection(self):
+        """Test that cloud misconfigurations are detected."""
+        df = pd.DataFrame({
+            'timestamp': [datetime.now()] * 5,
+            'resource_type': ['S3_Bucket', 'Security_Group', 'IAM_User', 'RDS_Instance', 'EC2_Volume'],
+            'resource_name': ['public-bucket', 'open-sg', 'admin-user', 'prod-db', 'data-vol'],
+            'configuration': ['ACL: public-read', '0.0.0.0/0 ingress', 'root access', 'not configured', 'no encryption'],
+            'permissions': ['*:*', '0.0.0.0/0', 'admin, full', 'public', 'read-write']
+        })
+        
+        col_map = {
+            'timestamp': 'timestamp',
+            'resource_type': 'resource_type',
+            'resource_name': 'resource_name',
+            'configuration': 'configuration',
+            'permissions': 'permissions'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect multiple misconfigurations
+        self.assertFalse(result.empty)
+        self.assertGreaterEqual(len(result), 2)
+        # Check for public storage flag
+        public_storage_found = any('public_storage' in str(flags) for flags in result['flags'])
+        self.assertTrue(public_storage_found)
+    
+    def test_secure_configuration_not_flagged(self):
+        """Test that secure configurations are not flagged."""
+        df = pd.DataFrame({
+            'timestamp': [datetime.now()] * 3,
+            'resource_type': ['S3_Bucket', 'Security_Group', 'RDS_Instance'],
+            'resource_name': ['private-bucket', 'restricted-sg', 'secure-db'],
+            'configuration': ['ACL: private, encryption: AES256', '10.0.0.0/16 ingress, logging enabled', 'encryption at rest enabled, audit logging enabled'],
+            'permissions': ['authenticated-users-only', '10.0.0.0/16', 'least-privilege']
+        })
+        
+        col_map = {
+            'timestamp': 'timestamp',
+            'resource_type': 'resource_type',
+            'resource_name': 'resource_name',
+            'configuration': 'configuration',
+            'permissions': 'permissions'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag secure configurations
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('misconfiguration_score', explanations)
+        self.assertIn('resource_type', explanations)
+        self.assertIn('flags', explanations)
 
 
 if __name__ == '__main__':

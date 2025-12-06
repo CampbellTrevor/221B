@@ -1098,6 +1098,234 @@ class WatsonDashboard:
         print("   • Use this to prioritize which strategies to run regularly")
         print()
     
+    def _show_threat_overview_dashboard(self):
+        """
+        Display a comprehensive overview of all strategies and their findings at a glance.
+        """
+        if not self.strategy_results:
+            print("⚠️ No threat data available yet. Run some strategies first.")
+            return
+        
+        print("=" * 80)
+        print("🎯 COMPREHENSIVE THREAT OVERVIEW DASHBOARD")
+        print("=" * 80)
+        print()
+        
+        # Collect comprehensive statistics
+        overview_data = []
+        total_threats = 0
+        total_critical = 0
+        total_high = 0
+        total_medium = 0
+        total_low = 0
+        all_ips = set()
+        
+        for strategy_name, result_data in self.strategy_results.items():
+            df = result_data['dataframe']
+            
+            if df.empty:
+                continue
+            
+            # Find score column
+            score_col = None
+            for col in df.columns:
+                if 'score' in col.lower():
+                    score_col = col
+                    break
+            
+            if not score_col:
+                continue
+            
+            # Count by severity
+            critical = len(df[df[score_col] >= 90])
+            high = len(df[(df[score_col] >= HIGH_SEVERITY_THRESHOLD) & (df[score_col] < 90)])
+            medium = len(df[(df[score_col] >= MEDIUM_SEVERITY_THRESHOLD) & (df[score_col] < HIGH_SEVERITY_THRESHOLD)])
+            low = len(df[df[score_col] < MEDIUM_SEVERITY_THRESHOLD])
+            
+            total_threats += len(df)
+            total_critical += critical
+            total_high += high
+            total_medium += medium
+            total_low += low
+            
+            # Collect unique IPs
+            for col in df.columns:
+                if 'ip' in col.lower() and col not in ['destination_ip', 'dest_ip', 'dst_ip']:
+                    ips = df[col].dropna().unique()
+                    all_ips.update(str(ip) for ip in ips)
+            
+            # Average score
+            avg_score = df[score_col].mean()
+            max_score = df[score_col].max()
+            
+            overview_data.append({
+                'Strategy': strategy_name,
+                'Total': len(df),
+                '🔴 Critical': critical,
+                '🟠 High': high,
+                '🟡 Medium': medium,
+                '🟢 Low': low,
+                'Avg Score': round(avg_score, 1),
+                'Max Score': int(max_score)
+            })
+        
+        if not overview_data:
+            print("⚠️ No scoreable data found in results.")
+            return
+        
+        # Create DataFrame and sort by total threats
+        overview_df = pd.DataFrame(overview_data)
+        overview_df = overview_df.sort_values('Total', ascending=False)
+        
+        # Display summary statistics
+        print("📊 OVERALL THREAT LANDSCAPE:")
+        print(f"   • Total detections across all strategies: {total_threats:,}")
+        print(f"   • 🔴 Critical threats (≥90): {total_critical:,}")
+        print(f"   • 🟠 High severity (75-89): {total_high:,}")
+        print(f"   • 🟡 Medium severity (50-74): {total_medium:,}")
+        print(f"   • 🟢 Low severity (<50): {total_low:,}")
+        print(f"   • Unique source IPs flagged: {len(all_ips):,}")
+        print()
+        
+        # Risk assessment
+        critical_pct = (total_critical / total_threats * 100) if total_threats > 0 else 0
+        if critical_pct > 10:
+            print("⚠️  HIGH RISK: >10% of threats are critical. Immediate action required!")
+        elif critical_pct > 5:
+            print("⚠️  ELEVATED RISK: 5-10% critical threats. Prioritize investigation.")
+        else:
+            print("✅ MODERATE RISK: <5% critical threats. Continue monitoring.")
+        print()
+        
+        # Display strategy breakdown
+        print("📋 STRATEGY-BY-STRATEGY BREAKDOWN:")
+        print()
+        
+        # Format and display the table
+        for idx, row in overview_df.iterrows():
+            total = row['Total']
+            print(f"🔍 {row['Strategy']}")
+            print(f"   Total: {total:,} | Critical: {row['🔴 Critical']} | High: {row['🟠 High']} | "
+                  f"Medium: {row['🟡 Medium']} | Low: {row['🟢 Low']}")
+            print(f"   Avg Score: {row['Avg Score']} | Max Score: {row['Max Score']}")
+            
+            # Risk indicator
+            if row['🔴 Critical'] > 0:
+                print(f"   ⚠️  CRITICAL findings detected - investigate immediately!")
+            elif row['🟠 High'] > 10:
+                print(f"   ⚠️  Multiple high-severity findings - prioritize review")
+            
+            print()
+        
+        # Top 5 most concerning strategies
+        print("🏆 TOP 5 MOST CONCERNING STRATEGIES:")
+        top5 = overview_df.nlargest(5, '🔴 Critical')
+        for i, (idx, row) in enumerate(top5.iterrows(), 1):
+            print(f"   {i}. {row['Strategy']}: {row['🔴 Critical']} critical + {row['🟠 High']} high-severity threats")
+        print()
+        
+        # Visualization if available
+        if HAS_PLOTLY and len(overview_df) > 0:
+            try:
+                # Create a comprehensive dashboard with multiple visualizations
+                from plotly.subplots import make_subplots
+                
+                # Stacked bar chart of severity distribution
+                fig1 = go.Figure()
+                
+                fig1.add_trace(go.Bar(
+                    name='Critical (≥90)',
+                    x=overview_df['Strategy'],
+                    y=overview_df['🔴 Critical'],
+                    marker_color='#dc2626'
+                ))
+                
+                fig1.add_trace(go.Bar(
+                    name='High (75-89)',
+                    x=overview_df['Strategy'],
+                    y=overview_df['🟠 High'],
+                    marker_color='#ea580c'
+                ))
+                
+                fig1.add_trace(go.Bar(
+                    name='Medium (50-74)',
+                    x=overview_df['Strategy'],
+                    y=overview_df['🟡 Medium'],
+                    marker_color='#f59e0b'
+                ))
+                
+                fig1.add_trace(go.Bar(
+                    name='Low (<50)',
+                    x=overview_df['Strategy'],
+                    y=overview_df['🟢 Low'],
+                    marker_color='#10b981'
+                ))
+                
+                fig1.update_layout(
+                    title='Threat Distribution by Strategy and Severity',
+                    xaxis_title='Strategy',
+                    yaxis_title='Number of Threats',
+                    barmode='stack',
+                    height=500,
+                    xaxis={'tickangle': -45}
+                )
+                
+                display(fig1)
+                
+                # Pie chart of overall severity distribution
+                fig2 = go.Figure(go.Pie(
+                    labels=['Critical', 'High', 'Medium', 'Low'],
+                    values=[total_critical, total_high, total_medium, total_low],
+                    marker=dict(colors=['#dc2626', '#ea580c', '#f59e0b', '#10b981']),
+                    textinfo='label+percent+value',
+                    hovertemplate='<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>'
+                ))
+                
+                fig2.update_layout(
+                    title='Overall Threat Severity Distribution',
+                    height=400
+                )
+                
+                display(fig2)
+                
+                # Scatter plot: Avg Score vs Total Threats
+                fig3 = go.Figure(go.Scatter(
+                    x=overview_df['Avg Score'],
+                    y=overview_df['Total'],
+                    mode='markers+text',
+                    marker=dict(
+                        size=overview_df['🔴 Critical'] * 5 + 10,
+                        color=overview_df['Max Score'],
+                        colorscale='Reds',
+                        showscale=True,
+                        colorbar=dict(title="Max Score"),
+                        line=dict(width=1, color='darkred')
+                    ),
+                    text=overview_df['Strategy'],
+                    textposition='top center',
+                    hovertemplate='<b>%{text}</b><br>Avg Score: %{x:.1f}<br>Total: %{y}<extra></extra>'
+                ))
+                
+                fig3.update_layout(
+                    title='Strategy Effectiveness: Average Score vs Detection Volume',
+                    xaxis_title='Average Threat Score',
+                    yaxis_title='Total Detections',
+                    height=500
+                )
+                
+                display(fig3)
+                
+            except Exception as e:
+                print(f"⚠️ Could not generate visualizations: {e}")
+        
+        print()
+        print("💡 Dashboard Tips:")
+        print("   • Focus on strategies with critical findings first")
+        print("   • Investigate IPs appearing in multiple strategies using Correlations")
+        print("   • Use Quick Triage to see all critical threats in one place")
+        print("   • Export findings for further analysis or reporting")
+        print()
+    
     def _show_smart_recommendations(self):
         """
         Provide intelligent recommendations for next steps based on current findings.
@@ -2941,6 +3169,14 @@ class WatsonDashboard:
             layout=widgets.Layout(width='170px')
         )
         
+        overview_button = widgets.Button(
+            description='📊 Threat Overview',
+            button_style='info',
+            tooltip='Comprehensive dashboard showing all strategies at a glance',
+            icon='dashboard',
+            layout=widgets.Layout(width='170px')
+        )
+        
         action_output = widgets.Output()
         
         def show_tips():
@@ -2963,11 +3199,12 @@ class WatsonDashboard:
                 
                 <h4>🎯 Power User Features:</h4>
                 <ul style="line-height: 1.8;">
+                    <li><strong>Threat Overview Dashboard:</strong> 🔥 NEW! Click 📊 Threat Overview to see ALL strategies at a glance with comprehensive visualizations</li>
                     <li><strong>Metrics Dashboard:</strong> Click 📊 to view real-time threat intelligence with aggregated statistics and strategy comparisons</li>
                     <li><strong>Performance Stats:</strong> Click ⚡ to see execution times, throughput rates, and detection efficiency for each strategy</li>
                     <li><strong>Timeline Analysis:</strong> Click 📅 to visualize when threats occurred with interactive heatmaps and temporal patterns</li>
-                    <li><strong>IP Threat Heatmap:</strong> 🆕 Click 🗺️ to see which IPs generate the most threats across strategies with bubble chart visualization</li>
-                    <li><strong>Strategy Insights:</strong> 🆕 Click 🎓 to compare strategy effectiveness with stacked severity distributions and detection rates</li>
+                    <li><strong>IP Threat Heatmap:</strong> Click 🗺️ to see which IPs generate the most threats across strategies with bubble chart visualization</li>
+                    <li><strong>Strategy Insights:</strong> Click 🎓 to compare strategy effectiveness with stacked severity distributions and detection rates</li>
                     <li><strong>Smart Recommendations:</strong> Click 🎯 to get AI-powered suggestions on which strategies to run next based on findings</li>
                     <li><strong>Text Search:</strong> Use the 🔍 search box to filter results across all columns - find IPs, domains, or any text instantly</li>
                     <li><strong>Quick Triage:</strong> After running multiple analyses, click the 🚨 button to see all critical threats at once</li>
@@ -3058,6 +3295,11 @@ class WatsonDashboard:
                 clear_output(wait=True)
                 self._show_strategy_insights()
         
+        def on_overview_click(b):
+            with action_output:
+                clear_output(wait=True)
+                self._show_threat_overview_dashboard()
+        
         triage_button.on_click(on_triage_click)
         correlation_button.on_click(on_correlation_click)
         report_button.on_click(on_report_click)
@@ -3069,6 +3311,7 @@ class WatsonDashboard:
         help_button.on_click(on_help_click)
         heatmap_button.on_click(on_heatmap_click)
         insights_button.on_click(on_insights_click)
+        overview_button.on_click(on_overview_click)
         
         # Split buttons into three rows for better layout
         action_row1 = widgets.HBox([
@@ -3083,7 +3326,8 @@ class WatsonDashboard:
             performance_button,
             timeline_button,
             heatmap_button,
-            insights_button
+            insights_button,
+            overview_button
         ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))
         
         action_row3 = widgets.HBox([

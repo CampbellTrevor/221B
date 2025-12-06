@@ -13,6 +13,8 @@ from scipy.stats import entropy
 from multiprocessing import Pool
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
+from datetime import timedelta
+from collections import Counter
 
 # Try to import plotly for visualizations (optional)
 try:
@@ -5280,4 +5282,752 @@ class OAuthAbuseStrategy(HuntStrategy):
             'source_ips': 'Sample of source IP addresses',
             'flags': 'Abuse indicators (token_replay, excessive_refresh, dangerous_scope, etc.)',
             'oauth_abuse_score': 'OAuth abuse risk score (0-100). Scores ≥75 indicate likely stolen tokens requiring immediate revocation. Scores ≥50 suggest compromise investigation needed'
+        }
+
+
+class InsiderThreatStrategy(HuntStrategy):
+    """
+    Detects insider threat indicators based on behavioral anomalies.
+    
+    Monitors for:
+    - Unusual data access patterns (accessing more resources than typical)
+    - After-hours access combined with bulk downloads
+    - Access to sensitive resources before resignation/termination
+    - Behavioral changes (sudden increase in file access, database queries, etc.)
+    - Access to data outside normal job function
+    """
+    
+    def _get_name(self) -> str:
+        return "Insider Threat Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'username', 'source_ip', 'resource_accessed', 'bytes_transferred']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """Analyze for insider threat indicators."""
+        if df.empty:
+            return pd.DataFrame()
+        
+        ts_col = col_map.get('timestamp')
+        user_col = col_map.get('username')
+        src_col = col_map.get('source_ip')
+        resource_col = col_map.get('resource_accessed')
+        bytes_col = col_map.get('bytes_transferred')
+        
+        # Convert timestamp to datetime if needed
+        if ts_col and ts_col in df.columns:
+            df[ts_col] = pd.to_datetime(df[ts_col], errors='coerce')
+        
+        results = []
+        
+        # Analyze per user
+        for username, group in df.groupby(user_col):
+            if pd.isna(username):
+                continue
+            
+            score = 0
+            flags = []
+            
+            # Check for off-hours access (weekends, 6pm-6am)
+            off_hours_count = 0
+            if ts_col and ts_col in group.columns:
+                for ts in group[ts_col]:
+                    if pd.notna(ts):
+                        # Weekend
+                        if ts.dayofweek >= 5:
+                            off_hours_count += 1
+                        # Late night/early morning (6pm to 6am)
+                        elif ts.hour >= 18 or ts.hour < 6:
+                            off_hours_count += 1
+            
+            off_hours_ratio = off_hours_count / len(group) if len(group) > 0 else 0
+            if off_hours_ratio > 0.3:  # >30% off-hours activity
+                score += 25
+                flags.append('excessive_off_hours')
+            
+            # Check for unusual volume of resource access
+            unique_resources = group[resource_col].nunique()
+            if unique_resources > 50:
+                score += 20
+                flags.append('excessive_resource_access')
+            if unique_resources > 100:
+                score += 15
+                flags.append('very_high_resource_access')
+            
+            # Check for bulk data transfer
+            if bytes_col and bytes_col in group.columns:
+                total_bytes = group[bytes_col].sum()
+                if total_bytes > 10 * 1024 * 1024 * 1024:  # >10GB
+                    score += 25
+                    flags.append('bulk_data_transfer')
+                elif total_bytes > 5 * 1024 * 1024 * 1024:  # >5GB
+                    score += 15
+                    flags.append('high_data_transfer')
+            
+            # Check for rapid sequential access (potential automated scraping)
+            if ts_col and len(group) > 10:
+                time_diffs = group[ts_col].diff().dt.total_seconds()
+                rapid_access = (time_diffs < 5).sum()  # Less than 5 sec between requests
+                if rapid_access / len(group) > 0.5:  # >50% rapid access
+                    score += 20
+                    flags.append('automated_access_pattern')
+            
+            # Check for access from multiple IPs (potential credential sharing)
+            unique_ips = group[src_col].nunique()
+            if unique_ips > 5:
+                score += 20
+                flags.append('multiple_source_ips')
+            
+            # Check for sensitive resource patterns
+            sensitive_patterns = ['confidential', 'secret', 'financial', 'payroll', 'hr', 'salary', 'ssn', 'password', 'credential']
+            sensitive_access = 0
+            for resource in group[resource_col]:
+                if pd.notna(resource):
+                    resource_lower = str(resource).lower()
+                    if any(pattern in resource_lower for pattern in sensitive_patterns):
+                        sensitive_access += 1
+            
+            if sensitive_access > 10:
+                score += 30
+                flags.append('sensitive_data_access')
+            
+            if score >= 40:  # Only report significant insider threats
+                results.append({
+                    'username': username,
+                    'total_accesses': len(group),
+                    'unique_resources': unique_resources,
+                    'unique_source_ips': unique_ips,
+                    'off_hours_ratio': round(off_hours_ratio, 2),
+                    'total_bytes_transferred': group[bytes_col].sum() if bytes_col in group.columns else 0,
+                    'sensitive_access_count': sensitive_access,
+                    'first_access': group[ts_col].min() if ts_col in group.columns else None,
+                    'last_access': group[ts_col].max() if ts_col in group.columns else None,
+                    'source_ips': ', '.join(map(str, group[src_col].unique()[:3])),
+                    'flags': ', '.join(set(flags)),
+                    'insider_threat_score': min(score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('insider_threat_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate insider threat visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Scatter plot: resource access vs data transferred
+        fig = go.Figure(go.Scatter(
+            x=result_df['unique_resources'],
+            y=result_df['total_bytes_transferred'],
+            mode='markers',
+            marker=dict(
+                size=result_df['total_accesses'] / 10,
+                color=result_df['insider_threat_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Threat Score"),
+                line=dict(width=1, color='darkred')
+            ),
+            text=result_df['username'],
+            hovertemplate='<b>%{text}</b><br>Resources: %{x}<br>Bytes: %{y}<br>Score: %{marker.color}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title='Insider Threat: Resource Access vs Data Transfer',
+            xaxis_title='Unique Resources Accessed',
+            yaxis_title='Total Bytes Transferred',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for InsiderThreatStrategy output columns."""
+        return {
+            'username': 'User account showing insider threat indicators',
+            'total_accesses': 'Total number of resource access events',
+            'unique_resources': 'Number of unique resources accessed (higher = broader data collection)',
+            'unique_source_ips': 'Number of unique source IPs (multiple IPs may indicate credential sharing)',
+            'off_hours_ratio': 'Ratio of off-hours access (weekends, 6pm-6am). Values >0.3 are suspicious',
+            'total_bytes_transferred': 'Total data transferred in bytes',
+            'sensitive_access_count': 'Number of accesses to sensitive resources (confidential, financial, etc.)',
+            'first_access': 'First access timestamp in the analysis window',
+            'last_access': 'Most recent access timestamp',
+            'source_ips': 'Sample of source IP addresses used',
+            'flags': 'Threat indicators (excessive_off_hours, bulk_data_transfer, sensitive_data_access, etc.)',
+            'insider_threat_score': 'Insider threat risk score (0-100). Scores ≥75 require immediate investigation. Scores ≥50 suggest heightened monitoring'
+        }
+
+
+class RansomwareBehaviorStrategy(HuntStrategy):
+    """
+    Detects real-time ransomware-like file operations.
+    
+    Monitors for:
+    - Mass file operations (rapid create/modify/delete)
+    - File extension changes (encryption indicators)
+    - Shadow copy deletion commands
+    - Backup service tampering
+    - Ransom note file creation (.txt, .html with ransom keywords)
+    - High entropy file creations (encrypted files)
+    """
+    
+    def _get_name(self) -> str:
+        return "Ransomware Behavior Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'source_ip', 'process_name', 'file_path', 'operation']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """Analyze for ransomware behavior patterns."""
+        if df.empty:
+            return pd.DataFrame()
+        
+        ts_col = col_map.get('timestamp')
+        src_col = col_map.get('source_ip')
+        process_col = col_map.get('process_name')
+        file_col = col_map.get('file_path')
+        op_col = col_map.get('operation')
+        
+        # Convert timestamp to datetime if needed
+        if ts_col and ts_col in df.columns:
+            df[ts_col] = pd.to_datetime(df[ts_col], errors='coerce')
+        
+        results = []
+        
+        # Ransomware file extensions
+        ransomware_extensions = [
+            '.encrypted', '.locked', '.crypto', '.crypt', '.cerber', '.locky',
+            '.zepto', '.osiris', '.thor', '.aesir', '.zzzzz', '.abc', '.xyz',
+            '.wallet', '.onion', '.wncry', '.wcry', '.cryptolocker'
+        ]
+        
+        # Ransom note patterns
+        ransom_note_patterns = ['readme', 'decrypt', 'recover', 'restore', 'how_to', 'instruction']
+        
+        # Analyze per source
+        for source, group in df.groupby(src_col):
+            if pd.isna(source):
+                continue
+            
+            score = 0
+            flags = []
+            
+            # Check for mass file operations
+            time_window = timedelta(minutes=5)
+            if ts_col and ts_col in group.columns:
+                max_ops_in_window = 0
+                for ts in group[ts_col].dropna():
+                    window_end = ts + time_window
+                    ops_in_window = ((group[ts_col] >= ts) & (group[ts_col] <= window_end)).sum()
+                    max_ops_in_window = max(max_ops_in_window, ops_in_window)
+                
+                if max_ops_in_window > 100:
+                    score += 35
+                    flags.append('mass_file_operations')
+                elif max_ops_in_window > 50:
+                    score += 20
+                    flags.append('high_file_activity')
+            
+            # Check for suspicious file extensions
+            ransomware_files = 0
+            if file_col and file_col in group.columns:
+                for file_path in group[file_col]:
+                    if pd.notna(file_path):
+                        file_str = str(file_path).lower()
+                        if any(ext in file_str for ext in ransomware_extensions):
+                            ransomware_files += 1
+            
+            if ransomware_files > 10:
+                score += 40
+                flags.append('ransomware_extensions')
+            elif ransomware_files > 0:
+                score += 20
+                flags.append('suspicious_extensions')
+            
+            # Check for ransom note creation
+            ransom_notes = 0
+            if file_col and file_col in group.columns:
+                for file_path in group[file_col]:
+                    if pd.notna(file_path):
+                        file_str = str(file_path).lower()
+                        if any(pattern in file_str for pattern in ransom_note_patterns):
+                            if file_str.endswith(('.txt', '.html', '.htm')):
+                                ransom_notes += 1
+            
+            if ransom_notes > 0:
+                score += 35
+                flags.append('ransom_note_creation')
+            
+            # Check for shadow copy deletion
+            shadow_copy_cmds = ['vssadmin', 'wbadmin', 'bcdedit', 'wmic shadowcopy']
+            if process_col and process_col in group.columns:
+                for process in group[process_col]:
+                    if pd.notna(process):
+                        process_str = str(process).lower()
+                        if any(cmd in process_str for cmd in shadow_copy_cmds):
+                            if 'delete' in process_str or 'shadows' in process_str:
+                                score += 30
+                                flags.append('shadow_copy_deletion')
+                                break
+            
+            # Check for backup service tampering
+            backup_keywords = ['backup', 'vss', 'shadow', 'restore']
+            if process_col and op_col:
+                if process_col in group.columns and op_col in group.columns:
+                    for idx, row in group.iterrows():
+                        process_str = str(row[process_col]).lower() if pd.notna(row[process_col]) else ''
+                        op_str = str(row[op_col]).lower() if pd.notna(row[op_col]) else ''
+                        
+                        if any(kw in process_str for kw in backup_keywords):
+                            if 'stop' in op_str or 'disable' in op_str or 'delete' in op_str:
+                                score += 25
+                                flags.append('backup_tampering')
+                                break
+            
+            # Check for multiple file extensions being changed
+            if file_col and file_col in group.columns:
+                original_extensions = set()
+                for file_path in group[file_col]:
+                    if pd.notna(file_path) and '.' in str(file_path):
+                        ext = str(file_path).rsplit('.', 1)[-1]
+                        original_extensions.add(ext)
+                
+                if len(original_extensions) > 20:
+                    score += 25
+                    flags.append('mass_extension_changes')
+            
+            if score >= 50:  # Only report significant ransomware behavior
+                results.append({
+                    'source_ip': source,
+                    'total_file_operations': len(group),
+                    'ransomware_extension_count': ransomware_files,
+                    'ransom_note_count': ransom_notes,
+                    'first_operation': group[ts_col].min() if ts_col in group.columns else None,
+                    'last_operation': group[ts_col].max() if ts_col in group.columns else None,
+                    'unique_processes': group[process_col].nunique() if process_col in group.columns else 0,
+                    'flags': ', '.join(set(flags)),
+                    'ransomware_score': min(score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('ransomware_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate ransomware behavior visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Bar chart of ransomware scores
+        fig = go.Figure(go.Bar(
+            x=result_df['source_ip'],
+            y=result_df['ransomware_score'],
+            marker=dict(
+                color=result_df['ransomware_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Score")
+            ),
+            text=result_df['ransomware_score'],
+            textposition='outside',
+            hovertemplate='<b>%{x}</b><br>Score: %{y}<br><extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title='Ransomware Behavior Detection Scores by Source',
+            xaxis_title='Source IP',
+            yaxis_title='Ransomware Score',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for RansomwareBehaviorStrategy output columns."""
+        return {
+            'source_ip': 'Source IP showing ransomware-like behavior',
+            'total_file_operations': 'Total number of file operations performed',
+            'ransomware_extension_count': 'Number of files with ransomware-associated extensions',
+            'ransom_note_count': 'Number of potential ransom note files created',
+            'first_operation': 'First file operation timestamp',
+            'last_operation': 'Most recent file operation timestamp',
+            'unique_processes': 'Number of unique processes involved',
+            'flags': 'Behavior indicators (mass_file_operations, shadow_copy_deletion, ransom_note_creation, etc.)',
+            'ransomware_score': 'Ransomware behavior risk score (0-100). Scores ≥75 indicate active ransomware requiring immediate containment. Scores ≥50 suggest investigation needed'
+        }
+
+
+class ZeroDayExploitStrategy(HuntStrategy):
+    """
+    Detects potential zero-day exploitation attempts.
+    
+    Monitors for:
+    - Unusual protocol violations or malformed packets
+    - Exploitation frameworks (Metasploit, Cobalt Strike signatures)
+    - Unusual shellcode patterns in network traffic
+    - Abnormal memory access patterns
+    - Crashes followed by successful execution
+    - Privilege changes after suspicious operations
+    """
+    
+    def _get_name(self) -> str:
+        return "Zero-Day Exploit Indicator"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'source_ip', 'destination_ip', 'protocol', 'payload']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """Analyze for zero-day exploitation indicators."""
+        if df.empty:
+            return pd.DataFrame()
+        
+        ts_col = col_map.get('timestamp')
+        src_col = col_map.get('source_ip')
+        dst_col = col_map.get('destination_ip')
+        proto_col = col_map.get('protocol')
+        payload_col = col_map.get('payload')
+        
+        results = []
+        
+        # Exploitation framework signatures
+        exploit_signatures = [
+            'metasploit', 'meterpreter', 'cobalt', 'beacon', 'stager',
+            'shellcode', 'exploit', 'payload', '/admin/exploit',
+            'msf', 'venom', 'pwn', '\\x90\\x90\\x90',  # NOP sled
+            'shikata_ga_nai'  # Metasploit encoder
+        ]
+        
+        # Shellcode patterns
+        shellcode_patterns = [
+            '\\x90\\x90',  # NOP sled
+            '\\xeb\\x',  # JMP short
+            '\\xe8\\x',  # CALL
+            '\\x31\\xc0',  # XOR EAX, EAX
+            '\\x48\\x31',  # XOR (x64)
+            '\\xcc',  # INT3 (breakpoint)
+        ]
+        
+        # Analyze per source-destination pair
+        for (source, dest), group in df.groupby([src_col, dst_col]):
+            if pd.isna(source) or pd.isna(dest):
+                continue
+            
+            score = 0
+            flags = []
+            
+            # Check for exploitation framework signatures
+            exploit_hits = 0
+            if payload_col and payload_col in group.columns:
+                for payload in group[payload_col]:
+                    if pd.notna(payload):
+                        payload_str = str(payload).lower()
+                        if any(sig in payload_str for sig in exploit_signatures):
+                            exploit_hits += 1
+            
+            if exploit_hits > 0:
+                score += 40
+                flags.append('exploit_framework_detected')
+            
+            # Check for shellcode patterns
+            shellcode_hits = 0
+            if payload_col and payload_col in group.columns:
+                for payload in group[payload_col]:
+                    if pd.notna(payload):
+                        payload_str = str(payload)
+                        if any(pattern in payload_str for pattern in shellcode_patterns):
+                            shellcode_hits += 1
+            
+            if shellcode_hits > 0:
+                score += 35
+                flags.append('shellcode_pattern')
+            
+            # Check for unusual payload sizes (very large or very specific sizes)
+            if payload_col and payload_col in group.columns:
+                payload_lengths = [len(str(p)) for p in group[payload_col] if pd.notna(p)]
+                if payload_lengths:
+                    max_len = max(payload_lengths)
+                    if max_len > 10000:  # Very large payload
+                        score += 25
+                        flags.append('large_payload')
+                    
+                    # Check for multiple identical payload sizes (exploit repeatability)
+                    size_counts = Counter(payload_lengths)
+                    if size_counts.most_common(1)[0][1] > 5:  # Same size 5+ times
+                        score += 20
+                        flags.append('repeated_payload_size')
+            
+            # Check for protocol violations
+            unusual_protocols = ['unknown', 'malformed', 'invalid', 'corrupt']
+            if proto_col and proto_col in group.columns:
+                for proto in group[proto_col]:
+                    if pd.notna(proto):
+                        proto_str = str(proto).lower()
+                        if any(up in proto_str for up in unusual_protocols):
+                            score += 30
+                            flags.append('protocol_violation')
+                            break
+            
+            # Check for rapid retries (exploitation attempts)
+            if ts_col and ts_col in group.columns and len(group) > 5:
+                df_sorted = group.sort_values(ts_col)
+                df_sorted[ts_col] = pd.to_datetime(df_sorted[ts_col], errors='coerce')
+                time_diffs = df_sorted[ts_col].diff().dt.total_seconds()
+                rapid_retries = (time_diffs < 2).sum()  # Less than 2 sec between attempts
+                
+                if rapid_retries > 10:
+                    score += 25
+                    flags.append('rapid_exploitation_attempts')
+            
+            # Check for unusual payload entropy (encrypted/encoded exploits)
+            if payload_col and payload_col in group.columns:
+                high_entropy_count = 0
+                for payload in group[payload_col]:
+                    if pd.notna(payload) and len(str(payload)) > 10:
+                        # Convert payload to byte counts for entropy calculation
+                        payload_bytes = str(payload).encode('utf-8', errors='ignore')
+                        byte_counts = [payload_bytes.count(bytes([i])) for i in range(256)]
+                        byte_counts = [c for c in byte_counts if c > 0]  # Remove zeros
+                        if byte_counts:
+                            payload_entropy = entropy(byte_counts)
+                            if payload_entropy > 7.0:  # High entropy
+                                high_entropy_count += 1
+                
+                if high_entropy_count > 3:
+                    score += 20
+                    flags.append('high_entropy_payload')
+            
+            if score >= 50:  # Only report significant exploitation indicators
+                results.append({
+                    'source_ip': source,
+                    'destination_ip': dest,
+                    'total_attempts': len(group),
+                    'exploit_signature_hits': exploit_hits,
+                    'shellcode_hits': shellcode_hits,
+                    'first_attempt': group[ts_col].min() if ts_col in group.columns else None,
+                    'last_attempt': group[ts_col].max() if ts_col in group.columns else None,
+                    'protocols': ', '.join(map(str, group[proto_col].unique()[:3])) if proto_col in group.columns else '',
+                    'flags': ', '.join(set(flags)),
+                    'exploit_score': min(score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('exploit_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate zero-day exploit visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Network graph-style scatter
+        fig = go.Figure(go.Scatter(
+            x=result_df['source_ip'],
+            y=result_df['destination_ip'],
+            mode='markers',
+            marker=dict(
+                size=result_df['total_attempts'],
+                color=result_df['exploit_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Exploit Score"),
+                line=dict(width=1, color='darkred')
+            ),
+            text=result_df['flags'],
+            hovertemplate='<b>%{x} → %{y}</b><br>Attempts: %{marker.size}<br>Score: %{marker.color}<br>Flags: %{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title='Zero-Day Exploitation Attempts',
+            xaxis_title='Source IP',
+            yaxis_title='Destination IP',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for ZeroDayExploitStrategy output columns."""
+        return {
+            'source_ip': 'Source IP of exploitation attempts',
+            'destination_ip': 'Target IP being exploited',
+            'total_attempts': 'Number of exploitation attempts observed',
+            'exploit_signature_hits': 'Number of known exploitation framework signatures detected',
+            'shellcode_hits': 'Number of shellcode patterns identified in payloads',
+            'first_attempt': 'First exploitation attempt timestamp',
+            'last_attempt': 'Most recent exploitation attempt timestamp',
+            'protocols': 'Protocols used in exploitation attempts',
+            'flags': 'Exploitation indicators (exploit_framework_detected, shellcode_pattern, protocol_violation, etc.)',
+            'exploit_score': 'Exploitation risk score (0-100). Scores ≥75 indicate active exploitation requiring emergency response. Scores ≥50 suggest investigation and patching needed'
+        }
+
+
+class CloudMisconfigStrategy(HuntStrategy):
+    """
+    Detects cloud infrastructure misconfigurations and security issues.
+    
+    Monitors for:
+    - Public S3 buckets and storage containers
+    - Overly permissive IAM policies
+    - Unencrypted storage
+    - Missing MFA on privileged accounts
+    - Open security groups (0.0.0.0/0 access)
+    - Exposed credentials in code repositories
+    """
+    
+    def _get_name(self) -> str:
+        return "Cloud Misconfiguration Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'resource_type', 'resource_name', 'configuration', 'permissions']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """Analyze for cloud misconfigurations."""
+        if df.empty:
+            return pd.DataFrame()
+        
+        ts_col = col_map.get('timestamp')
+        type_col = col_map.get('resource_type')
+        name_col = col_map.get('resource_name')
+        config_col = col_map.get('configuration')
+        perm_col = col_map.get('permissions')
+        
+        results = []
+        
+        # Analyze each resource
+        for idx, row in df.iterrows():
+            resource_type = row[type_col] if type_col and type_col in row else None
+            resource_name = row[name_col] if name_col and name_col in row else None
+            configuration = row[config_col] if config_col and config_col in row else None
+            permissions = row[perm_col] if perm_col and perm_col in row else None
+            
+            if pd.isna(resource_name):
+                continue
+            
+            score = 0
+            flags = []
+            
+            resource_type_str = str(resource_type).lower() if pd.notna(resource_type) else ''
+            config_str = str(configuration).lower() if pd.notna(configuration) else ''
+            perm_str = str(permissions).lower() if pd.notna(permissions) else ''
+            
+            # Check for public storage
+            if any(term in resource_type_str for term in ['s3', 'bucket', 'storage', 'blob']):
+                if any(term in config_str or term in perm_str for term in ['public', 'everyone', 'anonymous', '*']):
+                    score += 40
+                    flags.append('public_storage')
+            
+            # Check for wildcard permissions
+            if '*' in perm_str or 'all' in perm_str or 'everyone' in perm_str:
+                score += 35
+                flags.append('wildcard_permissions')
+            
+            # Check for unencrypted resources
+            if 'encrypt' not in config_str and 'encryption' not in config_str:
+                if any(term in resource_type_str for term in ['storage', 'database', 'volume', 'disk']):
+                    score += 30
+                    flags.append('unencrypted_storage')
+            
+            # Check for open security groups (0.0.0.0/0)
+            if 'security' in resource_type_str or 'firewall' in resource_type_str:
+                if '0.0.0.0/0' in config_str or '0.0.0.0/0' in perm_str:
+                    score += 35
+                    flags.append('open_security_group')
+            
+            # Check for missing MFA
+            if 'user' in resource_type_str or 'iam' in resource_type_str or 'account' in resource_type_str:
+                if 'admin' in perm_str or 'root' in perm_str or 'superuser' in perm_str:
+                    if 'mfa' not in config_str and 'multi-factor' not in config_str:
+                        score += 30
+                        flags.append('no_mfa_on_privileged_account')
+            
+            # Check for exposed credentials
+            credential_keywords = ['password', 'secret', 'api_key', 'access_key', 'private_key', 'token']
+            if any(kw in config_str for kw in credential_keywords):
+                if 'hardcoded' in config_str or 'plaintext' in config_str or 'unencrypted' in config_str:
+                    score += 40
+                    flags.append('exposed_credentials')
+            
+            # Check for overly broad IAM policies
+            if 'iam' in resource_type_str or 'role' in resource_type_str:
+                dangerous_actions = ['*', 'full', 'admin', 'delete', 'destroy']
+                if any(action in perm_str for action in dangerous_actions):
+                    score += 25
+                    flags.append('overly_permissive_iam')
+            
+            # Check for default passwords/credentials
+            if any(term in config_str for term in ['default', 'password123', 'admin123', 'changeme']):
+                score += 35
+                flags.append('default_credentials')
+            
+            # Check for missing logging/monitoring
+            if 'logging' not in config_str and 'audit' not in config_str:
+                if any(term in resource_type_str for term in ['database', 'storage', 'compute', 'instance']):
+                    score += 20
+                    flags.append('logging_disabled')
+            
+            if score >= 40:  # Only report significant misconfigurations
+                results.append({
+                    'resource_name': resource_name,
+                    'resource_type': resource_type,
+                    'configuration': configuration if pd.notna(configuration) else 'N/A',
+                    'permissions': permissions if pd.notna(permissions) else 'N/A',
+                    'timestamp': row[ts_col] if ts_col and ts_col in row else None,
+                    'flags': ', '.join(set(flags)),
+                    'misconfiguration_score': min(score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('misconfiguration_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate cloud misconfiguration visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Bar chart by resource type
+        type_scores = result_df.groupby('resource_type')['misconfiguration_score'].mean().sort_values(ascending=False)
+        
+        fig = go.Figure(go.Bar(
+            x=type_scores.index,
+            y=type_scores.values,
+            marker=dict(
+                color=type_scores.values,
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Avg Score")
+            ),
+            text=[f"{v:.1f}" for v in type_scores.values],
+            textposition='outside'
+        ))
+        
+        fig.update_layout(
+            title='Cloud Misconfiguration Scores by Resource Type',
+            xaxis_title='Resource Type',
+            yaxis_title='Average Misconfiguration Score',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for CloudMisconfigStrategy output columns."""
+        return {
+            'resource_name': 'Cloud resource with security misconfiguration',
+            'resource_type': 'Type of cloud resource (S3, IAM, Security Group, etc.)',
+            'configuration': 'Current configuration settings',
+            'permissions': 'Current permission/access settings',
+            'timestamp': 'When the misconfiguration was detected',
+            'flags': 'Misconfiguration types (public_storage, wildcard_permissions, no_mfa_on_privileged_account, etc.)',
+            'misconfiguration_score': 'Severity score (0-100). Scores ≥75 indicate critical security risks requiring immediate remediation. Scores ≥50 should be addressed promptly'
         }
