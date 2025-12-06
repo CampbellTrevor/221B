@@ -1723,12 +1723,12 @@ class WatsonDashboard:
         
         # Build summary HTML with enhanced modern design
         summary_html = f"""
-        <div style="background: {GRADIENT_BLUE_PURPLE}; color: white; padding: 24px; border-radius: 16px; margin: 15px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-            <h3 style="margin-top: 0; font-size: 1.5em; display: flex; align-items: center; gap: 8px;">📊 Analysis Summary</h3>
+        <div style="background: {GRADIENT_BLUE_PURPLE}; color: #1a1a1a; padding: 24px; border-radius: 16px; margin: 15px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <h3 style="margin-top: 0; font-size: 1.5em; display: flex; align-items: center; gap: 8px; color: white;">📊 Analysis Summary</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 20px;">
                 <div style="{CSS_CARD_TRANSLUCENT}">
-                    <div style="font-size: 2.5em; font-weight: bold; margin-bottom: 4px;">{total_results}</div>
-                    <div style="{CSS_TEXT_MUTED}">Suspicious Activities</div>
+                    <div style="font-size: 2.5em; font-weight: bold; margin-bottom: 4px; color: white;">{total_results}</div>
+                    <div style="{CSS_TEXT_MUTED}; color: rgba(255,255,255,0.95);">Suspicious Activities</div>
                 </div>
         """
         
@@ -1742,19 +1742,19 @@ class WatsonDashboard:
             summary_html += f"""
                 <div style="{CSS_CARD_TRANSLUCENT}">
                     <div style="font-size: 2.5em; font-weight: bold; color: #fca5a5; margin-bottom: 4px;">🔴 {high_severity}</div>
-                    <div style="{CSS_TEXT_MUTED}">High Severity (≥75)</div>
+                    <div style="{CSS_TEXT_MUTED}; color: rgba(255,255,255,0.95);">High Severity (≥75)</div>
                 </div>
                 <div style="{CSS_CARD_TRANSLUCENT}">
                     <div style="font-size: 2.5em; font-weight: bold; color: #fcd34d; margin-bottom: 4px;">🟡 {medium_severity}</div>
-                    <div style="{CSS_TEXT_MUTED}">Medium Severity (50-74)</div>
+                    <div style="{CSS_TEXT_MUTED}; color: rgba(255,255,255,0.95);">Medium Severity (50-74)</div>
                 </div>
                 <div style="{CSS_CARD_TRANSLUCENT}">
-                    <div style="font-size: 2.5em; font-weight: bold; margin-bottom: 4px;">{df[score_col].mean():.1f}</div>
-                    <div style="{CSS_TEXT_MUTED}">Average Score</div>
+                    <div style="font-size: 2.5em; font-weight: bold; margin-bottom: 4px; color: white;">{df[score_col].mean():.1f}</div>
+                    <div style="{CSS_TEXT_MUTED}; color: rgba(255,255,255,0.95);">Average Score</div>
                 </div>
                 <div style="{CSS_CARD_TRANSLUCENT}">
                     <div style="font-size: 2.5em; font-weight: bold; color: {'#fca5a5' if max_score >= HIGH_SEVERITY_THRESHOLD else '#fcd34d' if max_score >= MEDIUM_SEVERITY_THRESHOLD else '#86efac'}; margin-bottom: 4px;">{max_score:.1f}</div>
-                    <div style="{CSS_TEXT_MUTED}">Highest Score</div>
+                    <div style="{CSS_TEXT_MUTED}; color: rgba(255,255,255,0.95);">Highest Score</div>
                 </div>
             """
         
@@ -2773,19 +2773,19 @@ class WatsonDashboard:
         
         summary_html = f"""
         <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
-            <h3 style="margin-top: 0;">🚨 Correlated Threats Summary</h3>
+            <h3 style="margin-top: 0; color: white;">🚨 Correlated Threats Summary</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
                 <div style="{CSS_STAT_BOX}">
-                    <div style="{CSS_HEADING_LARGE}">{len(multi_strategy_ips)}</div>
-                    <div style="{CSS_TEXT_SUBTLE}">Correlated IPs</div>
+                    <div style="{CSS_HEADING_LARGE}; color: white;">{len(multi_strategy_ips)}</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Correlated IPs</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: #ff6b6b">{critical_count}</div>
-                    <div style="{CSS_TEXT_SUBTLE}">Critical Threats</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Critical Threats</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: #ffd93d">{high_count}</div>
-                    <div style="{CSS_TEXT_SUBTLE}">High Priority</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">High Priority</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}">{len(self.strategy_results)}</div>
@@ -2964,19 +2964,19 @@ class WatsonDashboard:
         # Create summary
         summary_html = f"""
         <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
-            <h3 style="margin-top: 0;">🚨 Quick Triage Summary</h3>
+            <h3 style="margin-top: 0; color: white;">🚨 Quick Triage Summary</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
                 <div style="{CSS_STAT_BOX}">
-                    <div style="{CSS_HEADING_LARGE}">{len(high_severity_findings)}</div>
-                    <div style="{CSS_TEXT_SUBTLE}">Critical Threats</div>
+                    <div style="{CSS_HEADING_LARGE}; color: white;">{len(high_severity_findings)}</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Critical Threats</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
-                    <div style="{CSS_HEADING_LARGE}">{len(self.strategy_results)}</div>
-                    <div style="{CSS_TEXT_SUBTLE}">Strategies Analyzed</div>
+                    <div style="{CSS_HEADING_LARGE}; color: white;">{len(self.strategy_results)}</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Strategies Analyzed</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
-                    <div style="{CSS_HEADING_LARGE}">{len(set(f.get('Source IP', '') for f in high_severity_findings if f.get('Source IP')))}</div>
-                    <div style="{CSS_TEXT_SUBTLE}">Unique Source IPs</div>
+                    <div style="{CSS_HEADING_LARGE}; color: white;">{len(set(f.get('Source IP', '') for f in high_severity_findings if f.get('Source IP')))}</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Unique Source IPs</div>
                 </div>
             </div>
         </div>
@@ -3444,13 +3444,7 @@ class WatsonDashboard:
             layout=widgets.Layout(width='170px')
         )
         
-        velocity_button = widgets.Button(
-            description='⚡ Threat Velocity',
-            button_style='warning',
-            tooltip='View real-time threat detection velocity and trends',
-            icon='tachometer',
-            layout=widgets.Layout(width='160px')
-        )
+
         
         action_output = widgets.Output()
         
@@ -3461,10 +3455,10 @@ class WatsonDashboard:
             
             tips_html = f"""
             <div style="background: {GRADIENT_PURPLE_VIOLET}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
-                <h3 style="margin-top: 0;">💡 Quick Tips & Best Practices</h3>
+                <h3 style="margin-top: 0; color: white;">💡 Quick Tips & Best Practices</h3>
                 
-                <h4>🚀 Quick Start Workflow:</h4>
-                <ol style="{CSS_LINE_HEIGHT}">
+                <h4 style="color: white;">🚀 Quick Start Workflow:</h4>
+                <ol style="{CSS_LINE_HEIGHT}; color: white;">
                     <li><strong>Select a Strategy Tab</strong> - Choose from {strategy_count} comprehensive threat hunting strategies</li>
                     <li><strong>Read the Recommendation</strong> - Each strategy shows when to use it and what data works best</li>
                     <li><strong>Load Data</strong> - Pick a table and map required columns</li>
@@ -3472,10 +3466,9 @@ class WatsonDashboard:
                     <li><strong>Review Results</strong> - Use filters to focus on high-severity findings</li>
                 </ol>
                 
-                <h4>🎯 Power User Features:</h4>
-                <ul style="{CSS_LINE_HEIGHT}">
+                <h4 style="color: white;">🎯 Power User Features:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white;">
                     <li><strong>Threat Overview Dashboard:</strong> 🔥 Click 📊 Threat Overview to see ALL strategies at a glance with comprehensive visualizations</li>
-                    <li><strong>Threat Velocity Gauge:</strong> 🆕 Click ⚡ Threat Velocity to monitor real-time threat detection rates and trends</li>
                     <li><strong>Metrics Dashboard:</strong> Click 📊 to view real-time threat intelligence with aggregated statistics and strategy comparisons</li>
                     <li><strong>Performance Stats:</strong> Click ⚡ to see execution times, throughput rates, and detection efficiency for each strategy</li>
                     <li><strong>Timeline Analysis:</strong> Click 📅 to visualize when threats occurred with interactive heatmaps and temporal patterns</li>
@@ -3490,24 +3483,24 @@ class WatsonDashboard:
                     <li><strong>Multi-Filter:</strong> Combine text search with severity filters and sorting for precise threat identification</li>
                 </ul>
                 
-                <h4>🔍 Investigation Strategy:</h4>
-                <ul style="{CSS_LINE_HEIGHT}">
+                <h4 style="color: white;">🔍 Investigation Strategy:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white;">
                     <li><strong>Start Broad:</strong> Run multiple strategies on your data to get different perspectives</li>
                     <li><strong>Correlate:</strong> Use correlation analysis to identify systematic attackers</li>
                     <li><strong>Triage:</strong> Focus on high-severity (≥75 score) findings first</li>
                     <li><strong>Document:</strong> Export findings and generate reports for your records</li>
                 </ul>
                 
-                <h4>⚡ Performance Tips:</h4>
-                <ul style="{CSS_LINE_HEIGHT}">
+                <h4 style="color: white;">⚡ Performance Tips:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white;">
                     <li>Use date filters to limit data range and improve speed</li>
                     <li>Start with smaller row limits (10,000) for initial exploration</li>
                     <li>Cache is automatically used for table listings (refreshes every 7 days)</li>
                     <li>Results are stored in memory for correlation - no need to re-run analyses</li>
                 </ul>
                 
-                <h4>📊 Understanding Scores:</h4>
-                <ul style="{CSS_LINE_HEIGHT}">
+                <h4 style="color: white;">📊 Understanding Scores:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white;">
                     <li><strong>75-100 (Critical):</strong> Strong evidence of malicious activity - investigate immediately</li>
                     <li><strong>50-74 (High):</strong> Suspicious behavior worth investigating</li>
                     <li><strong>&lt;50 (Medium/Low):</strong> Anomalies that may be benign but worth noting</li>
@@ -3576,11 +3569,7 @@ class WatsonDashboard:
                 clear_output(wait=True)
                 self._show_threat_overview_dashboard()
         
-        def on_velocity_click(b):
-            with action_output:
-                clear_output(wait=True)
-                self._show_threat_velocity_gauge()
-        
+
         triage_button.on_click(on_triage_click)
         correlation_button.on_click(on_correlation_click)
         report_button.on_click(on_report_click)
@@ -3593,7 +3582,6 @@ class WatsonDashboard:
         heatmap_button.on_click(on_heatmap_click)
         insights_button.on_click(on_insights_click)
         overview_button.on_click(on_overview_click)
-        velocity_button.on_click(on_velocity_click)
         
         # Split buttons into three rows for better layout
         action_row1 = widgets.HBox([
@@ -3613,7 +3601,6 @@ class WatsonDashboard:
         ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))
         
         action_row3 = widgets.HBox([
-            velocity_button,
             recommend_button,
             help_button
         ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))
