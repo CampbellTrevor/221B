@@ -10,7 +10,8 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 **Code Quality & Consolidation:**
 - 🔧 **Major code consolidation** - Improved maintainability and reduced duplication
-- **Gradient pattern consolidation** - 9+ inline CSS gradients replaced with reusable constants
+- **CSS style consolidation** - 10 new CSS constants consolidate 20+ duplicate inline styles
+- **Gradient pattern consolidation** - 9 inline CSS gradients replaced with reusable constants
 - **Magic number elimination** - All severity thresholds now use named constants for easier maintenance
 - **Enhanced code consistency** - Single source of truth for styling and threshold values
 - All improvements maintain 100% backward compatibility with zero breaking changes
@@ -795,14 +796,14 @@ When adding new features or strategies:
 **Current Release:**
 - **36 comprehensive threat hunting strategies** covering modern attack vectors
 - **114 unit tests** with 100% pass rate
-- **13,946 lines of code** across core modules
+- **13,937 lines of code** across core modules
 - **13 quick action buttons** for one-click analysis including Threat Velocity and Overview
 - **Multiple export formats** (CSV, JSON) for flexible integration
 - **Zero security vulnerabilities** detected by CodeQL analysis
 
 **Code Distribution:**
-- `strategies.py`: 6,727 lines - Pure threat detection logic
-- `app.py`: 3,627 lines - Interactive UI and dashboard (consolidated)
+- `strategies.py`: 6,712 lines - Pure threat detection logic
+- `app.py`: 3,633 lines - Interactive UI and dashboard (consolidated)
 - `test_strategies.py`: 2,766 lines - Comprehensive test suite
 - `README.md`: 826 lines - Complete documentation
 
