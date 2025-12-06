@@ -54,6 +54,9 @@ class TestBeaconStrategy(unittest.TestCase):
     
     def test_no_beacon_with_irregular_intervals(self):
         """Test that irregular traffic is not flagged as beaconing."""
+        # Set seed for reproducible tests
+        np.random.seed(42)
+        
         # Create mock data with random intervals
         base_time = datetime.now()
         data = []
@@ -95,6 +98,9 @@ class TestEntropyStrategy(unittest.TestCase):
     
     def test_high_entropy_detection(self):
         """Test that high-entropy strings are detected."""
+        # Set seed for reproducible tests
+        np.random.seed(42)
+        
         # Create mock data with high-entropy strings (random-looking domains)
         data = []
         for i in range(10):

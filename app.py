@@ -12,8 +12,9 @@ import pandas as pd
 import re
 import json
 import os
+import time
 import datetime
-from datetime import timedelta
+from datetime import timedelta, date
 from multiprocessing import Pool, cpu_count
 from ionic_scripting_framework import isf
 from strategies import HuntStrategy
@@ -918,7 +919,7 @@ class WatsonDashboard:
                     if tab_data['start_date'].value:
                         # Validate date value - DatePicker should provide datetime.date object
                         start_date = tab_data['start_date'].value
-                        if not isinstance(start_date, (datetime.date, datetime)):
+                        if not isinstance(start_date, (date, datetime.datetime)):
                             with tab_data['output_widget']:
                                 print("⚠️ Invalid start date format")
                             return
@@ -933,7 +934,7 @@ class WatsonDashboard:
                     if tab_data['end_date'].value:
                         # Validate date value - DatePicker should provide datetime.date object
                         end_date = tab_data['end_date'].value
-                        if not isinstance(end_date, (datetime.date, datetime)):
+                        if not isinstance(end_date, (date, datetime.datetime)):
                             with tab_data['output_widget']:
                                 print("⚠️ Invalid end date format")
                             return
@@ -965,20 +966,46 @@ class WatsonDashboard:
             print(f"📊 Query: {query}")
             print()
             
+            # Create progress indicator
+            progress_bar = widgets.IntProgress(
+                value=0,
+                min=0,
+                max=100,
+                description='Progress:',
+                bar_style='info',
+                style={'bar_color': '#667eea'},
+                orientation='horizontal'
+            )
+            progress_label = widgets.HTML(value="<b>Querying database...</b>")
+            progress_box = widgets.VBox([progress_label, progress_bar])
+            display(progress_box)
+            
             try:
                 # Execute query
+                progress_bar.value = 20
                 df = isf.run_query(query)
                 
                 if df is None or df.empty:
+                    progress_box.close()
                     print("⚠️ Query returned no data.")
                     return
                 
+                progress_bar.value = 40
+                progress_label.value = f"<b>Retrieved {len(df)} rows, analyzing...</b>"
                 print(f"✅ Retrieved {len(df)} rows from {current_table}")
                 print()
                 
                 # Run strategy analysis with multiprocessing support
                 print(f"🔬 Analyzing data with {strategy.name}...")
+                progress_bar.value = 60
                 result_df = self._run_parallel_analysis(strategy, df, col_map)
+                progress_bar.value = 100
+                progress_label.value = "<b>Analysis complete!</b>"
+                progress_bar.bar_style = 'success'
+                
+                # Hide progress bar after a moment
+                time.sleep(0.5)
+                progress_box.close()
                 
                 if result_df is None or result_df.empty:
                     print("⚠️ Analysis returned no results.")

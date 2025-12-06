@@ -1306,14 +1306,17 @@ class TunnelingStrategy(HuntStrategy):
             if connection_count >= 50:
                 tunnel_score += 20
                 # Check for consistent connection sizes (low variance)
-                if len(group) > 1:
+                if connection_count > 1:
                     byte_variance = group[bytes_col].std() / group[bytes_col].mean() if group[bytes_col].mean() > 0 else 0
                     if byte_variance < 0.3:  # Low variance = consistent sizes
                         tunnel_score += 10
             elif connection_count >= 20:
                 tunnel_score += 10
             
-            if tunnel_score >= self.MIN_TUNNEL_SCORE and is_nonstandard:
+            # Flag if score is high enough
+            # Non-standard ports get preferential scoring, but allow high-scoring
+            # standard ports too (e.g., very high volume on HTTPS could be tunneling)
+            if tunnel_score >= self.MIN_TUNNEL_SCORE:
                 results.append({
                     'source_ip': src_ip,
                     'dest_ip': dst_ip,
@@ -1321,6 +1324,7 @@ class TunnelingStrategy(HuntStrategy):
                     'total_bytes': total_bytes,
                     'connection_count': connection_count,
                     'avg_bytes_per_conn': avg_bytes_per_conn,
+                    'is_standard_port': not is_nonstandard,
                     'tunnel_score': min(tunnel_score, 100)
                 })
         
@@ -1375,5 +1379,6 @@ class TunnelingStrategy(HuntStrategy):
             'total_bytes': 'Total data volume transferred on this connection (in bytes)',
             'connection_count': 'Number of connections established on this port',
             'avg_bytes_per_conn': 'Average bytes per connection. Consistent sizes across many connections suggest automated tunneling',
+            'is_standard_port': 'Whether this is a commonly-used port. False (non-standard) ports are more suspicious, but high-volume standard ports can also indicate tunneling',
             'tunnel_score': 'Overall protocol tunneling suspiciousness score (0-100). Higher scores indicate covert channel activity like DNS tunneling, SSH tunneling, or other protocol encapsulation. Scores ≥50 suggest unusual traffic patterns worth investigating for data hiding or command-and-control'
         }
