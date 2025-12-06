@@ -3274,6 +3274,13 @@ class WatsonDashboard:
                 print("📈 Results (sortable and exportable):")
                 print("-" * 80)
                 
+                # Show scanner detection legend if scanners were detected
+                if scanner_count > 0:
+                    print()
+                    print("🔍 Legend: Rows with yellow background = Likely scanner (Nessus, ACAS, etc.)")
+                    print("   Use 'Hide Scanners' filter to focus on real threats")
+                    print()
+                
                 # Display results in sortable table with export option
                 self._display_sortable_results(result_df, strategy.name)
                 
