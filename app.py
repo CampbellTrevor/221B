@@ -18,6 +18,7 @@ from datetime import timedelta, date
 from multiprocessing import Pool, cpu_count
 from ionic_scripting_framework import isf
 from strategies import HuntStrategy
+import html as html_lib  # For HTML escaping
 
 
 # Visual styling constants for severity indicators
@@ -27,6 +28,12 @@ COLOR_MEDIUM_SEVERITY_BG = '#fff3e0'  # Light orange background
 COLOR_MEDIUM_SEVERITY_BADGE = '#ff9800'  # Orange badge
 COLOR_LOW_SEVERITY_BG = '#e8f5e9'  # Light green background
 COLOR_LOW_SEVERITY_BADGE = '#4caf50'  # Green badge
+
+# Analysis and display constants
+HIGH_SEVERITY_THRESHOLD = 75  # Score threshold for high-severity threats
+MEDIUM_SEVERITY_THRESHOLD = 50  # Score threshold for medium-severity threats
+MAX_DISPLAY_ITEMS = 20  # Maximum items to display in correlation/triage views
+STRING_TRUNCATE_LENGTH = 50  # Length to truncate long strings for display
 
 
 class WatsonDashboard:
@@ -1232,7 +1239,7 @@ class WatsonDashboard:
         
         # Build correlation report
         correlation_data = []
-        for ip, detections in sorted_ips[:20]:  # Show top 20
+        for ip, detections in sorted_ips[:MAX_DISPLAY_ITEMS]:
             strategies_detected = set(d['strategy'] for d in detections)
             avg_score = sum(d['score'] for d in detections) / len(detections)
             max_score = max(d['score'] for d in detections)
@@ -1243,7 +1250,7 @@ class WatsonDashboard:
                 'Detection Names': ', '.join(sorted(strategies_detected)[:3]) + ('...' if len(strategies_detected) > 3 else ''),
                 'Avg Score': f"{avg_score:.1f}",
                 'Max Score': f"{max_score:.1f}",
-                'Threat Level': 'CRITICAL' if max_score >= 75 else 'HIGH' if max_score >= 50 else 'MEDIUM'
+                'Threat Level': 'CRITICAL' if max_score >= HIGH_SEVERITY_THRESHOLD else 'HIGH' if max_score >= MEDIUM_SEVERITY_THRESHOLD else 'MEDIUM'
             })
         
         corr_df = pd.DataFrame(correlation_data)
@@ -1320,7 +1327,7 @@ class WatsonDashboard:
             
             # Create bubble chart: strategies vs max score
             viz_data = []
-            for ip, detections in sorted_ips[:20]:
+            for ip, detections in sorted_ips[:MAX_DISPLAY_ITEMS]:
                 strategies_detected = set(d['strategy'] for d in detections)
                 max_score = max(d['score'] for d in detections)
                 viz_data.append({
@@ -1344,7 +1351,7 @@ class WatsonDashboard:
                     colorbar=dict(title="Max<br>Score"),
                     line=dict(width=1, color='white')
                 ),
-                text=[f"IP: {viz_df.iloc[i]['ip']}<br>Strategies: {viz_df.iloc[i]['strategies']}<br>Score: {viz_df.iloc[i]['score']:.1f}"
+                text=[f"IP: {html_lib.escape(str(viz_df.iloc[i]['ip']))}<br>Strategies: {viz_df.iloc[i]['strategies']}<br>Score: {viz_df.iloc[i]['score']:.1f}"
                       for i in range(len(viz_df))],
                 hovertemplate='%{text}<extra></extra>'
             ))
@@ -1416,8 +1423,8 @@ class WatsonDashboard:
             
             score_col = score_cols[0]
             
-            # Filter high-severity (score >= 75)
-            high_severity_df = df[df[score_col] >= 75]
+            # Filter high-severity
+            high_severity_df = df[df[score_col] >= HIGH_SEVERITY_THRESHOLD]
             
             for _, row in high_severity_df.iterrows():
                 finding = {
@@ -1431,7 +1438,7 @@ class WatsonDashboard:
                 if 'dest_ip' in row:
                     finding['Dest IP'] = row['dest_ip']
                 if 'target_string' in row:
-                    finding['Target'] = str(row['target_string'])[:50]
+                    finding['Target'] = str(row['target_string'])[:STRING_TRUNCATE_LENGTH]
                 
                 high_severity_findings.append(finding)
         
@@ -1667,9 +1674,14 @@ class WatsonDashboard:
             df = result_data['dataframe']
             strategy = result_data['strategy']
             
+            # Escape HTML in user-controlled content
+            safe_strategy_name = html_lib.escape(strategy_name)
+            strategy_doc = strategy.__class__.__doc__
+            safe_doc = html_lib.escape(strategy_doc.strip()) if strategy_doc else 'No description available'
+            
             html += f"""
-                <h2>{strategy_name}</h2>
-                <p><em>{strategy.__class__.__doc__.strip() if strategy.__class__.__doc__ else 'No description available'}</em></p>
+                <h2>{safe_strategy_name}</h2>
+                <p><em>{safe_doc}</em></p>
                 <p><strong>Findings:</strong> {len(df)} total</p>
             """
             
@@ -1682,7 +1694,7 @@ class WatsonDashboard:
                 
                 html += '<table><thead><tr>'
                 for col in display_df.columns:
-                    html += f'<th>{col}</th>'
+                    html += f'<th>{html_lib.escape(str(col))}</th>'
                 html += '</tr></thead><tbody>'
                 
                 for _, row in display_df.iterrows():
@@ -1690,9 +1702,9 @@ class WatsonDashboard:
                     severity_class = ''
                     if score_cols:
                         score = row[score_cols[0]]
-                        if score >= 75:
+                        if score >= HIGH_SEVERITY_THRESHOLD:
                             severity_class = 'severity-high'
-                        elif score >= 50:
+                        elif score >= MEDIUM_SEVERITY_THRESHOLD:
                             severity_class = 'severity-medium'
                         else:
                             severity_class = 'severity-low'
@@ -1702,10 +1714,10 @@ class WatsonDashboard:
                         value = row[col]
                         # Add badge for score columns
                         if col.endswith('_score'):
-                            if value >= 75:
+                            if value >= HIGH_SEVERITY_THRESHOLD:
                                 badge_class = 'badge-high'
                                 badge_text = 'HIGH'
-                            elif value >= 50:
+                            elif value >= MEDIUM_SEVERITY_THRESHOLD:
                                 badge_class = 'badge-medium'
                                 badge_text = 'MED'
                             else:
@@ -1713,7 +1725,8 @@ class WatsonDashboard:
                                 badge_text = 'LOW'
                             html += f'<td>{value:.1f} <span class="badge {badge_class}">{badge_text}</span></td>'
                         else:
-                            html += f'<td>{value}</td>'
+                            # Escape all values to prevent XSS
+                            html += f'<td>{html_lib.escape(str(value))}</td>'
                     html += '</tr>'
                 
                 html += '</tbody></table>'
