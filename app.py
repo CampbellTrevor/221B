@@ -15,7 +15,7 @@ import os
 import time
 import datetime
 from datetime import timedelta, date
-from multiprocessing import Pool, cpu_count
+from multiprocessing import cpu_count
 from ionic_scripting_framework import isf
 from strategies import HuntStrategy
 import html as html_lib  # For HTML escaping
