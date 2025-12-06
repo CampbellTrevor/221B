@@ -1382,3 +1382,454 @@ class TunnelingStrategy(HuntStrategy):
             'is_standard_port': 'Whether this is a commonly-used port. False (non-standard) ports are more suspicious, but high-volume standard ports can also indicate tunneling',
             'tunnel_score': 'Overall protocol tunneling suspiciousness score (0-100). Higher scores indicate covert channel activity like DNS tunneling, SSH tunneling, or other protocol encapsulation. Scores ≥50 suggest unusual traffic patterns worth investigating for data hiding or command-and-control'
         }
+
+
+class LateralMovementStrategy(HuntStrategy):
+    """
+    Lateral Movement Detector - Identifies suspicious lateral movement patterns.
+    
+    Detects potential lateral movement by analyzing authentication and connection
+    patterns across multiple hosts. Looks for single sources accessing many targets
+    in short time windows.
+    """
+    
+    MIN_UNIQUE_TARGETS = 5
+    MIN_LATERAL_SCORE = 50
+    TIME_WINDOW_HOURS = 1  # Time window to look for rapid movement
+    
+    def _get_name(self) -> str:
+        return "Lateral Movement Detector (Privilege Escalation)"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'source_ip', 'dest_ip']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze connection patterns to detect lateral movement.
+        
+        Args:
+            df: DataFrame with connection/authentication logs
+            col_map: Mapping of column names
+        
+        Returns:
+            DataFrame with suspicious lateral movement activity
+        """
+        ts_col = col_map['timestamp']
+        src_col = col_map['source_ip']
+        dst_col = col_map['dest_ip']
+        
+        df = df.copy()
+        df[ts_col] = pd.to_datetime(df[ts_col])
+        df = df.sort_values(ts_col)
+        
+        results = []
+        
+        # Group by source IP
+        for src_ip, group in df.groupby(src_col):
+            unique_targets = group[dst_col].nunique()
+            total_connections = len(group)
+            
+            # Filter noise - need minimum targets
+            if unique_targets < self.MIN_UNIQUE_TARGETS:
+                continue
+            
+            # Calculate time span
+            time_span = (group[ts_col].max() - group[ts_col].min()).total_seconds() / 3600  # hours
+            
+            # Calculate targets per hour
+            targets_per_hour = unique_targets / max(time_span, 0.1)  # Avoid division by zero
+            
+            # Calculate lateral movement score (0-100)
+            lateral_score = 0.0
+            
+            # Factor 1: Number of unique targets (40 points)
+            if unique_targets >= 20:
+                lateral_score += 40
+            elif unique_targets >= 10:
+                lateral_score += 30
+            elif unique_targets >= 5:
+                lateral_score += 20
+            
+            # Factor 2: Speed of movement (30 points)
+            # Rapid movement (many targets per hour) is suspicious
+            if targets_per_hour >= 10:
+                lateral_score += 30
+            elif targets_per_hour >= 5:
+                lateral_score += 20
+            elif targets_per_hour >= 2:
+                lateral_score += 10
+            
+            # Factor 3: Connection volume (30 points)
+            if total_connections >= 100:
+                lateral_score += 30
+            elif total_connections >= 50:
+                lateral_score += 20
+            elif total_connections >= 20:
+                lateral_score += 10
+            
+            if lateral_score >= self.MIN_LATERAL_SCORE:
+                # Get first and last timestamps
+                first_seen = group[ts_col].min()
+                last_seen = group[ts_col].max()
+                
+                results.append({
+                    'source_ip': src_ip,
+                    'unique_targets': unique_targets,
+                    'total_connections': total_connections,
+                    'time_span_hours': time_span,
+                    'targets_per_hour': targets_per_hour,
+                    'first_seen': first_seen,
+                    'last_seen': last_seen,
+                    'lateral_score': min(lateral_score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('lateral_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate lateral movement visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=result_df['unique_targets'],
+            y=result_df['targets_per_hour'],
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=result_df['lateral_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Lateral<br>Movement<br>Score")
+            ),
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Targets: {result_df.iloc[i]['unique_targets']}<br>Speed: {result_df.iloc[i]['targets_per_hour']:.2f} targets/hr<br>Score: {result_df.iloc[i]['lateral_score']:.0f}" 
+                  for i in range(len(result_df))],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title="Lateral Movement: Unique Targets vs Movement Speed",
+            xaxis_title="Unique Target IPs",
+            yaxis_title="Targets per Hour",
+            hovermode='closest',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for LateralMovementStrategy output columns."""
+        return {
+            'source_ip': 'The IP address moving laterally across the network',
+            'unique_targets': 'Number of distinct destination IPs contacted. High values indicate broad network access',
+            'total_connections': 'Total connection attempts made',
+            'time_span_hours': 'Time period (in hours) over which the lateral movement occurred',
+            'targets_per_hour': 'Speed of lateral movement. Values ≥5 indicate rapid reconnaissance or automated spreading',
+            'first_seen': 'Timestamp of first observed connection',
+            'last_seen': 'Timestamp of last observed connection',
+            'lateral_score': 'Overall lateral movement suspiciousness score (0-100). Higher scores indicate potential privilege escalation, network reconnaissance, or malware spreading. Scores ≥50 suggest an attacker moving through the network'
+        }
+
+
+class DataHoardingStrategy(HuntStrategy):
+    """
+    Data Hoarding Detector - Identifies unusual data collection patterns.
+    
+    Detects potential data theft preparation by identifying hosts that are
+    accessing or downloading unusually large volumes of data, or accessing
+    many different data sources.
+    """
+    
+    MIN_HOARDING_SCORE = 50
+    MIN_BYTES_THRESHOLD = 1_000_000  # 1MB minimum
+    
+    def _get_name(self) -> str:
+        return "Data Hoarding Detector (Theft Preparation)"
+    
+    def _get_required_inputs(self) -> list:
+        return ['source_ip', 'dest_ip', 'bytes_in']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze download patterns to detect data hoarding.
+        
+        Args:
+            df: DataFrame with connection logs
+            col_map: Mapping of column names
+        
+        Returns:
+            DataFrame with suspicious data hoarding activity
+        """
+        src_col = col_map['source_ip']
+        dst_col = col_map['dest_ip']
+        bytes_col = col_map['bytes_in']
+        
+        df = df.copy()
+        df[bytes_col] = pd.to_numeric(df[bytes_col], errors='coerce').fillna(0)
+        
+        # Filter out minimal traffic
+        df = df[df[bytes_col] >= self.MIN_BYTES_THRESHOLD]
+        
+        results = []
+        
+        # Group by source IP
+        for src_ip, group in df.groupby(src_col):
+            total_bytes_downloaded = group[bytes_col].sum()
+            unique_sources = group[dst_col].nunique()
+            connection_count = len(group)
+            avg_bytes_per_conn = total_bytes_downloaded / connection_count if connection_count > 0 else 0
+            
+            # Calculate hoarding score (0-100)
+            hoarding_score = 0.0
+            
+            # Factor 1: Total data volume (40 points)
+            if total_bytes_downloaded >= 1_000_000_000:  # 1GB+
+                hoarding_score += 40
+            elif total_bytes_downloaded >= 100_000_000:  # 100MB+
+                hoarding_score += 30
+            elif total_bytes_downloaded >= 10_000_000:  # 10MB+
+                hoarding_score += 20
+            
+            # Factor 2: Number of different data sources (30 points)
+            # Accessing many sources suggests systematic collection
+            if unique_sources >= 20:
+                hoarding_score += 30
+            elif unique_sources >= 10:
+                hoarding_score += 20
+            elif unique_sources >= 5:
+                hoarding_score += 10
+            
+            # Factor 3: Connection patterns (30 points)
+            if connection_count >= 100:
+                hoarding_score += 20
+                # Check for consistent download sizes (bulk operations)
+                if connection_count > 1:
+                    byte_cv = group[bytes_col].std() / group[bytes_col].mean() if group[bytes_col].mean() > 0 else float('inf')
+                    if byte_cv < 0.5:  # Consistent sizes
+                        hoarding_score += 10
+            elif connection_count >= 50:
+                hoarding_score += 10
+            
+            if hoarding_score >= self.MIN_HOARDING_SCORE:
+                results.append({
+                    'source_ip': src_ip,
+                    'total_bytes_downloaded': total_bytes_downloaded,
+                    'unique_data_sources': unique_sources,
+                    'connection_count': connection_count,
+                    'avg_bytes_per_conn': avg_bytes_per_conn,
+                    'hoarding_score': min(hoarding_score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('hoarding_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate data hoarding visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Convert bytes to GB for readability
+        result_df['total_gb'] = result_df['total_bytes_downloaded'] / 1_000_000_000
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=result_df['unique_data_sources'],
+            y=result_df['total_gb'],
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=result_df['hoarding_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Hoarding<br>Score")
+            ),
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Downloaded: {result_df.iloc[i]['total_gb']:.2f} GB<br>Sources: {result_df.iloc[i]['unique_data_sources']}<br>Score: {result_df.iloc[i]['hoarding_score']:.0f}" 
+                  for i in range(len(result_df))],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title="Data Hoarding: Data Sources vs Download Volume",
+            xaxis_title="Unique Data Sources",
+            yaxis_title="Total Downloaded (GB)",
+            hovermode='closest',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for DataHoardingStrategy output columns."""
+        return {
+            'source_ip': 'The IP address downloading/collecting data',
+            'total_bytes_downloaded': 'Total volume of data downloaded (in bytes)',
+            'unique_data_sources': 'Number of different destination IPs accessed. High values suggest systematic data collection from multiple sources',
+            'connection_count': 'Total number of connections made',
+            'avg_bytes_per_conn': 'Average download size per connection. Large consistent sizes may indicate bulk file transfers',
+            'hoarding_score': 'Overall data hoarding suspiciousness score (0-100). Higher scores indicate potential data theft preparation where an attacker is collecting data before exfiltration. Scores ≥50 suggest unusual bulk data collection patterns'
+        }
+
+
+class TimeAnomalyStrategy(HuntStrategy):
+    """
+    Time-Based Anomaly Detector - Identifies off-hours suspicious activity.
+    
+    Detects activity occurring outside normal business hours which may
+    indicate unauthorized access, insider threats, or compromised accounts.
+    """
+    
+    MIN_ANOMALY_SCORE = 50
+    # Define business hours (24-hour format)
+    BUSINESS_START_HOUR = 8
+    BUSINESS_END_HOUR = 18
+    # Define business days (0=Monday, 6=Sunday)
+    BUSINESS_DAYS = [0, 1, 2, 3, 4]  # Monday-Friday
+    
+    def _get_name(self) -> str:
+        return "Time-Based Anomaly Detector (Off-Hours Activity)"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'source_ip']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze activity timing to detect off-hours anomalies.
+        
+        Args:
+            df: DataFrame with timestamped events
+            col_map: Mapping of column names
+        
+        Returns:
+            DataFrame with suspicious off-hours activity
+        """
+        ts_col = col_map['timestamp']
+        src_col = col_map['source_ip']
+        
+        df = df.copy()
+        df[ts_col] = pd.to_datetime(df[ts_col])
+        
+        # Extract time-based features
+        df['hour'] = df[ts_col].dt.hour
+        df['day_of_week'] = df[ts_col].dt.dayofweek
+        df['is_weekend'] = ~df['day_of_week'].isin(self.BUSINESS_DAYS)
+        df['is_off_hours'] = (df['hour'] < self.BUSINESS_START_HOUR) | (df['hour'] >= self.BUSINESS_END_HOUR)
+        df['is_anomalous_time'] = df['is_weekend'] | df['is_off_hours']
+        
+        results = []
+        
+        # Group by source IP
+        for src_ip, group in df.groupby(src_col):
+            total_activity = len(group)
+            off_hours_activity = group['is_anomalous_time'].sum()
+            weekend_activity = group['is_weekend'].sum()
+            late_night_activity = (group['hour'] < 6).sum()  # 12am-6am
+            
+            # Calculate off-hours percentage
+            off_hours_pct = (off_hours_activity / total_activity) * 100 if total_activity > 0 else 0
+            
+            # Calculate anomaly score (0-100)
+            anomaly_score = 0.0
+            
+            # Factor 1: High percentage of off-hours activity (50 points)
+            if off_hours_pct >= 80:
+                anomaly_score += 50
+            elif off_hours_pct >= 60:
+                anomaly_score += 35
+            elif off_hours_pct >= 40:
+                anomaly_score += 20
+            
+            # Factor 2: Late night activity (30 points)
+            # Activity between midnight and 6am is especially suspicious
+            late_night_pct = (late_night_activity / total_activity) * 100 if total_activity > 0 else 0
+            if late_night_pct >= 50:
+                anomaly_score += 30
+            elif late_night_pct >= 30:
+                anomaly_score += 20
+            elif late_night_pct >= 10:
+                anomaly_score += 10
+            
+            # Factor 3: Volume of activity (20 points)
+            # More activity = more significant if it's off-hours
+            if total_activity >= 100:
+                anomaly_score += 20
+            elif total_activity >= 50:
+                anomaly_score += 15
+            elif total_activity >= 20:
+                anomaly_score += 10
+            
+            if anomaly_score >= self.MIN_ANOMALY_SCORE and off_hours_activity >= 5:
+                # Get time distribution
+                hour_dist = group['hour'].value_counts().to_dict()
+                most_active_hours = sorted(hour_dist.items(), key=lambda x: x[1], reverse=True)[:3]
+                
+                results.append({
+                    'source_ip': src_ip,
+                    'total_activity': total_activity,
+                    'off_hours_activity': int(off_hours_activity),
+                    'off_hours_percentage': off_hours_pct,
+                    'weekend_activity': int(weekend_activity),
+                    'late_night_activity': int(late_night_activity),
+                    'most_active_hours': ', '.join([f"{h}:00 ({c}x)" for h, c in most_active_hours]),
+                    'anomaly_score': min(anomaly_score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('anomaly_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate time anomaly visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=result_df['total_activity'],
+            y=result_df['off_hours_percentage'],
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=result_df['anomaly_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Anomaly<br>Score")
+            ),
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Total Activity: {result_df.iloc[i]['total_activity']}<br>Off-Hours: {result_df.iloc[i]['off_hours_percentage']:.1f}%<br>Late Night: {result_df.iloc[i]['late_night_activity']}<br>Score: {result_df.iloc[i]['anomaly_score']:.0f}" 
+                  for i in range(len(result_df))],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title="Time-Based Anomalies: Activity Volume vs Off-Hours Percentage",
+            xaxis_title="Total Activity Count",
+            yaxis_title="Off-Hours Activity (%)",
+            hovermode='closest',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for TimeAnomalyStrategy output columns."""
+        return {
+            'source_ip': 'The IP address with anomalous timing patterns',
+            'total_activity': 'Total number of activities/events observed',
+            'off_hours_activity': 'Number of activities outside business hours (before 8am or after 6pm on weekdays, or anytime on weekends)',
+            'off_hours_percentage': 'Percentage of total activity occurring off-hours. Values ≥60% are highly suspicious',
+            'weekend_activity': 'Number of activities on weekends',
+            'late_night_activity': 'Number of activities between midnight and 6am. Late night activity is especially suspicious',
+            'most_active_hours': 'Top 3 most active hours with activity counts',
+            'anomaly_score': 'Overall time-based anomaly score (0-100). Higher scores indicate suspicious off-hours access patterns typical of unauthorized access, insider threats, or compromised credentials. Scores ≥50 warrant investigation into why this account is active at unusual times'
+        }
