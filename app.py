@@ -20,6 +20,14 @@ from ionic_scripting_framework import isf
 from strategies import HuntStrategy
 import html as html_lib  # For HTML escaping
 
+# Try to import plotly for visualizations (optional)
+try:
+    import plotly.graph_objects as go
+    import plotly.express as px
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
+
 
 # Visual styling constants for severity indicators (enhanced with modern colors)
 COLOR_HIGH_SEVERITY_BG = '#fee2e2'  # Light red background (Tailwind red-100)
@@ -177,6 +185,38 @@ class WatsonDashboard:
         return {inp: descriptions.get(inp, ("Required field", "")) 
                 for inp in strategy.required_inputs}
     
+    def _get_strategy_recommendation(self, strategy: HuntStrategy) -> str:
+        """
+        Get contextual recommendation for when to use a strategy.
+        
+        Args:
+            strategy: The hunt strategy
+            
+        Returns:
+            HTML string with recommendation
+        """
+        recommendations = {
+            'Beacon Hunter': '🎯 <b>Best for:</b> Network logs (firewall, proxy, DNS). Use when investigating suspected C2 communications or malware callbacks.',
+            'Entropy Analyzer': '🎯 <b>Best for:</b> DNS logs, URL logs, user-agent strings. Perfect for finding DGA domains, encoded data, or obfuscation.',
+            'Exfiltration Monitor': '🎯 <b>Best for:</b> Network flow logs with byte counts. Ideal for identifying data theft via unusual upload patterns.',
+            'Port Scan Detector': '🎯 <b>Best for:</b> Firewall or connection logs. Essential for catching reconnaissance and attack preparation.',
+            'Brute Force Detector': '🎯 <b>Best for:</b> Authentication logs (VPN, SSH, web apps). Critical for defending against credential attacks.',
+            'Protocol Tunneling Detector': '🎯 <b>Best for:</b> Network logs with port/protocol info. Finds covert channels and protocol misuse.',
+            'Lateral Movement Detector': '🎯 <b>Best for:</b> Internal network logs. Crucial for detecting attackers spreading through your network.',
+            'Data Hoarding Detector': '🎯 <b>Best for:</b> File access or database query logs. Catches insider threats collecting data before exfiltration.',
+            'Time Anomaly Detector': '🎯 <b>Best for:</b> Any logs with timestamps. Great for finding off-hours access and weekend attacks.',
+            'Geo-Anomaly Detector': '🎯 <b>Best for:</b> Logs with IP addresses (web, VPN, auth). Excellent for detecting account compromise and location-based threats.',
+            'User-Agent Anomaly Detector': '🎯 <b>Best for:</b> Web/proxy logs with user-agent strings. Identifies attack tools, bots, and scanners.',
+            'Crypto Mining Detector': '🎯 <b>Best for:</b> Network logs with IPs and ports. Finds cryptojacking malware and policy violations.',
+            'DNS Anomaly Detector': '🎯 <b>Best for:</b> DNS query logs. Catches DGA malware, DNS tunneling, and malicious domain lookups.',
+            'Account Takeover Detector': '🎯 <b>Best for:</b> Authentication logs with IPs and usernames. Detects credential theft and account compromise.',
+            'Data Staging Detector': '🎯 <b>Best for:</b> File operation logs. Identifies data collection before exfiltration attempts.'
+        }
+        
+        recommendation = recommendations.get(strategy.name, '🎯 <b>Use this strategy</b> for specialized threat hunting.')
+        
+        return f'<div style="background: #e3f2fd; padding: 12px; border-radius: 8px; margin: 10px 0; border-left: 4px solid #2196f3;"><span style="color: #1565c0;">{recommendation}</span></div>'
+    
     def _create_strategy_tabs(self):
         """Create tab widget for strategies with all UI elements inside each tab."""
         tab_contents = []
@@ -270,11 +310,15 @@ class WatsonDashboard:
             strategy_doc = strategy.__class__.__doc__
             strategy_desc = strategy_doc.strip() if strategy_doc else "No description available"
             
+            # Get strategy recommendation
+            recommendation_html = self._get_strategy_recommendation(strategy)
+            
             description = widgets.HTML(
                 value=f"""
                 <div style="padding: 10px;">
                     <h3>{strategy.name}</h3>
                     <p style="margin: 10px 0;"><i>{strategy_desc}</i></p>
+                    {recommendation_html}
                     <h4>Required Inputs:</h4>
                     {inputs_html}
                 </div>
@@ -411,6 +455,8 @@ class WatsonDashboard:
             score_col = score_cols[0]  # Use first score column
             high_severity = len(df[df[score_col] >= 75])
             medium_severity = len(df[(df[score_col] >= 50) & (df[score_col] < 75)])
+            low_severity = len(df[df[score_col] < 50])
+            max_score = df[score_col].max()
             
             summary_html += f"""
                 <div style="background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
@@ -425,6 +471,10 @@ class WatsonDashboard:
                     <div style="font-size: 2.5em; font-weight: bold; margin-bottom: 4px;">{df[score_col].mean():.1f}</div>
                     <div style="font-size: 0.9em; opacity: 0.95;">Average Score</div>
                 </div>
+                <div style="background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
+                    <div style="font-size: 2.5em; font-weight: bold; color: {'#fca5a5' if max_score >= 75 else '#fcd34d' if max_score >= 50 else '#86efac'}; margin-bottom: 4px;">{max_score:.1f}</div>
+                    <div style="font-size: 0.9em; opacity: 0.95;">Highest Score</div>
+                </div>
             """
         
         summary_html += """
@@ -433,6 +483,50 @@ class WatsonDashboard:
         """
         
         display(HTML(summary_html))
+        
+        # Add score distribution visualization if plotly is available and we have scores
+        if score_cols and HAS_PLOTLY:
+            try:
+                score_col = score_cols[0]
+                import plotly.graph_objects as go
+                
+                # Create histogram of score distribution
+                fig = go.Figure()
+                
+                fig.add_trace(go.Histogram(
+                    x=df[score_col],
+                    nbinsx=20,
+                    marker=dict(
+                        color=df[score_col],
+                        colorscale='RdYlGn_r',  # Red (high) to Green (low)
+                        showscale=False,
+                        line=dict(color='white', width=1)
+                    ),
+                    name='Score Distribution'
+                ))
+                
+                # Add vertical lines for thresholds
+                fig.add_vline(x=75, line_dash="dash", line_color="red", 
+                             annotation_text="High (≥75)", annotation_position="top right")
+                fig.add_vline(x=50, line_dash="dash", line_color="orange",
+                             annotation_text="Medium (≥50)", annotation_position="top right")
+                
+                fig.update_layout(
+                    title=f"Threat Score Distribution - {strategy.name}",
+                    xaxis_title="Threat Score",
+                    yaxis_title="Count",
+                    showlegend=False,
+                    height=350,
+                    margin=dict(l=50, r=50, t=50, b=50),
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)'
+                )
+                
+                display(fig)
+            except Exception as e:
+                # Silently fail if visualization doesn't work
+                pass
+        
         print()
     
     def _display_collapsible_explanations(self, explanations: dict, df: pd.DataFrame):
@@ -1762,6 +1856,62 @@ class WatsonDashboard:
         except Exception as e:
             print(f"❌ Failed to generate report: {e}")
     
+    def _export_all_results(self):
+        """
+        Export all strategy results to individual CSV files.
+        """
+        if not self.strategy_results:
+            print("⚠️ No analysis results available to export.")
+            print("💡 Run some strategies first, then use this button to export all results at once.")
+            return
+        
+        print("💾 Exporting all strategy results...")
+        print("=" * 80)
+        print()
+        
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        export_count = 0
+        total_rows = 0
+        
+        for strategy_name, result_data in self.strategy_results.items():
+            df = result_data['dataframe']
+            
+            if df.empty:
+                print(f"⚠️ {strategy_name}: No data to export")
+                continue
+            
+            try:
+                # Sanitize strategy name for filename
+                safe_name = re.sub(r'[^\w\s-]', '', strategy_name).strip().replace(' ', '_')
+                filename = f"{safe_name}_{timestamp}.csv"
+                
+                # Export to CSV
+                df.to_csv(filename, index=False)
+                
+                export_count += 1
+                total_rows += len(df)
+                
+                # Find score column for stats
+                score_cols = [col for col in df.columns if col.endswith('_score')]
+                if score_cols:
+                    score_col = score_cols[0]
+                    high_count = len(df[df[score_col] >= HIGH_SEVERITY_THRESHOLD])
+                    print(f"✅ {strategy_name}: {len(df)} rows exported to {filename} ({high_count} high-severity)")
+                else:
+                    print(f"✅ {strategy_name}: {len(df)} rows exported to {filename}")
+                    
+            except Exception as e:
+                print(f"❌ {strategy_name}: Export failed - {e}")
+        
+        print()
+        print("=" * 80)
+        print(f"📊 Export Summary:")
+        print(f"   • Files created: {export_count}")
+        print(f"   • Total rows: {total_rows}")
+        print(f"   • Timestamp: {timestamp}")
+        print()
+        print("💡 CSV files are ready for analysis in Excel, Splunk, or other tools")
+    
     def display(self):
         """
         Display the complete dashboard UI.
@@ -1801,6 +1951,14 @@ class WatsonDashboard:
             layout=widgets.Layout(width='180px')
         )
         
+        export_all_button = widgets.Button(
+            description='💾 Export All',
+            button_style='success',
+            tooltip='Export all strategy results to CSV files',
+            icon='download',
+            layout=widgets.Layout(width='150px')
+        )
+        
         help_button = widgets.Button(
             description='❓ Tips',
             button_style='',
@@ -1819,7 +1977,8 @@ class WatsonDashboard:
                 
                 <h4>🚀 Quick Start Workflow:</h4>
                 <ol style="line-height: 1.8;">
-                    <li><strong>Select a Strategy Tab</strong> - Choose from 9 threat hunting strategies</li>
+                    <li><strong>Select a Strategy Tab</strong> - Choose from 15 comprehensive threat hunting strategies</li>
+                    <li><strong>Read the Recommendation</strong> - Each strategy shows when to use it and what data works best</li>
                     <li><strong>Load Data</strong> - Pick a table and map required columns</li>
                     <li><strong>Run Analysis</strong> - Click the green "Run Analysis" button</li>
                     <li><strong>Review Results</strong> - Use filters to focus on high-severity findings</li>
@@ -1876,18 +2035,25 @@ class WatsonDashboard:
                 clear_output(wait=True)
                 self._generate_investigation_report()
         
+        def on_export_all_click(b):
+            with action_output:
+                clear_output(wait=True)
+                self._export_all_results()
+        
         def on_help_click(b):
             show_tips()
         
         triage_button.on_click(on_triage_click)
         correlation_button.on_click(on_correlation_click)
         report_button.on_click(on_report_click)
+        export_all_button.on_click(on_export_all_click)
         help_button.on_click(on_help_click)
         
         action_buttons = widgets.HBox([
             triage_button,
             correlation_button,
             report_button,
+            export_all_button,
             help_button
         ], layout=widgets.Layout(justify_content='flex-start', margin='10px 0'))
         

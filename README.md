@@ -9,9 +9,9 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 ### 🆕 What's New in This Release
 
 **Expanded Detection Coverage:**
-- 3 NEW cutting-edge threat hunting strategies (Geo-Anomaly, User-Agent Analysis, Crypto Mining Detection)
-- Now covering **12 comprehensive threat categories** (up from 9)
-- Enhanced coverage for insider threats, APT behavior, cryptojacking, and geographic anomalies
+- 6 NEW cutting-edge threat hunting strategies (Geo-Anomaly, User-Agent Analysis, Crypto Mining, DNS Anomaly, Account Takeover, Data Staging)
+- Now covering **15 comprehensive threat categories** (up from 9)
+- Enhanced coverage for insider threats, APT behavior, cryptojacking, DNS-based attacks, credential theft, and data exfiltration preparation
 
 **Visual Display Improvements:**
 - Color-coded severity indicators with visual badges (HIGH/MED/LOW)
@@ -37,7 +37,7 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 ### 🎯 Detection Strategies
 
-The dashboard includes **twelve comprehensive threat hunting strategies**:
+The dashboard includes **fifteen comprehensive threat hunting strategies**:
 
 **Beacon Hunter (C2 Detection)**
 - Detects command-and-control beaconing behavior by analyzing connection timing patterns
@@ -113,6 +113,30 @@ The dashboard includes **twelve comprehensive threat hunting strategies**:
 - Flags traffic on common mining ports (3333, 4444, 5555, etc.)
 - Analyzes persistent connections patterns typical of mining operations
 - Essential for detecting cryptojacking malware and policy violations
+
+**DNS Anomaly Detector (Malware C2 & Exfiltration)** 🆕 LATEST
+- Detects suspicious DNS query patterns indicating malware communication
+- Identifies Domain Generation Algorithm (DGA) domains with high entropy
+- Flags queries to suspicious TLDs (.tk, .ml, .ga, etc.) commonly used by malware
+- Analyzes excessive NXDOMAIN (failed lookup) rates suggesting reconnaissance
+- Detects potential DNS tunneling through long query strings
+- Essential for catching modern malware C2 channels and data exfiltration
+
+**Account Takeover Detector (Credential Theft)** 🆕 LATEST
+- Identifies account compromise and credential theft patterns
+- Detects rapid IP address switching indicating credential stuffing attacks
+- Flags impossible travel scenarios (same account from multiple locations)
+- Analyzes authentication failure patterns followed by success from different IPs
+- Identifies off-hours access anomalies suggesting unauthorized use
+- Critical for detecting stolen credentials and account hijacking
+
+**Data Staging Detector (Exfiltration Preparation)** 🆕 LATEST
+- Identifies data collection and preparation activities before exfiltration
+- Detects compression and archiving operations on sensitive files
+- Flags rapid sequential access to many files (bulk collection patterns)
+- Analyzes access to sensitive directories (finance, HR, customer data)
+- Identifies large file operations and staging directory usage
+- Essential for catching insider threats and APT data theft in preparation phase
 
 ### 🔧 Interactive Controls
 
@@ -220,7 +244,10 @@ from strategies import (
     TimeAnomalyStrategy,
     GeoAnomalyStrategy,
     UserAgentAnomalyStrategy,
-    CryptoMiningStrategy
+    CryptoMiningStrategy,
+    DNSAnomalyStrategy,
+    AccountTakeoverStrategy,
+    DataStagingStrategy
 )
 
 # Initialize dashboard with all strategies and custom cache settings
@@ -237,7 +264,10 @@ dashboard = WatsonDashboard(
         TimeAnomalyStrategy(),
         GeoAnomalyStrategy(),
         UserAgentAnomalyStrategy(),
-        CryptoMiningStrategy()
+        CryptoMiningStrategy(),
+        DNSAnomalyStrategy(),
+        AccountTakeoverStrategy(),
+        DataStagingStrategy()
     ],
     cache_dir='.custom_cache',
     cache_days=3
