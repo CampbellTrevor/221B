@@ -3515,3 +3515,719 @@ class ShadowITStrategy(HuntStrategy):
             'flags': 'Specific shadow IT usage indicators detected',
             'shadow_score': 'Overall shadow IT risk score (0-100). Higher scores indicate significant use of unauthorized cloud services and collaboration tools. Scores ≥50 suggest active data exfiltration risk or policy violations requiring immediate attention'
         }
+
+
+class PrivilegeEscalationStrategy(HuntStrategy):
+    """
+    Detects suspicious privilege escalation attempts.
+    
+    Identifies patterns indicating unauthorized attempts to gain elevated privileges
+    including sudo abuse, runas commands, token manipulation, and suspicious
+    administrative tool usage.
+    """
+    
+    # Suspicious commands/processes indicating privilege escalation
+    PRIV_ESC_KEYWORDS = [
+        'sudo', 'su -', 'runas', 'psexec', 'whoami /priv', 'net localgroup',
+        'net user', 'icacls', 'takeown', 'gpasswd', 'usermod', 'passwd',
+        'mimikatz', 'gsecdump', 'lsadump', 'sekurlsa', 'elevate',
+        'bypassuac', 'invoke-privilege', 'invoke-mimikatz', 'getsystem',
+        'get-credential', 'enable-privilege', 'seimpersonate', 'setoolkit'
+    ]
+    
+    # Administrative tools that should be monitored
+    ADMIN_TOOLS = [
+        'net.exe', 'wmic.exe', 'sc.exe', 'schtasks.exe', 'reg.exe',
+        'powershell.exe', 'cmd.exe', 'psexec.exe', 'at.exe', 'cscript.exe'
+    ]
+    
+    def _get_name(self) -> str:
+        return "Privilege Escalation Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['source_ip', 'username', 'command', 'process_name']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze for privilege escalation patterns.
+        
+        Detection logic:
+        1. Commands containing privilege escalation keywords
+        2. Repeated administrative tool usage
+        3. Token manipulation patterns
+        4. Suspicious service/scheduled task creation
+        5. Multiple privilege escalation techniques from same source
+        """
+        src_col = col_map['source_ip']
+        user_col = col_map['username']
+        cmd_col = col_map['command']
+        proc_col = col_map['process_name']
+        
+        results = []
+        
+        # Group by source IP and username
+        grouped = df.groupby([src_col, user_col])
+        
+        for (src_ip, username), group in grouped:
+            priv_esc_score = 0
+            flags = []
+            escalation_methods = set()
+            admin_tool_count = 0
+            suspicious_commands = []
+            
+            for _, row in group.iterrows():
+                command = str(row[cmd_col]).lower() if pd.notna(row[cmd_col]) else ""
+                process = str(row[proc_col]).lower() if pd.notna(row[proc_col]) else ""
+                
+                # Check for privilege escalation keywords
+                for keyword in self.PRIV_ESC_KEYWORDS:
+                    if keyword.lower() in command or keyword.lower() in process:
+                        priv_esc_score += 10
+                        escalation_methods.add(keyword)
+                        if len(suspicious_commands) < 5:
+                            suspicious_commands.append(keyword)
+                
+                # Check for administrative tool usage
+                for tool in self.ADMIN_TOOLS:
+                    if tool.lower() in process:
+                        admin_tool_count += 1
+                        priv_esc_score += 5
+            
+            # Scoring logic
+            if len(escalation_methods) > 3:
+                priv_esc_score += 30
+                flags.append("multiple_escalation_techniques")
+            
+            if admin_tool_count > 10:
+                priv_esc_score += 25
+                flags.append("excessive_admin_tools")
+            
+            if 'sudo' in escalation_methods or 'runas' in escalation_methods:
+                priv_esc_score += 15
+                flags.append("direct_elevation_attempt")
+            
+            if 'mimikatz' in escalation_methods or 'sekurlsa' in escalation_methods:
+                priv_esc_score += 40
+                flags.append("credential_dumping_tool")
+            
+            # Cap score at 100
+            priv_esc_score = min(priv_esc_score, 100)
+            
+            if priv_esc_score >= 50:
+                results.append({
+                    'source_ip': src_ip,
+                    'username': username,
+                    'total_commands': len(group),
+                    'escalation_methods': ', '.join(sorted(escalation_methods)[:10]),
+                    'admin_tool_count': admin_tool_count,
+                    'method_diversity': len(escalation_methods),
+                    'flags': ', '.join(flags),
+                    'priv_esc_score': priv_esc_score
+                })
+        
+        result_df = pd.DataFrame(results)
+        
+        if not result_df.empty:
+            result_df = result_df.sort_values('priv_esc_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate visualizations for privilege escalation analysis."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        # Top 15 sources by escalation score
+        top_sources = result_df.nlargest(15, 'priv_esc_score')
+        
+        fig.add_trace(go.Bar(
+            x=top_sources['priv_esc_score'],
+            y=top_sources['source_ip'] + ' (' + top_sources['username'] + ')',
+            orientation='h',
+            marker=dict(
+                color=top_sources['priv_esc_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Escalation Score")
+            ),
+            text=top_sources['method_diversity'],
+            textposition='auto',
+            hovertemplate='<b>%{y}</b><br>Score: %{x}<br>Methods: %{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title='Top Privilege Escalation Attempts by Source',
+            xaxis_title='Privilege Escalation Score',
+            yaxis_title='Source IP (Username)',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for PrivilegeEscalationStrategy output columns."""
+        return {
+            'source_ip': 'The IP address from which privilege escalation attempts originated',
+            'username': 'The user account attempting privilege escalation',
+            'total_commands': 'Total number of commands executed by this user from this IP',
+            'escalation_methods': 'Specific privilege escalation techniques detected (sudo, mimikatz, etc.)',
+            'admin_tool_count': 'Number of administrative tool invocations detected',
+            'method_diversity': 'Count of different escalation techniques used',
+            'flags': 'Specific indicators detected (multiple_escalation_techniques, credential_dumping_tool, etc.)',
+            'priv_esc_score': 'Overall privilege escalation risk score (0-100). Higher scores indicate aggressive attempts to gain elevated privileges. Scores ≥75 suggest active privilege escalation attacks. Scores ≥50 warrant immediate investigation'
+        }
+
+
+class WebshellDetectionStrategy(HuntStrategy):
+    """
+    Identifies web shell backdoor patterns in web server traffic.
+    
+    Detects suspicious file uploads, command execution via web requests,
+    POST requests to unusual files, and other web shell indicators.
+    """
+    
+    # Common web shell file names and patterns
+    WEBSHELL_FILES = [
+        'c99.php', 'r57.php', 'shell.php', 'cmd.php', 'backdoor.php',
+        'webshell.asp', 'shell.asp', 'cmd.asp', 'upload.php',
+        'wso.php', 'b374k.php', 'alfa.php', 'eval.php', 'exec.php',
+        'system.jsp', 'cmd.jsp', 'shell.jsp', 'jspshell.jsp'
+    ]
+    
+    # Suspicious parameters in web requests
+    SUSPICIOUS_PARAMS = [
+        'cmd', 'exec', 'command', 'execute', 'shell', 'run', 'ping',
+        'system', 'proc_open', 'passthru', 'eval', 'base64_decode',
+        'backdoor', 'upload', 'download', 'file'
+    ]
+    
+    # Suspicious user agents often used by web shells
+    WEBSHELL_AGENTS = [
+        'python-requests', 'curl', 'wget', 'nikto', 'sqlmap',
+        'havij', 'acunetix', 'nessus', 'burpsuite', 'metasploit'
+    ]
+    
+    def _get_name(self) -> str:
+        return "Webshell Detection"
+    
+    def _get_required_inputs(self) -> list:
+        return ['source_ip', 'uri', 'method', 'status_code', 'user_agent']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze for web shell patterns.
+        
+        Detection logic:
+        1. Suspicious file names in URIs
+        2. POST requests to script files
+        3. Command execution parameters
+        4. Tool/bot user agents accessing unusual files
+        5. Long query strings with encoded content
+        6. Successful requests (200) to suspicious endpoints
+        """
+        src_col = col_map['source_ip']
+        uri_col = col_map['uri']
+        method_col = col_map['method']
+        status_col = col_map['status_code']
+        ua_col = col_map['user_agent']
+        
+        results = []
+        
+        # Group by source IP
+        grouped = df.groupby(src_col)
+        
+        for src_ip, group in grouped:
+            webshell_score = 0
+            flags = []
+            suspicious_uris = set()
+            post_to_scripts = 0
+            suspicious_params_found = set()
+            tool_agents = 0
+            
+            for _, row in group.iterrows():
+                uri = str(row[uri_col]).lower() if pd.notna(row[uri_col]) else ""
+                method = str(row[method_col]).upper() if pd.notna(row[method_col]) else ""
+                status = str(row[status_col]) if pd.notna(row[status_col]) else ""
+                user_agent = str(row[ua_col]).lower() if pd.notna(row[ua_col]) else ""
+                
+                # Check for web shell file names
+                for shell_file in self.WEBSHELL_FILES:
+                    if shell_file in uri:
+                        webshell_score += 30
+                        suspicious_uris.add(shell_file)
+                        flags.append("webshell_filename")
+                        break
+                
+                # Check for POST to script files with success status
+                if method == 'POST' and any(ext in uri for ext in ['.php', '.asp', '.jsp', '.cgi']):
+                    post_to_scripts += 1
+                    if '200' in status:
+                        webshell_score += 15
+                
+                # Check for suspicious parameters
+                for param in self.SUSPICIOUS_PARAMS:
+                    if param in uri:
+                        suspicious_params_found.add(param)
+                        webshell_score += 8
+                
+                # Check for tool/bot user agents
+                for agent in self.WEBSHELL_AGENTS:
+                    if agent in user_agent:
+                        tool_agents += 1
+                        webshell_score += 10
+                        break
+                
+                # Long query strings may contain encoded commands
+                if len(uri) > 200 and ('base64' in uri or 'eval' in uri):
+                    webshell_score += 20
+                    flags.append("encoded_command")
+            
+            # Additional scoring
+            if post_to_scripts > 5:
+                webshell_score += 25
+                flags.append("excessive_post_to_scripts")
+            
+            if len(suspicious_params_found) > 3:
+                webshell_score += 20
+                flags.append("multiple_suspicious_params")
+            
+            if tool_agents > 0 and len(suspicious_uris) > 0:
+                webshell_score += 30
+                flags.append("tool_accessing_suspicious_file")
+            
+            # Cap score at 100
+            webshell_score = min(webshell_score, 100)
+            
+            if webshell_score >= 50:
+                results.append({
+                    'source_ip': src_ip,
+                    'total_requests': len(group),
+                    'suspicious_uris': ', '.join(sorted(suspicious_uris)[:5]) if suspicious_uris else 'N/A',
+                    'post_to_scripts': post_to_scripts,
+                    'suspicious_params': ', '.join(sorted(suspicious_params_found)[:5]),
+                    'tool_agent_requests': tool_agents,
+                    'flags': ', '.join(set(flags)),
+                    'webshell_score': webshell_score
+                })
+        
+        result_df = pd.DataFrame(results)
+        
+        if not result_df.empty:
+            result_df = result_df.sort_values('webshell_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate visualizations for web shell detection."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        # Top 15 sources by webshell score
+        top_sources = result_df.nlargest(15, 'webshell_score')
+        
+        fig.add_trace(go.Bar(
+            x=top_sources['webshell_score'],
+            y=top_sources['source_ip'],
+            orientation='h',
+            marker=dict(
+                color=top_sources['webshell_score'],
+                colorscale='Oranges',
+                showscale=True,
+                colorbar=dict(title="Webshell Score")
+            ),
+            text=top_sources['post_to_scripts'],
+            textposition='auto',
+            hovertemplate='<b>%{y}</b><br>Score: %{x}<br>POST to scripts: %{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title='Top Web Shell Indicators by Source IP',
+            xaxis_title='Web Shell Detection Score',
+            yaxis_title='Source IP',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for WebshellDetectionStrategy output columns."""
+        return {
+            'source_ip': 'The IP address exhibiting web shell behavior',
+            'total_requests': 'Total number of web requests from this IP',
+            'suspicious_uris': 'Known web shell file names detected in URIs (c99.php, r57.php, etc.)',
+            'post_to_scripts': 'Count of POST requests to script files (.php, .asp, .jsp)',
+            'suspicious_params': 'Command execution parameters found (cmd, exec, shell, eval, etc.)',
+            'tool_agent_requests': 'Requests from attack tools or scanners',
+            'flags': 'Specific web shell indicators (webshell_filename, encoded_command, etc.)',
+            'webshell_score': 'Overall web shell risk score (0-100). Higher scores indicate probable web shell access or deployment. Scores ≥75 suggest active web shell usage. Scores ≥50 require immediate investigation'
+        }
+
+
+class CredentialDumpingStrategy(HuntStrategy):
+    """
+    Detects memory scraping and credential theft tool usage.
+    
+    Identifies patterns indicating credential dumping from memory, registry,
+    or disk including LSASS access, SAM database queries, and credential harvesting tools.
+    """
+    
+    # Known credential dumping tools
+    CRED_DUMP_TOOLS = [
+        'mimikatz', 'procdump', 'dumpert', 'nanodump', 'pypykatz',
+        'gsecdump', 'wce.exe', 'pwdump', 'fgdump', 'hashdump',
+        'lazagne', 'secretsdump', 'lsassy', 'sharpkatz', 'safetykatz',
+        'rubeus', 'kekeo', 'impacket'
+    ]
+    
+    # Suspicious process access patterns
+    SUSPICIOUS_PROCESSES = [
+        'lsass.exe', 'lsass', 'sam', 'security', 'system', 'ntds.dit',
+        'credential', 'chrome.exe', 'firefox.exe', 'browser'
+    ]
+    
+    # Suspicious commands indicating credential access
+    CRED_ACCESS_KEYWORDS = [
+        'sekurlsa', 'logonpasswords', 'minidump', 'lsadump', 'sam',
+        'reg save hklm\\sam', 'reg save hklm\\system', 'reg save hklm\\security',
+        'vaultcmd', 'cmdkey', 'netsh wlan', 'dpapi', 'extract',
+        'export credential', 'get-credential'
+    ]
+    
+    def _get_name(self) -> str:
+        return "Credential Dumping Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['source_ip', 'username', 'process_name', 'command']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze for credential dumping patterns.
+        
+        Detection logic:
+        1. Known credential dumping tools
+        2. LSASS process access
+        3. Registry hive exports (SAM, SECURITY, SYSTEM)
+        4. Browser credential theft
+        5. Multiple credential access techniques
+        """
+        src_col = col_map['source_ip']
+        user_col = col_map['username']
+        proc_col = col_map['process_name']
+        cmd_col = col_map['command']
+        
+        results = []
+        
+        # Group by source IP and username
+        grouped = df.groupby([src_col, user_col])
+        
+        for (src_ip, username), group in grouped:
+            cred_dump_score = 0
+            flags = []
+            tools_detected = set()
+            process_access = set()
+            commands_used = []
+            
+            for _, row in group.iterrows():
+                process = str(row[proc_col]).lower() if pd.notna(row[proc_col]) else ""
+                command = str(row[cmd_col]).lower() if pd.notna(row[cmd_col]) else ""
+                
+                # Check for credential dumping tools
+                for tool in self.CRED_DUMP_TOOLS:
+                    if tool.lower() in process or tool.lower() in command:
+                        cred_dump_score += 35
+                        tools_detected.add(tool)
+                        flags.append("cred_dump_tool")
+                
+                # Check for suspicious process access
+                for proc_target in self.SUSPICIOUS_PROCESSES:
+                    if proc_target.lower() in process or proc_target.lower() in command:
+                        process_access.add(proc_target)
+                        if 'lsass' in proc_target.lower():
+                            cred_dump_score += 30
+                            flags.append("lsass_access")
+                        else:
+                            cred_dump_score += 15
+                
+                # Check for credential access keywords
+                for keyword in self.CRED_ACCESS_KEYWORDS:
+                    if keyword.lower() in command:
+                        cred_dump_score += 20
+                        if len(commands_used) < 5:
+                            commands_used.append(keyword)
+                        
+                        if 'reg save' in keyword:
+                            flags.append("registry_hive_export")
+            
+            # Additional scoring
+            if len(tools_detected) > 0:
+                cred_dump_score += 25
+            
+            if len(process_access) > 2:
+                cred_dump_score += 20
+                flags.append("multiple_target_processes")
+            
+            if len(commands_used) > 3:
+                cred_dump_score += 15
+                flags.append("multiple_access_methods")
+            
+            # Cap score at 100
+            cred_dump_score = min(cred_dump_score, 100)
+            
+            if cred_dump_score >= 50:
+                results.append({
+                    'source_ip': src_ip,
+                    'username': username,
+                    'total_events': len(group),
+                    'tools_detected': ', '.join(sorted(tools_detected)[:5]) if tools_detected else 'N/A',
+                    'process_targets': ', '.join(sorted(process_access)[:5]),
+                    'access_methods': len(commands_used),
+                    'flags': ', '.join(set(flags)),
+                    'cred_dump_score': cred_dump_score
+                })
+        
+        result_df = pd.DataFrame(results)
+        
+        if not result_df.empty:
+            result_df = result_df.sort_values('cred_dump_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate visualizations for credential dumping analysis."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        # Top 15 sources by credential dumping score
+        top_sources = result_df.nlargest(15, 'cred_dump_score')
+        
+        fig.add_trace(go.Bar(
+            x=top_sources['cred_dump_score'],
+            y=top_sources['source_ip'] + ' (' + top_sources['username'] + ')',
+            orientation='h',
+            marker=dict(
+                color=top_sources['cred_dump_score'],
+                colorscale='Purples',
+                showscale=True,
+                colorbar=dict(title="Credential Dump Score")
+            ),
+            text=top_sources['access_methods'],
+            textposition='auto',
+            hovertemplate='<b>%{y}</b><br>Score: %{x}<br>Methods: %{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title='Top Credential Dumping Activity by Source',
+            xaxis_title='Credential Dumping Score',
+            yaxis_title='Source IP (Username)',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for CredentialDumpingStrategy output columns."""
+        return {
+            'source_ip': 'The IP address from which credential dumping activity originated',
+            'username': 'The user account performing credential dumping operations',
+            'total_events': 'Total number of suspicious events detected',
+            'tools_detected': 'Known credential harvesting tools identified (mimikatz, procdump, etc.)',
+            'process_targets': 'Processes accessed for credential theft (lsass, browser, etc.)',
+            'access_methods': 'Number of different credential access techniques used',
+            'flags': 'Specific indicators (lsass_access, registry_hive_export, cred_dump_tool, etc.)',
+            'cred_dump_score': 'Overall credential dumping risk score (0-100). Higher scores indicate active credential theft. Scores ≥75 suggest sophisticated credential harvesting. Scores ≥50 require immediate investigation and credential rotation'
+        }
+
+
+class RansomwareIndicatorStrategy(HuntStrategy):
+    """
+    Detects early warning signs of ransomware deployment.
+    
+    Identifies pre-ransomware indicators including shadow copy deletion,
+    backup interference, mass file encryption patterns, and ransomware
+    preparation activities.
+    """
+    
+    # Commands used in ransomware attacks
+    RANSOMWARE_COMMANDS = [
+        'vssadmin delete shadows', 'wmic shadowcopy delete', 'bcdedit',
+        'wbadmin delete catalog', 'del /s /f /q', 'cipher /w',
+        'net stop backup', 'net stop vss', 'sc stop backup',
+        'delete backup', 'disable recovery', 'bootstatuspolicy ignoreallfailures'
+    ]
+    
+    # File extensions commonly used by ransomware
+    RANSOMWARE_EXTENSIONS = [
+        '.locked', '.encrypted', '.crypto', '.cerber', '.locky',
+        '.zepto', '.odin', '.shit', '.vvv', '.ccc', '.abc',
+        '.xyz', '.zzz', '.micro', '.dharma', '.wallet', '.wcry'
+    ]
+    
+    # Processes often used in ransomware deployment
+    RANSOMWARE_PROCESSES = [
+        'powershell', 'cmd', 'wscript', 'cscript', 'psexec',
+        'wmic', 'vssadmin', 'bcdedit', 'wbadmin', 'cipher'
+    ]
+    
+    def _get_name(self) -> str:
+        return "Ransomware Indicator Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['source_ip', 'username', 'command', 'file_path']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze for ransomware indicators.
+        
+        Detection logic:
+        1. Shadow copy deletion commands
+        2. Backup service interference
+        3. Boot configuration tampering
+        4. Mass file operations
+        5. Ransomware-related file extensions
+        6. Multiple preparation steps in sequence
+        """
+        src_col = col_map['source_ip']
+        user_col = col_map['username']
+        cmd_col = col_map['command']
+        file_col = col_map['file_path']
+        
+        results = []
+        
+        # Group by source IP and username
+        grouped = df.groupby([src_col, user_col])
+        
+        for (src_ip, username), group in grouped:
+            ransomware_score = 0
+            flags = []
+            commands_matched = set()
+            file_operations = 0
+            encrypted_files = 0
+            prep_steps = 0
+            
+            for _, row in group.iterrows():
+                command = str(row[cmd_col]).lower() if pd.notna(row[cmd_col]) else ""
+                file_path = str(row[file_col]).lower() if pd.notna(row[file_col]) else ""
+                
+                # Check for ransomware commands
+                for ransom_cmd in self.RANSOMWARE_COMMANDS:
+                    if ransom_cmd.lower() in command:
+                        commands_matched.add(ransom_cmd)
+                        
+                        if 'shadow' in ransom_cmd or 'vss' in ransom_cmd:
+                            ransomware_score += 40
+                            flags.append("shadow_copy_deletion")
+                            prep_steps += 1
+                        elif 'backup' in ransom_cmd:
+                            ransomware_score += 35
+                            flags.append("backup_interference")
+                            prep_steps += 1
+                        elif 'bcdedit' in ransom_cmd or 'bootstatuspolicy' in ransom_cmd:
+                            ransomware_score += 30
+                            flags.append("boot_config_tampering")
+                            prep_steps += 1
+                        else:
+                            ransomware_score += 15
+                
+                # Check for ransomware file extensions
+                for ext in self.RANSOMWARE_EXTENSIONS:
+                    if ext in file_path:
+                        encrypted_files += 1
+                        ransomware_score += 10
+                
+                # Count file operations
+                if any(op in command for op in ['del ', 'rm ', 'cipher', 'copy', 'move']):
+                    file_operations += 1
+            
+            # Additional scoring
+            if encrypted_files > 10:
+                ransomware_score += 40
+                flags.append("mass_file_encryption")
+            
+            if file_operations > 50:
+                ransomware_score += 25
+                flags.append("mass_file_operations")
+            
+            if prep_steps >= 2:
+                ransomware_score += 30
+                flags.append("multiple_prep_steps")
+            
+            if len(commands_matched) > 3:
+                ransomware_score += 25
+                flags.append("comprehensive_attack_prep")
+            
+            # Cap score at 100
+            ransomware_score = min(ransomware_score, 100)
+            
+            if ransomware_score >= 50:
+                results.append({
+                    'source_ip': src_ip,
+                    'username': username,
+                    'total_events': len(group),
+                    'preparation_commands': ', '.join(sorted(commands_matched)[:5]),
+                    'encrypted_files': encrypted_files,
+                    'file_operations': file_operations,
+                    'preparation_steps': prep_steps,
+                    'flags': ', '.join(set(flags)),
+                    'ransomware_score': ransomware_score
+                })
+        
+        result_df = pd.DataFrame(results)
+        
+        if not result_df.empty:
+            result_df = result_df.sort_values('ransomware_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate visualizations for ransomware indicator analysis."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        # Top 15 sources by ransomware score
+        top_sources = result_df.nlargest(15, 'ransomware_score')
+        
+        fig.add_trace(go.Bar(
+            x=top_sources['ransomware_score'],
+            y=top_sources['source_ip'] + ' (' + top_sources['username'] + ')',
+            orientation='h',
+            marker=dict(
+                color=top_sources['ransomware_score'],
+                colorscale='YlOrRd',
+                showscale=True,
+                colorbar=dict(title="Ransomware Score")
+            ),
+            text=top_sources['preparation_steps'],
+            textposition='auto',
+            hovertemplate='<b>%{y}</b><br>Score: %{x}<br>Prep Steps: %{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title='Top Ransomware Indicators by Source',
+            xaxis_title='Ransomware Indicator Score',
+            yaxis_title='Source IP (Username)',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for RansomwareIndicatorStrategy output columns."""
+        return {
+            'source_ip': 'The IP address from which ransomware preparation activity originated',
+            'username': 'The user account performing ransomware-related actions',
+            'total_events': 'Total number of suspicious events detected',
+            'preparation_commands': 'Pre-encryption commands detected (shadow deletion, backup interference, etc.)',
+            'encrypted_files': 'Count of files with ransomware-related extensions',
+            'file_operations': 'Total file manipulation operations (delete, move, cipher, etc.)',
+            'preparation_steps': 'Number of distinct ransomware preparation activities',
+            'flags': 'Specific indicators (shadow_copy_deletion, backup_interference, mass_file_encryption, etc.)',
+            'ransomware_score': 'Overall ransomware deployment risk score (0-100). Higher scores indicate imminent or active ransomware attack. Scores ≥75 require immediate incident response and system isolation. Scores ≥50 indicate active preparation and demand urgent attention'
+        }
