@@ -37,7 +37,8 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 - Interactive timeline analysis with temporal heatmaps
 - Smart recommendations that suggest next investigation steps
 - Context-aware workflow guidance based on detections
-- **🆕 11 Quick Action Buttons** - Comprehensive one-click analysis tools
+- **🆕 12 Quick Action Buttons** - Comprehensive one-click analysis tools
+- **🔥 NEW Threat Overview Dashboard** - See all strategies at a glance with comprehensive visualizations
 
 **🎯 Advanced Analyst Workflow Features:**
 - **Quick Triage Dashboard** - View all high-severity threats across all strategies in one place
@@ -521,6 +522,37 @@ dashboard.display()
    - Priority-based recommendations (CRITICAL, HIGH, MEDIUM, LOW)
    - Helps analysts stay ahead of attackers
 
+9. **🗺️ IP Heatmap** - IP address threat visualization ✨ NEW
+   - Bubble chart showing which IPs generate the most threats
+   - Visualize threat distribution across strategies
+   - Interactive tooltips with detailed IP information
+   - Perfect for identifying prolific attackers
+
+10. **🎓 Strategy Insights** - Strategy effectiveness comparison ✨ NEW
+    - Stacked bar charts comparing detection rates
+    - Severity distribution breakdown per strategy
+    - Identify most productive detection methods
+    - Optimize your threat hunting workflow
+
+11. **📊 Threat Overview Dashboard** 🔥 LATEST
+    - Comprehensive view of ALL strategies at a glance
+    - Overall threat landscape statistics with risk assessment
+    - Strategy-by-strategy breakdown with severity counts
+    - Multiple interactive visualizations:
+      - Stacked bar chart of severity distribution
+      - Pie chart of overall severity breakdown
+      - Scatter plot of average score vs detection volume
+    - Identifies top 5 most concerning strategies
+    - Critical/high/medium/low threat counts
+    - Unique source IP tracking across all strategies
+    - Perfect for executive briefings and daily threat reviews
+
+12. **❓ Tips** - Usage tips and best practices
+    - Step-by-step usage guide
+    - Power user features overview
+    - Investigation strategy recommendations
+    - Performance optimization tips
+
 **Filtering Results by Severity:**
 - After running an analysis, use the quick filter buttons at the top of results
 - Click "High (≥75)" to see only critical threats
@@ -685,7 +717,7 @@ When adding new features or strategies:
 - **32 comprehensive threat hunting strategies** covering modern attack vectors
 - **102 unit tests** with 100% pass rate
 - **12,300+ lines of code** across core modules
-- **11 quick action buttons** for one-click analysis
+- **12 quick action buttons** for one-click analysis including new Threat Overview Dashboard
 - **Multiple export formats** (CSV, JSON) for flexible integration
 - **Zero security vulnerabilities** detected by CodeQL analysis
 
