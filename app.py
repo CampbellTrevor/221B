@@ -91,6 +91,42 @@ class WatsonDashboard:
         # Create tabs for strategies with all widgets inside each tab
         self._create_strategy_tabs()
     
+    def _get_cache_age(self) -> float:
+        """
+        Get the age of the cache in days.
+        
+        Returns:
+            Age in days, or -1 if cache doesn't exist
+        """
+        if os.path.exists(self.tables_cache_file):
+            try:
+                with open(self.tables_cache_file, 'r') as f:
+                    cache_data = json.load(f)
+                cache_time = datetime.datetime.fromisoformat(cache_data['timestamp'])
+                age_seconds = (datetime.datetime.now() - cache_time).total_seconds()
+                return age_seconds / 86400  # Convert to days
+            except:
+                return -1
+        return -1
+    
+    def _refresh_cache(self) -> list:
+        """
+        Force refresh the table cache from the database.
+        
+        Returns:
+            Updated list of table names
+        """
+        print("🔄 Manually refreshing table cache...")
+        
+        # Delete old cache if it exists
+        if os.path.exists(self.tables_cache_file):
+            os.remove(self.tables_cache_file)
+        
+        # Force re-query
+        tables = self._get_available_tables()
+        print("✅ Cache refreshed successfully!")
+        return tables
+    
     def _get_available_tables(self) -> list:
         """
         Query information_schema.tables to get available tables.
@@ -111,7 +147,11 @@ class WatsonDashboard:
                 age_days = age_seconds / 86400  # Convert seconds to days
                 
                 if age_days < self.cache_days:
-                    print(f"📦 Using cached table list (age: {age_days:.1f} days)")
+                    # Add indicator for stale cache (approaching expiry)
+                    if age_days > self.cache_days * 0.8:
+                        print(f"📦 Using cached table list (age: {age_days:.1f} days) ⚠️ Consider refreshing soon")
+                    else:
+                        print(f"📦 Using cached table list (age: {age_days:.1f} days) ✅ Fresh")
                     return cache_data['tables']
                 else:
                     print(f"⏰ Cache expired (age: {age_days:.1f} days), refreshing...")
@@ -1770,15 +1810,22 @@ class WatsonDashboard:
         current_page = {'value': 0}
         current_sort = {'column': '(unsorted)', 'ascending': False}
         current_filter = {'level': 'All'}
-        current_search = {'text': ''}
+        current_search = {'text': '', 'regex': False}
         cached_sorted_df = {'df': full_df, 'total_pages': 1}  # Cache for sorted DataFrame
         
-        # Create text search box
+        # Create text search box with regex support
         search_box = widgets.Text(
-            placeholder='Search in results... (searches all columns)',
+            placeholder='Search in results... (supports regex with .* patterns)',
             description='🔍 Search:',
             style={'description_width': 'initial'},
-            layout=widgets.Layout(width='400px')
+            layout=widgets.Layout(width='450px')
+        )
+        
+        regex_checkbox = widgets.Checkbox(
+            value=False,
+            description='Regex Mode',
+            tooltip='Enable regex pattern matching',
+            layout=widgets.Layout(width='120px')
         )
         
         clear_search_button = widgets.Button(
@@ -1856,14 +1903,30 @@ class WatsonDashboard:
             """Get the dataframe with current sorting and filtering applied (cached)."""
             # First apply text search if present
             if current_search['text']:
-                search_term = current_search['text'].lower()
+                search_term = current_search['text']
+                use_regex = current_search.get('regex', False)
+                
                 # Optimize: only search in columns that are already strings or can be strings
                 # Create mask by checking each column individually
                 mask = pd.Series([False] * len(full_df), index=full_df.index)
-                for col in full_df.columns:
-                    # Convert to string only for this column, then search
-                    mask |= full_df[col].astype(str).str.lower().str.contains(search_term, na=False, regex=False)
-                filtered_df = full_df[mask]
+                
+                try:
+                    for col in full_df.columns:
+                        # Convert to string only for this column, then search
+                        if use_regex:
+                            # Regex search (case-insensitive)
+                            mask |= full_df[col].astype(str).str.contains(search_term, na=False, regex=True, case=False)
+                        else:
+                            # Plain text search (case-insensitive)
+                            mask |= full_df[col].astype(str).str.lower().str.contains(search_term.lower(), na=False, regex=False)
+                    filtered_df = full_df[mask]
+                except re.error as e:
+                    # Invalid regex pattern, fall back to plain text search
+                    print(f"⚠️ Invalid regex pattern: {e}. Using plain text search.")
+                    search_term_lower = search_term.lower()
+                    for col in full_df.columns:
+                        mask |= full_df[col].astype(str).str.lower().str.contains(search_term_lower, na=False, regex=False)
+                    filtered_df = full_df[mask]
             else:
                 filtered_df = full_df
             
@@ -1991,10 +2054,20 @@ class WatsonDashboard:
             get_sorted_df()  # Refresh cache
             update_table()
         
+        def on_regex_change(change):
+            """Handle regex checkbox changes."""
+            current_search['regex'] = regex_checkbox.value
+            if current_search['text']:  # Only refresh if there's text to search
+                current_page['value'] = 0
+                get_sorted_df()
+                update_table()
+        
         def on_clear_search_click(b):
             """Handle clear search button click."""
             search_box.value = ''
+            regex_checkbox.value = False
             current_search['text'] = ''
+            current_search['regex'] = False
             current_page['value'] = 0
             get_sorted_df()
             update_table()
@@ -2040,6 +2113,7 @@ class WatsonDashboard:
         
         # Attach observers and handlers
         search_box.observe(on_search_change, names='value')
+        regex_checkbox.observe(on_regex_change, names='value')
         clear_search_button.on_click(on_clear_search_click)
         sort_column.observe(on_sort_change, names='value')
         sort_order.observe(on_sort_change, names='value')
@@ -2063,9 +2137,9 @@ class WatsonDashboard:
             widgets.HTML("<h4>📊 Results</h4>"),
         ]
         
-        # Add search box
+        # Add search box with regex support
         ui_components.append(widgets.HTML("<div style='margin: 10px 0;'><b>🔍 Text Search & Filters:</b></div>"))
-        ui_components.append(widgets.HBox([search_box, clear_search_button]))
+        ui_components.append(widgets.HBox([search_box, regex_checkbox, clear_search_button]))
         
         # Add filter buttons if score column exists
         if filter_buttons:
