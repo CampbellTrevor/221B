@@ -65,7 +65,7 @@ CSS_CARD_TRANSLUCENT = "background: rgba(255,255,255,0.15); padding: 18px; borde
 CSS_HEADING_LARGE = "font-size: 2em; font-weight: bold"
 CSS_TEXT_SUBTLE = "font-size: 0.9em; opacity: 0.9"
 CSS_TEXT_MUTED = "font-size: 0.9em; opacity: 0.95"
-CSS_CONTENT_BOX = "padding: 8px; border: 1px solid #ddd"
+CSS_CONTENT_BOX = "padding: 8px; border: 1px solid #ddd; color: black"
 CSS_LINE_HEIGHT = "line-height: 1.8"
 
 
@@ -653,12 +653,16 @@ class WatsonDashboard:
             # Get strategy recommendation
             recommendation_html = self._get_strategy_recommendation(strategy)
             
+            # Get recommended data sources HTML
+            data_sources_html = self._get_recommended_data_sources_html(strategy)
+            
             description = widgets.HTML(
                 value=f"""
                 <div style="padding: 10px;">
                     <h3>{strategy.name}</h3>
                     <p style="margin: 10px 0;"><i>{strategy_desc}</i></p>
                     {recommendation_html}
+                    {data_sources_html}
                     <h4>Required Inputs:</h4>
                     {inputs_html}
                 </div>
@@ -1974,17 +1978,20 @@ class WatsonDashboard:
         
         print()
     
-    def _display_recommended_data_sources(self, strategy: HuntStrategy):
+    def _get_recommended_data_sources_html(self, strategy: HuntStrategy) -> str:
         """
-        Display recommended data sources for a given strategy.
+        Generate HTML for recommended data sources for a given strategy.
         
         Args:
             strategy: The strategy to get recommendations for
+            
+        Returns:
+            HTML string with recommendations, or empty string if no recommendations
         """
         recommendations = self._get_recommended_data_sources(strategy.name)
         
         if not recommendations:
-            return
+            return ""
         
         # Build HTML for recommendations
         rec_html = f"""
@@ -2014,7 +2021,18 @@ class WatsonDashboard:
         </div>
         """
         
-        display(HTML(rec_html))
+        return rec_html
+    
+    def _display_recommended_data_sources(self, strategy: HuntStrategy):
+        """
+        Display recommended data sources for a given strategy.
+        
+        Args:
+            strategy: The strategy to get recommendations for
+        """
+        rec_html = self._get_recommended_data_sources_html(strategy)
+        if rec_html:
+            display(HTML(rec_html))
     
     def _display_collapsible_explanations(self, explanations: dict, df: pd.DataFrame):
         """
