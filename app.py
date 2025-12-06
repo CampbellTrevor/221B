@@ -44,13 +44,18 @@ MEDIUM_SEVERITY_THRESHOLD = 50  # Score threshold for medium-severity threats
 MAX_DISPLAY_ITEMS = 20  # Maximum items to display in correlation/triage views
 STRING_TRUNCATE_LENGTH = 50  # Length to truncate long strings for display
 
-# Common HTML/CSS gradient patterns (for reference and future consolidation)
-# Note: Currently used inline in HTML strings for clarity. Future refactoring
-# could extract these to reduce duplication across 14+ dashboard visualizations.
+# Common HTML/CSS gradient patterns - consolidated to reduce duplication
+# across all dashboard visualizations
 GRADIENT_DARK_CARD = "linear-gradient(135deg, #1e293b 0%, #334155 100%)"
 GRADIENT_RED_CRITICAL = "linear-gradient(135deg, #dc2626 0%, #991b1b 100%)"
+GRADIENT_RED_DANGER = "linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)"  # Used for alerts/triage
 GRADIENT_AMBER_WARNING = "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
 GRADIENT_GREEN_SUCCESS = "linear-gradient(135deg, #10b981 0%, #059669 100%)"
+GRADIENT_BLUE_PRIMARY = "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)"  # Primary indigo
+GRADIENT_BLUE_PURPLE = "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)"  # Indigo to purple
+GRADIENT_PURPLE_DEEP = "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)"  # Deep purple
+GRADIENT_PURPLE_VIOLET = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"  # Violet blend
+GRADIENT_PINK_MAGENTA = "linear-gradient(135deg, #ec4899 0%, #db2777 100%)"  # Pink/magenta
 
 
 class WatsonDashboard:
@@ -538,19 +543,19 @@ class WatsonDashboard:
                     <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Score < 50</div>
                 </div>
                 
-                <div style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_BLUE_PRIMARY}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">📊 {total_threats}</div>
                     <div style="font-size: 0.95em; opacity: 0.95;">Total Detections</div>
                     <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Across {strategies_run} strategies</div>
                 </div>
                 
-                <div style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_PURPLE_DEEP}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">⚡ {avg_threat_score:.1f}</div>
                     <div style="font-size: 0.95em; opacity: 0.95;">Average Score</div>
                     <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Threat severity</div>
                 </div>
                 
-                <div style="background: linear-gradient(135deg, #ec4899 0%, #db2777 100%); padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_PINK_MAGENTA}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">⚠️ {max_threat_score:.1f}</div>
                     <div style="font-size: 0.95em; opacity: 0.95;">Peak Threat</div>
                     <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Highest score</div>
@@ -918,7 +923,7 @@ class WatsonDashboard:
                         'timestamp': ts,
                         'strategy': strategy_name.split('(')[0].strip()[:25],
                         'score': row[score_col],
-                        'severity': 'High' if row[score_col] >= 75 else 'Medium' if row[score_col] >= 50 else 'Low'
+                        'severity': 'High' if row[score_col] >= HIGH_SEVERITY_THRESHOLD else 'Medium' if row[score_col] >= MEDIUM_SEVERITY_THRESHOLD else 'Low'
                     })
                 except:
                     pass
@@ -1544,8 +1549,8 @@ class WatsonDashboard:
             score_cols = [col for col in df.columns if col.endswith('_score')]
             if score_cols:
                 score_col = score_cols[0]
-                high_count = len(df[df[score_col] >= 75])
-                medium_count = len(df[(df[score_col] >= 50) & (df[score_col] < 75)])
+                high_count = len(df[df[score_col] >= HIGH_SEVERITY_THRESHOLD])
+                medium_count = len(df[(df[score_col] >= MEDIUM_SEVERITY_THRESHOLD) & (df[score_col] < HIGH_SEVERITY_THRESHOLD)])
                 
                 if high_count > 0:
                     high_severity_strategies.append((strategy_name, high_count))
@@ -1711,7 +1716,7 @@ class WatsonDashboard:
         
         # Build summary HTML with enhanced modern design
         summary_html = f"""
-        <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; padding: 24px; border-radius: 16px; margin: 15px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <div style="background: {GRADIENT_BLUE_PURPLE}; color: white; padding: 24px; border-radius: 16px; margin: 15px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             <h3 style="margin-top: 0; font-size: 1.5em; display: flex; align-items: center; gap: 8px;">📊 Analysis Summary</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 20px;">
                 <div style="background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
@@ -1723,9 +1728,9 @@ class WatsonDashboard:
         # Add severity breakdown if score columns exist
         if score_cols:
             score_col = score_cols[0]  # Use first score column
-            high_severity = len(df[df[score_col] >= 75])
-            medium_severity = len(df[(df[score_col] >= 50) & (df[score_col] < 75)])
-            low_severity = len(df[df[score_col] < 50])
+            high_severity = len(df[df[score_col] >= HIGH_SEVERITY_THRESHOLD])
+            medium_severity = len(df[(df[score_col] >= MEDIUM_SEVERITY_THRESHOLD) & (df[score_col] < HIGH_SEVERITY_THRESHOLD)])
+            low_severity = len(df[df[score_col] < MEDIUM_SEVERITY_THRESHOLD])
             max_score = df[score_col].max()
             
             summary_html += f"""
@@ -1742,7 +1747,7 @@ class WatsonDashboard:
                     <div style="font-size: 0.9em; opacity: 0.95;">Average Score</div>
                 </div>
                 <div style="background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
-                    <div style="font-size: 2.5em; font-weight: bold; color: {'#fca5a5' if max_score >= 75 else '#fcd34d' if max_score >= 50 else '#86efac'}; margin-bottom: 4px;">{max_score:.1f}</div>
+                    <div style="font-size: 2.5em; font-weight: bold; color: {'#fca5a5' if max_score >= HIGH_SEVERITY_THRESHOLD else '#fcd34d' if max_score >= MEDIUM_SEVERITY_THRESHOLD else '#86efac'}; margin-bottom: 4px;">{max_score:.1f}</div>
                     <div style="font-size: 0.9em; opacity: 0.95;">Highest Score</div>
                 </div>
             """
@@ -1975,11 +1980,11 @@ class WatsonDashboard:
             # Then apply severity filtering
             if has_score_column and current_filter['level'] != 'All':
                 if current_filter['level'] == 'High (≥75)':
-                    filtered_df = filtered_df[filtered_df[score_col] >= 75]
+                    filtered_df = filtered_df[filtered_df[score_col] >= HIGH_SEVERITY_THRESHOLD]
                 elif current_filter['level'] == 'Medium (50-74)':
-                    filtered_df = filtered_df[(filtered_df[score_col] >= 50) & (filtered_df[score_col] < 75)]
+                    filtered_df = filtered_df[(filtered_df[score_col] >= MEDIUM_SEVERITY_THRESHOLD) & (filtered_df[score_col] < HIGH_SEVERITY_THRESHOLD)]
                 elif current_filter['level'] == 'Low (<50)':
-                    filtered_df = filtered_df[filtered_df[score_col] < 50]
+                    filtered_df = filtered_df[filtered_df[score_col] < MEDIUM_SEVERITY_THRESHOLD]
             
             # Then apply sorting
             if current_sort['column'] != '(unsorted)':
@@ -2015,7 +2020,7 @@ class WatsonDashboard:
             if has_score_column and score_col in page_df.columns:
                 # Create styled HTML table with color-coded rows and modern design
                 table_html = '<table border="1" class="dataframe" style="border-collapse: collapse; width: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;">\n'
-                table_html += '  <thead>\n    <tr style="text-align: right; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; font-weight: bold;">\n'
+                table_html += f'  <thead>\n    <tr style="text-align: right; background: {GRADIENT_BLUE_PURPLE}; color: white; font-weight: bold;">\n'
                 for col in page_df.columns:
                     table_html += f'      <th style="padding: 8px; border: 1px solid #ddd;">{col}</th>\n'
                 table_html += '    </tr>\n  </thead>\n  <tbody>\n'
@@ -2023,10 +2028,10 @@ class WatsonDashboard:
                 for idx, row in page_df.iterrows():
                     score = row[score_col]
                     # Color code based on severity with enhanced modern styling
-                    if score >= 75:
+                    if score >= HIGH_SEVERITY_THRESHOLD:
                         bg_color = COLOR_HIGH_SEVERITY_BG
                         badge = f'<span style="background: {COLOR_HIGH_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🔴 HIGH</span>'
-                    elif score >= 50:
+                    elif score >= MEDIUM_SEVERITY_THRESHOLD:
                         bg_color = COLOR_MEDIUM_SEVERITY_BG
                         badge = f'<span style="background: {COLOR_MEDIUM_SEVERITY_BADGE}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: inline-block;">🟡 MED</span>'
                     else:
@@ -2761,7 +2766,7 @@ class WatsonDashboard:
         high_count = len([d for d in correlation_data if d['Threat Level'] == 'HIGH'])
         
         summary_html = f"""
-        <div style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
+        <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
             <h3 style="margin-top: 0;">🚨 Correlated Threats Summary</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
                 <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
@@ -2952,7 +2957,7 @@ class WatsonDashboard:
         
         # Create summary
         summary_html = f"""
-        <div style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
+        <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
             <h3 style="margin-top: 0;">🚨 Quick Triage Summary</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
                 <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
@@ -3056,7 +3061,7 @@ class WatsonDashboard:
                     padding-left: 15px;
                 }}
                 .summary-card {{
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    background: {GRADIENT_PURPLE_VIOLET};
                     color: white;
                     padding: 20px;
                     border-radius: 10px;
@@ -3449,7 +3454,7 @@ class WatsonDashboard:
             strategy_count = len(self.strategies)
             
             tips_html = f"""
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
+            <div style="background: {GRADIENT_PURPLE_VIOLET}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
                 <h3 style="margin-top: 0;">💡 Quick Tips & Best Practices</h3>
                 
                 <h4>🚀 Quick Start Workflow:</h4>
