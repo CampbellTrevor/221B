@@ -43,22 +43,13 @@ MEDIUM_SEVERITY_THRESHOLD = 50  # Score threshold for medium-severity threats
 MAX_DISPLAY_ITEMS = 20  # Maximum items to display in correlation/triage views
 STRING_TRUNCATE_LENGTH = 50  # Length to truncate long strings for display
 
-# Common HTML/CSS styles for dashboard cards (consolidated for reusability)
-DASHBOARD_CARD_STYLE = """
-background: linear-gradient(135deg, #1e293b 0%, #334155 100%); 
-color: white; 
-padding: 32px; 
-border-radius: 20px; 
-margin: 20px 0; 
-box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-"""
-
-METRIC_CARD_BASE_STYLE = """
-padding: 24px; 
-border-radius: 16px; 
-box-shadow: 0 4px 6px rgba(0,0,0,0.2); 
-border: 2px solid rgba(255,255,255,0.1);
-"""
+# Common HTML/CSS gradient patterns (for reference and future consolidation)
+# Note: Currently used inline in HTML strings for clarity. Future refactoring
+# could extract these to reduce duplication across 14+ dashboard visualizations.
+GRADIENT_DARK_CARD = "linear-gradient(135deg, #1e293b 0%, #334155 100%)"
+GRADIENT_RED_CRITICAL = "linear-gradient(135deg, #dc2626 0%, #991b1b 100%)"
+GRADIENT_AMBER_WARNING = "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
+GRADIENT_GREEN_SUCCESS = "linear-gradient(135deg, #10b981 0%, #059669 100%)"
 
 
 class WatsonDashboard:
@@ -520,27 +511,27 @@ class WatsonDashboard:
         avg_threat_score = metrics['avg_threat_score']
         all_scores = metrics['all_scores']
         
-        # Build dashboard HTML
+        # Build dashboard HTML using consolidated gradient constants
         dashboard_html = f"""
-        <div style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: white; padding: 32px; border-radius: 20px; margin: 20px 0; box-shadow: 0 10px 25px rgba(0,0,0,0.3);">
+        <div style="background: {GRADIENT_DARK_CARD}; color: white; padding: 32px; border-radius: 20px; margin: 20px 0; box-shadow: 0 10px 25px rgba(0,0,0,0.3);">
             <h2 style="margin-top: 0; font-size: 2em; display: flex; align-items: center; gap: 12px; margin-bottom: 30px;">
                 🛡️ Real-Time Threat Intelligence Dashboard
             </h2>
             
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 30px;">
-                <div style="background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_RED_CRITICAL}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">🔴 {high_severity_count}</div>
                     <div style="font-size: 0.95em; opacity: 0.95;">Critical Threats</div>
                     <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Score ≥ 75</div>
                 </div>
                 
-                <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_AMBER_WARNING}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">🟡 {medium_severity_count}</div>
                     <div style="font-size: 0.95em; opacity: 0.95;">Medium Threats</div>
                     <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Score 50-74</div>
                 </div>
                 
-                <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_GREEN_SUCCESS}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">🟢 {low_severity_count}</div>
                     <div style="font-size: 0.95em; opacity: 0.95;">Low Priority</div>
                     <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Score < 50</div>
