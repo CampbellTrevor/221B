@@ -2769,16 +2769,19 @@ class WatsonDashboard:
         except Exception as e:
             print(f"❌ Failed to generate report: {e}")
     
-    def _export_all_results(self):
+    def _export_all_results(self, export_format='csv'):
         """
-        Export all strategy results to individual CSV files.
+        Export all strategy results to individual files.
+        
+        Args:
+            export_format: Format to export ('csv' or 'json')
         """
         if not self.strategy_results:
             print("⚠️ No analysis results available to export.")
             print("💡 Run some strategies first, then use this button to export all results at once.")
             return
         
-        print("💾 Exporting all strategy results...")
+        print(f"💾 Exporting all strategy results as {export_format.upper()}...")
         print("=" * 80)
         print()
         
@@ -2796,10 +2799,15 @@ class WatsonDashboard:
             try:
                 # Sanitize strategy name for filename
                 safe_name = re.sub(r'[^\w\s-]', '', strategy_name).strip().replace(' ', '_')
-                filename = f"{safe_name}_{timestamp}.csv"
                 
-                # Export to CSV
-                df.to_csv(filename, index=False)
+                if export_format == 'json':
+                    filename = f"{safe_name}_{timestamp}.json"
+                    # Export to JSON with date handling
+                    df.to_json(filename, orient='records', date_format='iso', indent=2)
+                else:
+                    filename = f"{safe_name}_{timestamp}.csv"
+                    # Export to CSV
+                    df.to_csv(filename, index=False)
                 
                 export_count += 1
                 total_rows += len(df)
@@ -2819,11 +2827,16 @@ class WatsonDashboard:
         print()
         print("=" * 80)
         print(f"📊 Export Summary:")
+        print(f"   • Format: {export_format.upper()}")
         print(f"   • Files created: {export_count}")
         print(f"   • Total rows: {total_rows}")
         print(f"   • Timestamp: {timestamp}")
         print()
-        print("💡 CSV files are ready for analysis in Excel, Splunk, or other tools")
+        
+        if export_format == 'json':
+            print("💡 JSON files are ready for API ingestion, SIEM integration, or custom analysis")
+        else:
+            print("💡 CSV files are ready for analysis in Excel, Splunk, or other tools")
     
     def display(self):
         """
@@ -2932,13 +2945,16 @@ class WatsonDashboard:
         
         def show_tips():
             """Display usage tips and best practices."""
-            tips_html = """
+            # Dynamic strategy count
+            strategy_count = len(self.strategies)
+            
+            tips_html = f"""
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
                 <h3 style="margin-top: 0;">💡 Quick Tips & Best Practices</h3>
                 
                 <h4>🚀 Quick Start Workflow:</h4>
                 <ol style="line-height: 1.8;">
-                    <li><strong>Select a Strategy Tab</strong> - Choose from 18 comprehensive threat hunting strategies</li>
+                    <li><strong>Select a Strategy Tab</strong> - Choose from {strategy_count} comprehensive threat hunting strategies</li>
                     <li><strong>Read the Recommendation</strong> - Each strategy shows when to use it and what data works best</li>
                     <li><strong>Load Data</strong> - Pick a table and map required columns</li>
                     <li><strong>Run Analysis</strong> - Click the green "Run Analysis" button</li>
@@ -2950,6 +2966,8 @@ class WatsonDashboard:
                     <li><strong>Metrics Dashboard:</strong> Click 📊 to view real-time threat intelligence with aggregated statistics and strategy comparisons</li>
                     <li><strong>Performance Stats:</strong> Click ⚡ to see execution times, throughput rates, and detection efficiency for each strategy</li>
                     <li><strong>Timeline Analysis:</strong> Click 📅 to visualize when threats occurred with interactive heatmaps and temporal patterns</li>
+                    <li><strong>IP Threat Heatmap:</strong> 🆕 Click 🗺️ to see which IPs generate the most threats across strategies with bubble chart visualization</li>
+                    <li><strong>Strategy Insights:</strong> 🆕 Click 🎓 to compare strategy effectiveness with stacked severity distributions and detection rates</li>
                     <li><strong>Smart Recommendations:</strong> Click 🎯 to get AI-powered suggestions on which strategies to run next based on findings</li>
                     <li><strong>Text Search:</strong> Use the 🔍 search box to filter results across all columns - find IPs, domains, or any text instantly</li>
                     <li><strong>Quick Triage:</strong> After running multiple analyses, click the 🚨 button to see all critical threats at once</li>
@@ -3005,7 +3023,7 @@ class WatsonDashboard:
         def on_export_all_click(b):
             with action_output:
                 clear_output(wait=True)
-                self._export_all_results()
+                self._export_all_results('csv')
         
         def on_metrics_click(b):
             with action_output:

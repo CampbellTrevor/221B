@@ -4352,11 +4352,17 @@ class SupplyChainAttackStrategy(HuntStrategy):
         return result_df
     
     def _is_typosquat(self, pkg_name: str, target: str) -> bool:
-        """Check if package name is likely typosquatting target."""
+        """
+        Check if package name is likely typosquatting target.
+        
+        Uses simplified Levenshtein distance (edit distance of 1).
+        Note: O(n) complexity where n is package name length (typically < 50 chars).
+        For production use with thousands of targets, consider using python-Levenshtein library.
+        """
         if pkg_name == target:
             return False
         
-        # Levenshtein distance approximation
+        # Levenshtein distance approximation (edit distance = 1)
         if len(pkg_name) != len(target):
             if abs(len(pkg_name) - len(target)) == 1:
                 # Check for single character insertion/deletion
