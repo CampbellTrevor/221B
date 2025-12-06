@@ -20,6 +20,15 @@ from ionic_scripting_framework import isf
 from strategies import HuntStrategy
 
 
+# Visual styling constants for severity indicators
+COLOR_HIGH_SEVERITY_BG = '#ffebee'  # Light red background
+COLOR_HIGH_SEVERITY_BADGE = '#f44336'  # Red badge
+COLOR_MEDIUM_SEVERITY_BG = '#fff3e0'  # Light orange background
+COLOR_MEDIUM_SEVERITY_BADGE = '#ff9800'  # Orange badge
+COLOR_LOW_SEVERITY_BG = '#e8f5e9'  # Light green background
+COLOR_LOW_SEVERITY_BADGE = '#4caf50'  # Green badge
+
+
 class WatsonDashboard:
     """
     Interactive dashboard for threat hunting using various strategies.
@@ -587,14 +596,14 @@ class WatsonDashboard:
                     score = row[score_col]
                     # Color code based on severity
                     if score >= 75:
-                        bg_color = '#ffebee'  # Light red for high severity
-                        badge = '<span style="background: #f44336; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">HIGH</span>'
+                        bg_color = COLOR_HIGH_SEVERITY_BG
+                        badge = f'<span style="background: {COLOR_HIGH_SEVERITY_BADGE}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">HIGH</span>'
                     elif score >= 50:
-                        bg_color = '#fff3e0'  # Light orange for medium
-                        badge = '<span style="background: #ff9800; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">MED</span>'
+                        bg_color = COLOR_MEDIUM_SEVERITY_BG
+                        badge = f'<span style="background: {COLOR_MEDIUM_SEVERITY_BADGE}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">MED</span>'
                     else:
-                        bg_color = '#e8f5e9'  # Light green for low
-                        badge = '<span style="background: #4caf50; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">LOW</span>'
+                        bg_color = COLOR_LOW_SEVERITY_BG
+                        badge = f'<span style="background: {COLOR_LOW_SEVERITY_BADGE}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">LOW</span>'
                     
                     table_html += f'    <tr style="background-color: {bg_color};">\n'
                     for col in page_df.columns:

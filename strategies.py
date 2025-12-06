@@ -1396,6 +1396,7 @@ class LateralMovementStrategy(HuntStrategy):
     MIN_UNIQUE_TARGETS = 5
     MIN_LATERAL_SCORE = 50
     TIME_WINDOW_HOURS = 1  # Time window to look for rapid movement
+    MIN_TIME_SPAN_HOURS = 0.1  # Minimum time span (6 minutes) to avoid division by zero
     
     def _get_name(self) -> str:
         return "Lateral Movement Detector (Privilege Escalation)"
@@ -1436,8 +1437,8 @@ class LateralMovementStrategy(HuntStrategy):
             # Calculate time span
             time_span = (group[ts_col].max() - group[ts_col].min()).total_seconds() / 3600  # hours
             
-            # Calculate targets per hour
-            targets_per_hour = unique_targets / max(time_span, 0.1)  # Avoid division by zero
+            # Calculate targets per hour (use MIN_TIME_SPAN_HOURS to avoid division by zero)
+            targets_per_hour = unique_targets / max(time_span, self.MIN_TIME_SPAN_HOURS)
             
             # Calculate lateral movement score (0-100)
             lateral_score = 0.0
@@ -1546,7 +1547,8 @@ class DataHoardingStrategy(HuntStrategy):
     """
     
     MIN_HOARDING_SCORE = 50
-    MIN_BYTES_THRESHOLD = 1_000_000  # 1MB minimum
+    # Minimum download size threshold - filters out small routine downloads (1MB)
+    MIN_DOWNLOAD_THRESHOLD_BYTES = 1_000_000
     
     def _get_name(self) -> str:
         return "Data Hoarding Detector (Theft Preparation)"
@@ -1572,8 +1574,8 @@ class DataHoardingStrategy(HuntStrategy):
         df = df.copy()
         df[bytes_col] = pd.to_numeric(df[bytes_col], errors='coerce').fillna(0)
         
-        # Filter out minimal traffic
-        df = df[df[bytes_col] >= self.MIN_BYTES_THRESHOLD]
+        # Filter out minimal traffic (routine small downloads)
+        df = df[df[bytes_col] >= self.MIN_DOWNLOAD_THRESHOLD_BYTES]
         
         results = []
         
@@ -1609,9 +1611,13 @@ class DataHoardingStrategy(HuntStrategy):
                 hoarding_score += 20
                 # Check for consistent download sizes (bulk operations)
                 if connection_count > 1:
-                    byte_cv = group[bytes_col].std() / group[bytes_col].mean() if group[bytes_col].mean() > 0 else float('inf')
-                    if byte_cv < 0.5:  # Consistent sizes
-                        hoarding_score += 10
+                    mean_bytes = group[bytes_col].mean()
+                    std_bytes = group[bytes_col].std()
+                    # Handle edge cases: if both are 0 or mean is 0, skip CV calculation
+                    if mean_bytes > 0:
+                        byte_cv = std_bytes / mean_bytes
+                        if byte_cv < 0.5:  # Consistent sizes
+                            hoarding_score += 10
             elif connection_count >= 50:
                 hoarding_score += 10
             
@@ -1685,10 +1691,14 @@ class TimeAnomalyStrategy(HuntStrategy):
     
     Detects activity occurring outside normal business hours which may
     indicate unauthorized access, insider threats, or compromised accounts.
+    
+    Note: Business hours are defined as 8am-6pm Monday-Friday in the system's
+    local timezone. Organizations with different schedules or global operations
+    may need to adjust these constants or interpret results accordingly.
     """
     
     MIN_ANOMALY_SCORE = 50
-    # Define business hours (24-hour format)
+    # Define business hours (24-hour format, local timezone)
     BUSINESS_START_HOUR = 8
     BUSINESS_END_HOUR = 18
     # Define business days (0=Monday, 6=Sunday)
