@@ -795,7 +795,7 @@ When adding new features or strategies:
 **Current Release:**
 - **36 comprehensive threat hunting strategies** covering modern attack vectors
 - **114 unit tests** with 100% pass rate
-- **13,940 lines of code** across core modules
+- **13,946 lines of code** across core modules
 - **13 quick action buttons** for one-click analysis including Threat Velocity and Overview
 - **Multiple export formats** (CSV, JSON) for flexible integration
 - **Zero security vulnerabilities** detected by CodeQL analysis
@@ -804,7 +804,7 @@ When adding new features or strategies:
 - `strategies.py`: 6,727 lines - Pure threat detection logic
 - `app.py`: 3,627 lines - Interactive UI and dashboard (consolidated)
 - `test_strategies.py`: 2,766 lines - Comprehensive test suite
-- `README.md`: 820 lines - Complete documentation
+- `README.md`: 826 lines - Complete documentation
 
 **Strategy Coverage:**
 - Network-based attacks: 9 strategies (C2, DNS, Port Scans, Tunneling, Exfiltration, Zero-Day, etc.)
