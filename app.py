@@ -1293,7 +1293,7 @@ class WatsonDashboard:
         table_html = '<table border="1" class="dataframe" style="border-collapse: collapse; width: 100%;">\n'
         table_html += '  <thead>\n    <tr style="text-align: right; background-color: #e74c3c; color: white;">\n'
         for col in corr_df.columns:
-            table_html += f'      <th style="padding: 8px; border: 1px solid #ddd;">{col}</th>\n'
+            table_html += f'      <th style="padding: 8px; border: 1px solid #ddd;">{html_lib.escape(str(col))}</th>\n'
         table_html += '    </tr>\n  </thead>\n  <tbody>\n'
         
         for _, row in corr_df.iterrows():
@@ -1312,10 +1312,12 @@ class WatsonDashboard:
             for col in corr_df.columns:
                 value = row[col]
                 if col == 'Threat Level':
-                    badge = f'<span style="background: {badge_color}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">{value}</span>'
+                    # Threat level is our own controlled value, safe to insert
+                    badge = f'<span style="background: {badge_color}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">{html_lib.escape(str(value))}</span>'
                     table_html += f'      <td style="padding: 8px; border: 1px solid #ddd;">{badge}</td>\n'
                 else:
-                    table_html += f'      <td style="padding: 8px; border: 1px solid #ddd;">{value}</td>\n'
+                    # Escape all other values
+                    table_html += f'      <td style="padding: 8px; border: 1px solid #ddd;">{html_lib.escape(str(value))}</td>\n'
             table_html += '    </tr>\n'
         
         table_html += '  </tbody>\n</table>'
@@ -1476,9 +1478,10 @@ class WatsonDashboard:
         # Sort by score descending
         triage_df = triage_df.sort_values('Score', ascending=False)
         
-        print(f"📊 All High-Severity Findings (Score ≥ 75):")
+        print(f"📊 All High-Severity Findings (Score ≥ {HIGH_SEVERITY_THRESHOLD}):")
         print("-" * 80)
-        display(HTML(triage_df.to_html(index=False, escape=False)))
+        # Use escape=True (default) to prevent XSS
+        display(HTML(triage_df.to_html(index=False)))
         
         # Export option
         print()
@@ -1645,8 +1648,8 @@ class WatsonDashboard:
             score_cols = [col for col in df.columns if col.endswith('_score')]
             if score_cols:
                 score_col = score_cols[0]
-                high_severity += len(df[df[score_col] >= 75])
-                medium_severity += len(df[(df[score_col] >= 50) & (df[score_col] < 75)])
+                high_severity += len(df[df[score_col] >= HIGH_SEVERITY_THRESHOLD])
+                medium_severity += len(df[(df[score_col] >= MEDIUM_SEVERITY_THRESHOLD) & (df[score_col] < HIGH_SEVERITY_THRESHOLD)])
         
         html += f"""
                         <div class="stat-box">
