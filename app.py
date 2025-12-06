@@ -393,6 +393,195 @@ class WatsonDashboard:
         tab_data['start_date'].disabled = not enabled
         tab_data['end_date'].disabled = not enabled
     
+    def _show_threat_metrics_dashboard(self):
+        """
+        Display a comprehensive real-time threat metrics dashboard showing
+        aggregated statistics across all strategies.
+        """
+        if not self.strategy_results:
+            print("⚠️ No analysis results available. Run some strategies first.")
+            return
+        
+        # Calculate aggregate metrics
+        total_threats = sum(len(r['dataframe']) for r in self.strategy_results.values())
+        strategies_run = len(self.strategy_results)
+        
+        # Calculate severity breakdown across all strategies
+        high_severity_count = 0
+        medium_severity_count = 0
+        low_severity_count = 0
+        max_threat_score = 0
+        all_scores = []
+        
+        for result_data in self.strategy_results.values():
+            df = result_data['dataframe']
+            score_cols = [col for col in df.columns if col.endswith('_score')]
+            if score_cols:
+                scores = df[score_cols[0]]
+                all_scores.extend(scores.tolist())
+                high_severity_count += len(df[scores >= HIGH_SEVERITY_THRESHOLD])
+                medium_severity_count += len(df[(scores >= MEDIUM_SEVERITY_THRESHOLD) & (scores < HIGH_SEVERITY_THRESHOLD)])
+                low_severity_count += len(df[scores < MEDIUM_SEVERITY_THRESHOLD])
+                max_threat_score = max(max_threat_score, scores.max())
+        
+        avg_threat_score = sum(all_scores) / len(all_scores) if all_scores else 0
+        
+        # Build dashboard HTML
+        dashboard_html = f"""
+        <div style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: white; padding: 32px; border-radius: 20px; margin: 20px 0; box-shadow: 0 10px 25px rgba(0,0,0,0.3);">
+            <h2 style="margin-top: 0; font-size: 2em; display: flex; align-items: center; gap: 12px; margin-bottom: 30px;">
+                🛡️ Real-Time Threat Intelligence Dashboard
+            </h2>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 30px;">
+                <div style="background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                    <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">🔴 {high_severity_count}</div>
+                    <div style="font-size: 0.95em; opacity: 0.95;">Critical Threats</div>
+                    <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Score ≥ 75</div>
+                </div>
+                
+                <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                    <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">🟡 {medium_severity_count}</div>
+                    <div style="font-size: 0.95em; opacity: 0.95;">Medium Threats</div>
+                    <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Score 50-74</div>
+                </div>
+                
+                <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                    <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">🟢 {low_severity_count}</div>
+                    <div style="font-size: 0.95em; opacity: 0.95;">Low Priority</div>
+                    <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Score < 50</div>
+                </div>
+                
+                <div style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                    <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">📊 {total_threats}</div>
+                    <div style="font-size: 0.95em; opacity: 0.95;">Total Detections</div>
+                    <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Across {strategies_run} strategies</div>
+                </div>
+                
+                <div style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                    <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">⚡ {avg_threat_score:.1f}</div>
+                    <div style="font-size: 0.95em; opacity: 0.95;">Average Score</div>
+                    <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Threat severity</div>
+                </div>
+                
+                <div style="background: linear-gradient(135deg, #ec4899 0%, #db2777 100%); padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                    <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">⚠️ {max_threat_score:.1f}</div>
+                    <div style="font-size: 0.95em; opacity: 0.95;">Peak Threat</div>
+                    <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Highest score</div>
+                </div>
+            </div>
+            
+            <div style="background: rgba(255,255,255,0.1); padding: 20px; border-radius: 12px; backdrop-filter: blur(10px);">
+                <h3 style="margin-top: 0; margin-bottom: 15px;">📈 Strategy Performance</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+        """
+        
+        # Add strategy badges
+        for strategy_name, result_data in self.strategy_results.items():
+            threat_count = len(result_data['dataframe'])
+            dashboard_html += f"""
+                <div style="background: rgba(255,255,255,0.15); padding: 12px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);">
+                    <div style="font-weight: bold; margin-bottom: 4px;">{strategy_name.split('(')[0].strip()}</div>
+                    <div style="font-size: 1.3em; color: #fbbf24;">{threat_count} detections</div>
+                </div>
+            """
+        
+        dashboard_html += """
+                </div>
+            </div>
+        </div>
+        """
+        
+        display(HTML(dashboard_html))
+        
+        # Add Plotly visualizations if available
+        if HAS_PLOTLY and all_scores:
+            self._show_strategy_comparison_chart()
+    
+    def _show_strategy_comparison_chart(self):
+        """
+        Display a comparative chart showing effectiveness of different strategies.
+        """
+        if not HAS_PLOTLY or not self.strategy_results:
+            return
+        
+        # Prepare data for comparison
+        strategy_names = []
+        detection_counts = []
+        avg_scores = []
+        high_severity_counts = []
+        
+        for strategy_name, result_data in self.strategy_results.items():
+            df = result_data['dataframe']
+            strategy_names.append(strategy_name.split('(')[0].strip())
+            detection_counts.append(len(df))
+            
+            score_cols = [col for col in df.columns if col.endswith('_score')]
+            if score_cols:
+                scores = df[score_cols[0]]
+                avg_scores.append(scores.mean())
+                high_severity_counts.append(len(df[scores >= HIGH_SEVERITY_THRESHOLD]))
+            else:
+                avg_scores.append(0)
+                high_severity_counts.append(0)
+        
+        # Create subplots
+        from plotly.subplots import make_subplots
+        
+        fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=('Detection Volume by Strategy', 'Critical Threats by Strategy'),
+            specs=[[{"type": "bar"}, {"type": "bar"}]]
+        )
+        
+        # Add detection volume chart
+        fig.add_trace(
+            go.Bar(
+                x=strategy_names,
+                y=detection_counts,
+                name='Total Detections',
+                marker=dict(
+                    color=detection_counts,
+                    colorscale='Blues',
+                    showscale=False,
+                    line=dict(color='white', width=1)
+                ),
+                text=detection_counts,
+                textposition='outside'
+            ),
+            row=1, col=1
+        )
+        
+        # Add critical threats chart
+        fig.add_trace(
+            go.Bar(
+                x=strategy_names,
+                y=high_severity_counts,
+                name='Critical Threats',
+                marker=dict(
+                    color=high_severity_counts,
+                    colorscale='Reds',
+                    showscale=False,
+                    line=dict(color='white', width=1)
+                ),
+                text=high_severity_counts,
+                textposition='outside'
+            ),
+            row=1, col=2
+        )
+        
+        fig.update_xaxes(tickangle=-45, row=1, col=1)
+        fig.update_xaxes(tickangle=-45, row=1, col=2)
+        
+        fig.update_layout(
+            title_text="Strategy Effectiveness Comparison",
+            showlegend=False,
+            height=450,
+            margin=dict(b=120)
+        )
+        
+        display(fig)
+    
     def _on_load_table(self, button, tab_index: int):
         """
         Load table schema when button is pressed.
@@ -583,7 +772,22 @@ class WatsonDashboard:
         current_page = {'value': 0}
         current_sort = {'column': '(unsorted)', 'ascending': False}
         current_filter = {'level': 'All'}
+        current_search = {'text': ''}
         cached_sorted_df = {'df': full_df, 'total_pages': 1}  # Cache for sorted DataFrame
+        
+        # Create text search box
+        search_box = widgets.Text(
+            placeholder='Search in results... (searches all columns)',
+            description='🔍 Search:',
+            style={'description_width': 'initial'},
+            layout=widgets.Layout(width='400px')
+        )
+        
+        clear_search_button = widgets.Button(
+            description='Clear',
+            button_style='',
+            layout=widgets.Layout(width='80px')
+        )
         
         # Create sorting controls
         sort_column = widgets.Dropdown(
@@ -644,18 +848,27 @@ class WatsonDashboard:
         
         def get_sorted_df():
             """Get the dataframe with current sorting and filtering applied (cached)."""
-            # First apply filtering
-            if has_score_column and current_filter['level'] != 'All':
-                if current_filter['level'] == 'High (≥75)':
-                    filtered_df = full_df[full_df[score_col] >= 75]
-                elif current_filter['level'] == 'Medium (50-74)':
-                    filtered_df = full_df[(full_df[score_col] >= 50) & (full_df[score_col] < 75)]
-                elif current_filter['level'] == 'Low (<50)':
-                    filtered_df = full_df[full_df[score_col] < 50]
-                else:
-                    filtered_df = full_df
+            # First apply text search if present
+            if current_search['text']:
+                search_term = current_search['text'].lower()
+                # Optimize: only search in columns that are already strings or can be strings
+                # Create mask by checking each column individually
+                mask = pd.Series([False] * len(full_df), index=full_df.index)
+                for col in full_df.columns:
+                    # Convert to string only for this column, then search
+                    mask |= full_df[col].astype(str).str.lower().str.contains(search_term, na=False, regex=False)
+                filtered_df = full_df[mask]
             else:
                 filtered_df = full_df
+            
+            # Then apply severity filtering
+            if has_score_column and current_filter['level'] != 'All':
+                if current_filter['level'] == 'High (≥75)':
+                    filtered_df = filtered_df[filtered_df[score_col] >= 75]
+                elif current_filter['level'] == 'Medium (50-74)':
+                    filtered_df = filtered_df[(filtered_df[score_col] >= 50) & (filtered_df[score_col] < 75)]
+                elif current_filter['level'] == 'Low (<50)':
+                    filtered_df = filtered_df[filtered_df[score_col] < 50]
             
             # Then apply sorting
             if current_sort['column'] != '(unsorted)':
@@ -765,6 +978,21 @@ class WatsonDashboard:
                 current_page['value'] += 1
                 update_table()
         
+        def on_search_change(change):
+            """Handle search text changes."""
+            current_search['text'] = search_box.value
+            current_page['value'] = 0  # Reset to first page when searching
+            get_sorted_df()  # Refresh cache
+            update_table()
+        
+        def on_clear_search_click(b):
+            """Handle clear search button click."""
+            search_box.value = ''
+            current_search['text'] = ''
+            current_page['value'] = 0
+            get_sorted_df()
+            update_table()
+        
         def on_export_click(b):
             """Handle export button click."""
             with export_output:
@@ -785,6 +1013,8 @@ class WatsonDashboard:
                     print(f"❌ Export failed: {e}")
         
         # Attach observers and handlers
+        search_box.observe(on_search_change, names='value')
+        clear_search_button.on_click(on_clear_search_click)
         sort_column.observe(on_sort_change, names='value')
         sort_order.observe(on_sort_change, names='value')
         if filter_buttons:
@@ -806,12 +1036,17 @@ class WatsonDashboard:
             widgets.HTML("<h4>📊 Results</h4>"),
         ]
         
+        # Add search box
+        ui_components.append(widgets.HTML("<div style='margin: 10px 0;'><b>🔍 Text Search & Filters:</b></div>"))
+        ui_components.append(widgets.HBox([search_box, clear_search_button]))
+        
         # Add filter buttons if score column exists
         if filter_buttons:
-            ui_components.append(widgets.HTML("<div style='margin: 5px 0;'><b>Quick Filter:</b></div>"))
+            ui_components.append(widgets.HTML("<div style='margin: 10px 0 5px 0;'><b>Severity Filter:</b></div>"))
             ui_components.append(filter_buttons)
         
         ui_components.extend([
+            widgets.HTML("<div style='margin: 10px 0 5px 0;'><b>Sort & Export:</b></div>"),
             sort_controls,
             export_output,
             pagination_controls,
@@ -1959,6 +2194,14 @@ class WatsonDashboard:
             layout=widgets.Layout(width='150px')
         )
         
+        metrics_button = widgets.Button(
+            description='📊 Metrics Dashboard',
+            button_style='primary',
+            tooltip='View comprehensive threat intelligence dashboard',
+            icon='dashboard',
+            layout=widgets.Layout(width='180px')
+        )
+        
         help_button = widgets.Button(
             description='❓ Tips',
             button_style='',
@@ -1977,7 +2220,7 @@ class WatsonDashboard:
                 
                 <h4>🚀 Quick Start Workflow:</h4>
                 <ol style="line-height: 1.8;">
-                    <li><strong>Select a Strategy Tab</strong> - Choose from 15 comprehensive threat hunting strategies</li>
+                    <li><strong>Select a Strategy Tab</strong> - Choose from 18 comprehensive threat hunting strategies</li>
                     <li><strong>Read the Recommendation</strong> - Each strategy shows when to use it and what data works best</li>
                     <li><strong>Load Data</strong> - Pick a table and map required columns</li>
                     <li><strong>Run Analysis</strong> - Click the green "Run Analysis" button</li>
@@ -1986,10 +2229,13 @@ class WatsonDashboard:
                 
                 <h4>🎯 Power User Features:</h4>
                 <ul style="line-height: 1.8;">
+                    <li><strong>Metrics Dashboard:</strong> Click 📊 to view real-time threat intelligence with aggregated statistics and strategy comparisons</li>
+                    <li><strong>Text Search:</strong> Use the 🔍 search box to filter results across all columns - find IPs, domains, or any text instantly</li>
                     <li><strong>Quick Triage:</strong> After running multiple analyses, click the 🚨 button to see all critical threats at once</li>
                     <li><strong>Correlation Analysis:</strong> Click 🔗 to find IPs appearing in multiple strategies - these are your highest-priority targets</li>
                     <li><strong>HTML Reports:</strong> Generate professional reports with the 📄 button for management briefings</li>
                     <li><strong>Export Options:</strong> All views support CSV export for further analysis in Excel or other tools</li>
+                    <li><strong>Multi-Filter:</strong> Combine text search with severity filters and sorting for precise threat identification</li>
                 </ul>
                 
                 <h4>🔍 Investigation Strategy:</h4>
@@ -2040,6 +2286,11 @@ class WatsonDashboard:
                 clear_output(wait=True)
                 self._export_all_results()
         
+        def on_metrics_click(b):
+            with action_output:
+                clear_output(wait=True)
+                self._show_threat_metrics_dashboard()
+        
         def on_help_click(b):
             show_tips()
         
@@ -2047,6 +2298,7 @@ class WatsonDashboard:
         correlation_button.on_click(on_correlation_click)
         report_button.on_click(on_report_click)
         export_all_button.on_click(on_export_all_click)
+        metrics_button.on_click(on_metrics_click)
         help_button.on_click(on_help_click)
         
         action_buttons = widgets.HBox([
@@ -2054,6 +2306,7 @@ class WatsonDashboard:
             correlation_button,
             report_button,
             export_all_button,
+            metrics_button,
             help_button
         ], layout=widgets.Layout(justify_content='flex-start', margin='10px 0'))
         

@@ -9,9 +9,10 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 ### 🆕 What's New in This Release
 
 **Expanded Detection Coverage:**
-- 6 NEW cutting-edge threat hunting strategies (Geo-Anomaly, User-Agent Analysis, Crypto Mining, DNS Anomaly, Account Takeover, Data Staging)
-- Now covering **15 comprehensive threat categories** (up from 9)
-- Enhanced coverage for insider threats, APT behavior, cryptojacking, DNS-based attacks, credential theft, and data exfiltration preparation
+- 3 BRAND NEW advanced threat hunting strategies (Fileless Malware, API Abuse, Shadow IT)
+- Now covering **18 comprehensive threat categories** (up from 15)
+- Enhanced coverage for fileless attacks, LOLBins, API scraping, unauthorized cloud services, and modern attack techniques
+- Previous additions included Geo-Anomaly, User-Agent Analysis, Crypto Mining, DNS Anomaly, Account Takeover, and Data Staging
 
 **Visual Display Improvements:**
 - Color-coded severity indicators with visual badges (HIGH/MED/LOW)
@@ -37,7 +38,7 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 ### 🎯 Detection Strategies
 
-The dashboard includes **fifteen comprehensive threat hunting strategies**:
+The dashboard includes **eighteen comprehensive threat hunting strategies**:
 
 **Beacon Hunter (C2 Detection)**
 - Detects command-and-control beaconing behavior by analyzing connection timing patterns
@@ -137,6 +138,30 @@ The dashboard includes **fifteen comprehensive threat hunting strategies**:
 - Analyzes access to sensitive directories (finance, HR, customer data)
 - Identifies large file operations and staging directory usage
 - Essential for catching insider threats and APT data theft in preparation phase
+
+**Fileless Malware Detector (LOLBins & Memory Attacks)** 🆕 NEWEST
+- Identifies memory-resident attacks and living-off-the-land techniques
+- Detects PowerShell abuse, WMI execution, and suspicious script activity
+- Flags use of legitimate system tools for malicious purposes (certutil, bitsadmin, regsvr32, etc.)
+- Analyzes encoded and obfuscated command-line patterns
+- Critical for detecting modern attacks that avoid writing files to disk
+- Essential for catching fileless ransomware, reflective DLL injection, and in-memory payloads
+
+**API Abuse Detector (Scraping & Rate Limit Violations)** 🆕 NEWEST
+- Identifies excessive API usage, rate limit violations, and token abuse
+- Detects automated scraping and credential stuffing via APIs
+- Analyzes abnormal API consumption patterns indicating account compromise
+- Flags low endpoint diversity with high request volume (scraping behavior)
+- Detects token switching and authentication failure patterns
+- Critical for protecting APIs from abuse and detecting data theft via legitimate channels
+
+**Shadow IT Detector (Unauthorized Cloud & SaaS)** 🆕 NEWEST
+- Identifies employees using personal cloud storage services
+- Detects unapproved collaboration tools and file sharing services
+- Flags data synchronization to non-corporate accounts (Dropbox, Google Drive, OneDrive)
+- Analyzes usage of paste sites and unauthorized file transfer services
+- Monitors data upload volumes to unauthorized services
+- Critical for data loss prevention, compliance, and preventing exfiltration via approved channels
 
 ### 🔧 Interactive Controls
 
@@ -247,7 +272,10 @@ from strategies import (
     CryptoMiningStrategy,
     DNSAnomalyStrategy,
     AccountTakeoverStrategy,
-    DataStagingStrategy
+    DataStagingStrategy,
+    FilelessMalwareStrategy,
+    APIAbuseStrategy,
+    ShadowITStrategy
 )
 
 # Initialize dashboard with all strategies and custom cache settings
@@ -267,7 +295,10 @@ dashboard = WatsonDashboard(
         CryptoMiningStrategy(),
         DNSAnomalyStrategy(),
         AccountTakeoverStrategy(),
-        DataStagingStrategy()
+        DataStagingStrategy(),
+        FilelessMalwareStrategy(),
+        APIAbuseStrategy(),
+        ShadowITStrategy()
     ],
     cache_dir='.custom_cache',
     cache_days=3
