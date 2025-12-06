@@ -38,6 +38,7 @@ COLOR_LOW_SEVERITY_BG = '#d1fae5'  # Light green background (Tailwind green-100)
 COLOR_LOW_SEVERITY_BADGE = '#10b981'  # Green badge (Tailwind green-500)
 
 # Analysis and display constants
+CRITICAL_SEVERITY_THRESHOLD = 90  # Score threshold for critical threats (immediate action required)
 HIGH_SEVERITY_THRESHOLD = 75  # Score threshold for high-severity threats
 MEDIUM_SEVERITY_THRESHOLD = 50  # Score threshold for medium-severity threats
 MAX_DISPLAY_ITEMS = 20  # Maximum items to display in correlation/triage views
@@ -1328,8 +1329,8 @@ class WatsonDashboard:
                 continue
             
             # Count by severity
-            critical = len(df[df[score_col] >= 90])
-            high = len(df[(df[score_col] >= HIGH_SEVERITY_THRESHOLD) & (df[score_col] < 90)])
+            critical = len(df[df[score_col] >= CRITICAL_SEVERITY_THRESHOLD])
+            high = len(df[(df[score_col] >= HIGH_SEVERITY_THRESHOLD) & (df[score_col] < CRITICAL_SEVERITY_THRESHOLD)])
             medium = len(df[(df[score_col] >= MEDIUM_SEVERITY_THRESHOLD) & (df[score_col] < HIGH_SEVERITY_THRESHOLD)])
             low = len(df[df[score_col] < MEDIUM_SEVERITY_THRESHOLD])
             
@@ -3006,7 +3007,7 @@ class WatsonDashboard:
         export_button.on_click(on_export_triage)
         display(widgets.VBox([export_button, export_output]))
         print()
-        print("💡 Tip: Prioritize investigation of threats with scores ≥ 90!")
+        print(f"💡 Tip: Prioritize investigation of threats with scores ≥ {CRITICAL_SEVERITY_THRESHOLD}!")
     
     def _generate_investigation_report(self):
         """
