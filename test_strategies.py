@@ -970,7 +970,7 @@ class TestDNSAnomalyStrategy(unittest.TestCase):
             data.append({
                 'timestamp': base_time + timedelta(seconds=i * 60),
                 'source_ip': '192.168.1.100',
-                'query_name': f'www.google.com',
+                'query_name': 'www.google.com',
                 'response_code': '0'  # Success
             })
         
@@ -1272,7 +1272,7 @@ class TestAPIAbuseStrategy(unittest.TestCase):
         for i in range(15):
             data.append({
                 'source_ip': '10.0.0.50',
-                'url_path': f'/api/v1/profile',
+                'url_path': '/api/v1/profile',
                 'status_code': '200'
             })
         
@@ -1479,7 +1479,7 @@ class TestWebshellDetectionStrategy(unittest.TestCase):
         for i in range(15):
             data.append({
                 'source_ip': '10.0.0.50',
-                'uri': f'/admin.php?exec=ls&command=id',
+                'uri': '/admin.php?exec=ls&command=id',
                 'method': 'POST',
                 'status_code': '200',
                 'user_agent': 'curl/7.68.0'
@@ -1509,7 +1509,7 @@ class TestWebshellDetectionStrategy(unittest.TestCase):
         for i in range(20):
             data.append({
                 'source_ip': '10.0.0.50',
-                'uri': f'/index.html',
+                'uri': '/index.html',
                 'method': 'GET',
                 'status_code': '200',
                 'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/95.0'
