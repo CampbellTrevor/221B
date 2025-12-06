@@ -4231,3 +4231,1047 @@ class RansomwareIndicatorStrategy(HuntStrategy):
             'flags': 'Specific indicators (shadow_copy_deletion, backup_interference, mass_file_encryption, etc.)',
             'ransomware_score': 'Overall ransomware deployment risk score (0-100). Higher scores indicate imminent or active ransomware attack. Scores ≥75 require immediate incident response and system isolation. Scores ≥50 indicate active preparation and demand urgent attention'
         }
+
+
+class SupplyChainAttackStrategy(HuntStrategy):
+    """
+    Detect supply chain attacks via compromised packages and dependencies.
+    
+    Identifies suspicious package installations, unusual registry access,
+    typosquatting attempts, and malicious dependency downloads. Critical
+    for detecting attacks like SolarWinds, Log4Shell, and npm package compromises.
+    """
+    
+    SUSPICIOUS_PACKAGE_PATTERNS = [
+        r'.*-dev-.*', r'.*\.test\..*', r'.*-debug-.*',  # Development packages in production
+        r'.*admin.*password.*', r'.*secret.*key.*',  # Suspicious names
+        r'.*backdoor.*', r'.*malware.*', r'.*trojan.*',  # Obvious malware
+        r'.*\d{8,}.*',  # Suspiciously random numbers
+    ]
+    
+    SUSPICIOUS_REGISTRIES = [
+        'pastebin.com', 'raw.githubusercontent.com', 'bit.ly',
+        'tinyurl.com', 'temp-host.com', 'suspicious-registry.xyz'
+    ]
+    
+    TYPOSQUAT_TARGETS = [
+        'numpy', 'pandas', 'requests', 'flask', 'django',
+        'express', 'react', 'lodash', 'moment', 'axios'
+    ]
+    
+    def _get_name(self) -> str:
+        return "Supply Chain Attack Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'source_ip', 'package_name', 'registry_url', 'user_agent']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """Analyze package installations for supply chain threats."""
+        
+        # Map columns
+        ts_col = col_map['timestamp']
+        src_col = col_map['source_ip']
+        pkg_col = col_map['package_name']
+        reg_col = col_map['registry_url']
+        ua_col = col_map['user_agent']
+        
+        # Ensure timestamp is datetime
+        if not pd.api.types.is_datetime64_any_dtype(df[ts_col]):
+            df[ts_col] = pd.to_datetime(df[ts_col], errors='coerce')
+        
+        results = []
+        
+        # Group by source IP and package
+        for (src_ip, pkg_name), group in df.groupby([src_col, pkg_col]):
+            if pd.isna(pkg_name) or pkg_name == '':
+                continue
+            
+            score = 0
+            flags = []
+            
+            # Check for suspicious package patterns
+            pkg_lower = str(pkg_name).lower()
+            for pattern in self.SUSPICIOUS_PACKAGE_PATTERNS:
+                if re.match(pattern, pkg_lower, re.IGNORECASE):
+                    score += 20
+                    flags.append('suspicious_naming')
+                    break
+            
+            # Check for suspicious registries
+            registry = str(group[reg_col].iloc[0]) if len(group) > 0 else ''
+            for suspicious_reg in self.SUSPICIOUS_REGISTRIES:
+                if suspicious_reg in registry.lower():
+                    score += 30
+                    flags.append('untrusted_registry')
+                    break
+            
+            # Check for typosquatting
+            for target in self.TYPOSQUAT_TARGETS:
+                if self._is_typosquat(pkg_lower, target):
+                    score += 40
+                    flags.append('typosquatting')
+                    break
+            
+            # Check for automated/script-based downloads (potential mass compromise)
+            user_agents = group[ua_col].unique()
+            automated_ua = sum(1 for ua in user_agents if any(x in str(ua).lower() for x in ['python', 'curl', 'wget', 'bot', 'script']))
+            if automated_ua > 0:
+                score += 15
+                flags.append('automated_download')
+            
+            # Check for unusual installation volume
+            install_count = len(group)
+            if install_count > 10:
+                score += 10
+                flags.append('high_volume')
+            
+            # Check for rapid sequential installations
+            if len(group) > 1:
+                time_diffs = group.sort_values(ts_col)[ts_col].diff().dt.total_seconds().dropna()
+                if len(time_diffs) > 0 and time_diffs.median() < 5:
+                    score += 15
+                    flags.append('rapid_installation')
+            
+            if score >= 40:  # Only report suspicious packages
+                results.append({
+                    'source_ip': src_ip,
+                    'package_name': pkg_name,
+                    'registry_url': registry,
+                    'install_count': install_count,
+                    'first_seen': group[ts_col].min(),
+                    'last_seen': group[ts_col].max(),
+                    'automated_downloads': automated_ua,
+                    'flags': ', '.join(set(flags)),
+                    'supply_chain_score': min(score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('supply_chain_score', ascending=False)
+        
+        return result_df
+    
+    def _is_typosquat(self, pkg_name: str, target: str) -> bool:
+        """Check if package name is likely typosquatting target."""
+        if pkg_name == target:
+            return False
+        
+        # Levenshtein distance approximation
+        if len(pkg_name) != len(target):
+            if abs(len(pkg_name) - len(target)) == 1:
+                # Check for single character insertion/deletion
+                shorter = pkg_name if len(pkg_name) < len(target) else target
+                longer = target if len(pkg_name) < len(target) else pkg_name
+                for i in range(len(longer)):
+                    if longer[:i] + longer[i+1:] == shorter:
+                        return True
+        else:
+            # Check for single character substitution
+            diff_count = sum(1 for a, b in zip(pkg_name, target) if a != b)
+            if diff_count == 1:
+                return True
+        
+        return False
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate supply chain threat visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Top packages by score
+        top_packages = result_df.nlargest(15, 'supply_chain_score')
+        
+        fig = go.Figure(go.Bar(
+            x=top_packages['supply_chain_score'],
+            y=top_packages['package_name'],
+            orientation='h',
+            marker=dict(
+                color=top_packages['supply_chain_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Threat Score")
+            ),
+            text=top_packages['install_count'],
+            textposition='auto',
+            hovertemplate='<b>%{y}</b><br>Score: %{x}<br>Installs: %{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title='Supply Chain Threat: Suspicious Packages',
+            xaxis_title='Supply Chain Attack Score',
+            yaxis_title='Package Name',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for SupplyChainAttackStrategy output columns."""
+        return {
+            'source_ip': 'The IP address downloading suspicious packages',
+            'package_name': 'Name of the potentially malicious package',
+            'registry_url': 'Source registry or repository URL',
+            'install_count': 'Number of times this package was installed',
+            'first_seen': 'First installation timestamp',
+            'last_seen': 'Most recent installation timestamp',
+            'automated_downloads': 'Count of automated/scripted download attempts',
+            'flags': 'Specific threat indicators (typosquatting, untrusted_registry, suspicious_naming, etc.)',
+            'supply_chain_score': 'Supply chain attack risk score (0-100). Scores ≥75 indicate likely malicious packages. Scores ≥50 require immediate investigation and package quarantine'
+        }
+
+
+class ContainerEscapeStrategy(HuntStrategy):
+    """
+    Detect container escape attempts and breakout techniques.
+    
+    Identifies suspicious container activity including privilege escalation,
+    host filesystem access, kernel module loading, and Docker socket abuse.
+    Essential for securing containerized environments.
+    """
+    
+    ESCAPE_COMMANDS = [
+        'nsenter', 'unshare', 'capsh', 'setcap', 'mount',
+        'insmod', 'modprobe', 'docker', 'crictl', 'runc'
+    ]
+    
+    DANGEROUS_PATHS = [
+        '/proc/sys/kernel', '/sys/kernel', '/dev/mem', '/dev/kmem',
+        '/var/run/docker.sock', '/run/containerd', '/host', '/rootfs'
+    ]
+    
+    BREAKOUT_CAPABILITIES = [
+        'CAP_SYS_ADMIN', 'CAP_SYS_MODULE', 'CAP_SYS_RAWIO',
+        'CAP_SYS_PTRACE', 'CAP_DAC_OVERRIDE', 'CAP_SYS_BOOT'
+    ]
+    
+    def _get_name(self) -> str:
+        return "Container Escape Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'container_id', 'command', 'user', 'process_name']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """Analyze container activity for escape attempts."""
+        
+        # Map columns
+        ts_col = col_map['timestamp']
+        cont_col = col_map['container_id']
+        cmd_col = col_map['command']
+        user_col = col_map['user']
+        proc_col = col_map['process_name']
+        
+        # Ensure timestamp is datetime
+        if not pd.api.types.is_datetime64_any_dtype(df[ts_col]):
+            df[ts_col] = pd.to_datetime(df[ts_col], errors='coerce')
+        
+        results = []
+        
+        # Group by container
+        for container_id, group in df.groupby(cont_col):
+            if pd.isna(container_id) or container_id == '':
+                continue
+            
+            score = 0
+            flags = []
+            escape_attempts = 0
+            dangerous_commands = []
+            
+            for _, row in group.iterrows():
+                cmd = str(row[cmd_col]).lower() if pd.notna(row[cmd_col]) else ''
+                proc = str(row[proc_col]).lower() if pd.notna(row[proc_col]) else ''
+                user = str(row[user_col]).lower() if pd.notna(row[user_col]) else ''
+                
+                # Check for escape commands
+                for escape_cmd in self.ESCAPE_COMMANDS:
+                    if escape_cmd in cmd or escape_cmd in proc:
+                        score += 15
+                        escape_attempts += 1
+                        dangerous_commands.append(escape_cmd)
+                        flags.append('escape_command')
+                        break
+                
+                # Check for dangerous path access
+                for danger_path in self.DANGEROUS_PATHS:
+                    if danger_path in cmd:
+                        score += 20
+                        flags.append('host_filesystem_access')
+                        break
+                
+                # Check for capability abuse
+                for cap in self.BREAKOUT_CAPABILITIES:
+                    if cap in cmd:
+                        score += 25
+                        flags.append('dangerous_capability')
+                        break
+                
+                # Check for root/privileged user
+                if user in ['root', '0'] or 'privileged' in cmd:
+                    score += 10
+                    flags.append('privileged_execution')
+                
+                # Check for namespace manipulation
+                if any(x in cmd for x in ['namespace', 'cgroup', '/proc/self']):
+                    score += 20
+                    flags.append('namespace_manipulation')
+            
+            # Check for rapid privilege escalation attempts
+            if escape_attempts > 5:
+                score += 20
+                flags.append('multiple_escape_attempts')
+            
+            if score >= 50:  # Only report significant escape attempts
+                results.append({
+                    'container_id': container_id,
+                    'user': group[user_col].iloc[0] if len(group) > 0 else '',
+                    'total_commands': len(group),
+                    'escape_attempts': escape_attempts,
+                    'dangerous_commands': ', '.join(list(set(dangerous_commands))[:5]),
+                    'first_seen': group[ts_col].min(),
+                    'last_seen': group[ts_col].max(),
+                    'flags': ', '.join(set(flags)),
+                    'escape_score': min(score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('escape_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate container escape visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Top containers by score
+        top_containers = result_df.nlargest(15, 'escape_score')
+        
+        fig = go.Figure(go.Bar(
+            x=top_containers['escape_score'],
+            y=top_containers['container_id'],
+            orientation='h',
+            marker=dict(
+                color=top_containers['escape_score'],
+                colorscale='OrRd',
+                showscale=True,
+                colorbar=dict(title="Escape Score")
+            ),
+            text=top_containers['escape_attempts'],
+            textposition='auto',
+            hovertemplate='<b>%{y}</b><br>Score: %{x}<br>Attempts: %{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title='Container Escape Attempts',
+            xaxis_title='Container Escape Risk Score',
+            yaxis_title='Container ID',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for ContainerEscapeStrategy output columns."""
+        return {
+            'container_id': 'Unique identifier of the container attempting escape',
+            'user': 'User account executing commands in the container',
+            'total_commands': 'Total number of commands executed',
+            'escape_attempts': 'Count of identified escape attempt commands',
+            'dangerous_commands': 'List of specific escape-related commands detected',
+            'first_seen': 'First suspicious activity timestamp',
+            'last_seen': 'Most recent suspicious activity timestamp',
+            'flags': 'Specific escape indicators (escape_command, host_filesystem_access, dangerous_capability, etc.)',
+            'escape_score': 'Container escape risk score (0-100). Scores ≥75 indicate active breakout attempts requiring immediate containment. Scores ≥50 suggest reconnaissance for escape vectors'
+        }
+
+
+class DNSExfiltrationStrategy(HuntStrategy):
+    """
+    Detect DNS-based data exfiltration beyond standard tunneling detection.
+    
+    Identifies covert data exfiltration through DNS queries using techniques
+    like subdomain encoding, TXT record abuse, and high-volume query patterns.
+    Complements the existing DNS Anomaly strategy with exfiltration focus.
+    """
+    
+    def _get_name(self) -> str:
+        return "DNS Exfiltration Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'source_ip', 'query_name', 'query_type', 'response_size']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """Analyze DNS queries for data exfiltration patterns."""
+        
+        # Map columns
+        ts_col = col_map['timestamp']
+        src_col = col_map['source_ip']
+        query_col = col_map['query_name']
+        type_col = col_map['query_type']
+        size_col = col_map['response_size']
+        
+        # Ensure timestamp is datetime
+        if not pd.api.types.is_datetime64_any_dtype(df[ts_col]):
+            df[ts_col] = pd.to_datetime(df[ts_col], errors='coerce')
+        
+        results = []
+        
+        # Group by source IP and base domain
+        for src_ip, group in df.groupby(src_col):
+            if pd.isna(src_ip) or src_ip == '':
+                continue
+            
+            score = 0
+            flags = []
+            
+            # Extract base domains
+            queries = group[query_col].dropna().astype(str)
+            if len(queries) == 0:
+                continue
+            
+            # Calculate subdomain statistics
+            subdomain_lengths = []
+            base64_like = 0
+            hex_like = 0
+            long_subdomains = 0
+            
+            for query in queries:
+                parts = query.split('.')
+                if len(parts) > 2:
+                    subdomain = parts[0]
+                    subdomain_lengths.append(len(subdomain))
+                    
+                    # Check for base64-like encoding
+                    if len(subdomain) > 10 and re.match(r'^[A-Za-z0-9+/=]+$', subdomain):
+                        base64_like += 1
+                    
+                    # Check for hex encoding
+                    if len(subdomain) > 10 and re.match(r'^[0-9a-fA-F]+$', subdomain):
+                        hex_like += 1
+                    
+                    # Check for suspiciously long subdomains
+                    if len(subdomain) > 40:
+                        long_subdomains += 1
+            
+            # Analyze subdomain length patterns
+            if len(subdomain_lengths) > 0:
+                avg_length = np.mean(subdomain_lengths)
+                std_length = np.std(subdomain_lengths)
+                
+                if avg_length > 30:
+                    score += 25
+                    flags.append('long_subdomains')
+                
+                if std_length < 5 and avg_length > 20:
+                    score += 20
+                    flags.append('consistent_encoding')
+            
+            # Check for encoding patterns
+            if base64_like > len(queries) * 0.3:
+                score += 30
+                flags.append('base64_encoding')
+            
+            if hex_like > len(queries) * 0.3:
+                score += 30
+                flags.append('hex_encoding')
+            
+            # Check query volume
+            query_count = len(group)
+            if query_count > 100:
+                score += 20
+                flags.append('high_volume')
+            
+            # Check for TXT query abuse
+            txt_queries = group[group[type_col].astype(str).str.upper() == 'TXT']
+            if len(txt_queries) > 10:
+                score += 25
+                flags.append('txt_record_abuse')
+            
+            # Check response sizes (large responses may indicate data return)
+            if pd.api.types.is_numeric_dtype(group[size_col]):
+                large_responses = group[group[size_col] > 512]
+                if len(large_responses) > 5:
+                    score += 15
+                    flags.append('large_responses')
+            
+            # Check for burst patterns
+            if len(group) > 10:
+                time_diffs = group.sort_values(ts_col)[ts_col].diff().dt.total_seconds().dropna()
+                if len(time_diffs) > 0 and time_diffs.median() < 1:
+                    score += 20
+                    flags.append('burst_pattern')
+            
+            if score >= 50:  # Only report likely exfiltration
+                results.append({
+                    'source_ip': src_ip,
+                    'query_count': query_count,
+                    'avg_subdomain_length': np.mean(subdomain_lengths) if subdomain_lengths else 0,
+                    'base64_like_queries': base64_like,
+                    'hex_like_queries': hex_like,
+                    'txt_queries': len(txt_queries),
+                    'first_query': group[ts_col].min(),
+                    'last_query': group[ts_col].max(),
+                    'unique_domains': group[query_col].nunique(),
+                    'flags': ', '.join(set(flags)),
+                    'exfiltration_score': min(score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('exfiltration_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate DNS exfiltration visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Scatter plot of query volume vs score
+        fig = go.Figure(go.Scatter(
+            x=result_df['query_count'],
+            y=result_df['exfiltration_score'],
+            mode='markers',
+            marker=dict(
+                size=result_df['avg_subdomain_length'],
+                color=result_df['exfiltration_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Exfil Score"),
+                line=dict(width=1, color='darkred')
+            ),
+            text=result_df['source_ip'],
+            hovertemplate='<b>%{text}</b><br>Queries: %{x}<br>Score: %{y}<br>Avg Length: %{marker.size:.1f}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title='DNS Exfiltration: Query Volume vs Risk Score',
+            xaxis_title='Query Count',
+            yaxis_title='Exfiltration Score',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for DNSExfiltrationStrategy output columns."""
+        return {
+            'source_ip': 'Source IP conducting suspicious DNS queries',
+            'query_count': 'Total number of DNS queries from this source',
+            'avg_subdomain_length': 'Average length of subdomains (longer suggests encoding)',
+            'base64_like_queries': 'Count of queries with base64-like patterns',
+            'hex_like_queries': 'Count of queries with hexadecimal encoding',
+            'txt_queries': 'Number of TXT record queries (common for exfiltration)',
+            'first_query': 'First suspicious query timestamp',
+            'last_query': 'Most recent query timestamp',
+            'unique_domains': 'Number of unique domains queried',
+            'flags': 'Exfiltration indicators (base64_encoding, txt_record_abuse, burst_pattern, etc.)',
+            'exfiltration_score': 'DNS exfiltration risk score (0-100). Scores ≥75 indicate active data exfiltration. Scores ≥50 warrant immediate investigation and network isolation'
+        }
+
+
+class ProcessInjectionStrategy(HuntStrategy):
+    """
+    Detect process injection and code injection attacks.
+    
+    Identifies suspicious process manipulation including DLL injection,
+    process hollowing, thread injection, and reflective loading. Critical
+    for detecting advanced malware and post-exploitation techniques.
+    """
+    
+    INJECTION_APIS = [
+        'CreateRemoteThread', 'WriteProcessMemory', 'VirtualAllocEx',
+        'SetWindowsHookEx', 'QueueUserAPC', 'NtMapViewOfSection',
+        'RtlCreateUserThread', 'ZwUnmapViewOfSection'
+    ]
+    
+    SUSPICIOUS_PROCESSES = [
+        'powershell.exe', 'cmd.exe', 'wscript.exe', 'cscript.exe',
+        'regsvr32.exe', 'rundll32.exe', 'mshta.exe', 'wmic.exe'
+    ]
+    
+    def _get_name(self) -> str:
+        return "Process Injection Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'source_process', 'target_process', 'api_call', 'parent_process']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """Analyze process activity for injection attacks."""
+        
+        # Map columns
+        ts_col = col_map['timestamp']
+        src_proc_col = col_map['source_process']
+        tgt_proc_col = col_map['target_process']
+        api_col = col_map['api_call']
+        parent_col = col_map['parent_process']
+        
+        # Ensure timestamp is datetime
+        if not pd.api.types.is_datetime64_any_dtype(df[ts_col]):
+            df[ts_col] = pd.to_datetime(df[ts_col], errors='coerce')
+        
+        results = []
+        
+        # Group by source and target process
+        for (src_proc, tgt_proc), group in df.groupby([src_proc_col, tgt_proc_col]):
+            if pd.isna(src_proc) or pd.isna(tgt_proc) or src_proc == tgt_proc:
+                continue
+            
+            score = 0
+            flags = []
+            injection_apis = []
+            
+            src_lower = str(src_proc).lower()
+            tgt_lower = str(tgt_proc).lower()
+            
+            # Check if source is suspicious
+            if any(susp in src_lower for susp in self.SUSPICIOUS_PROCESSES):
+                score += 20
+                flags.append('suspicious_source')
+            
+            # Check for injection API calls
+            api_calls = group[api_col].dropna().astype(str)
+            for api_call in api_calls:
+                for inj_api in self.INJECTION_APIS:
+                    if inj_api.lower() in api_call.lower():
+                        score += 15
+                        injection_apis.append(inj_api)
+                        flags.append('injection_api')
+                        break
+            
+            # Check for cross-process memory operations
+            if len(injection_apis) > 0:
+                if 'WriteProcessMemory' in injection_apis and 'CreateRemoteThread' in injection_apis:
+                    score += 30
+                    flags.append('classic_injection')
+                
+                if 'VirtualAllocEx' in injection_apis:
+                    score += 25
+                    flags.append('memory_allocation')
+            
+            # Check parent-child relationship anomalies
+            parents = group[parent_col].unique()
+            if len(parents) > 0:
+                parent = str(parents[0]).lower()
+                # Suspicious if parent is not typical
+                if any(x in parent for x in ['explorer.exe', 'services.exe', 'lsass.exe']):
+                    if any(susp in src_lower for susp in self.SUSPICIOUS_PROCESSES):
+                        score += 15
+                        flags.append('suspicious_parent')
+            
+            # Check for rapid injection attempts
+            if len(group) > 10:
+                score += 20
+                flags.append('multiple_attempts')
+            
+            # Check for injection into system processes
+            system_targets = ['lsass.exe', 'csrss.exe', 'winlogon.exe', 'services.exe', 'svchost.exe']
+            if any(sys_proc in tgt_lower for sys_proc in system_targets):
+                score += 25
+                flags.append('system_process_target')
+            
+            if score >= 50:  # Only report significant injection attempts
+                results.append({
+                    'source_process': src_proc,
+                    'target_process': tgt_proc,
+                    'parent_process': parents[0] if len(parents) > 0 else 'Unknown',
+                    'api_calls': len(group),
+                    'injection_apis': ', '.join(list(set(injection_apis))[:5]),
+                    'first_seen': group[ts_col].min(),
+                    'last_seen': group[ts_col].max(),
+                    'flags': ', '.join(set(flags)),
+                    'injection_score': min(score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('injection_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate process injection visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Network graph of injection relationships would be ideal, but use bar chart for simplicity
+        top_injections = result_df.nlargest(15, 'injection_score')
+        
+        labels = [f"{row['source_process']} → {row['target_process']}" 
+                 for _, row in top_injections.iterrows()]
+        
+        fig = go.Figure(go.Bar(
+            x=top_injections['injection_score'],
+            y=labels,
+            orientation='h',
+            marker=dict(
+                color=top_injections['injection_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Injection Score")
+            ),
+            text=top_injections['api_calls'],
+            textposition='auto',
+            hovertemplate='<b>%{y}</b><br>Score: %{x}<br>API Calls: %{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title='Process Injection Attacks',
+            xaxis_title='Process Injection Risk Score',
+            yaxis_title='Source → Target Process',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for ProcessInjectionStrategy output columns."""
+        return {
+            'source_process': 'Process attempting to inject code',
+            'target_process': 'Process being targeted for injection',
+            'parent_process': 'Parent process of the source process',
+            'api_calls': 'Total number of API calls detected',
+            'injection_apis': 'Specific Windows APIs used for injection',
+            'first_seen': 'First injection attempt timestamp',
+            'last_seen': 'Most recent injection attempt timestamp',
+            'flags': 'Injection indicators (classic_injection, system_process_target, suspicious_source, etc.)',
+            'injection_score': 'Process injection risk score (0-100). Scores ≥75 indicate active code injection requiring immediate investigation. Scores ≥50 suggest reconnaissance or preparation'
+        }
+
+
+class LiveOffLandStrategy(HuntStrategy):
+    """
+    Detect living-off-the-land (LOLBin) abuse patterns.
+    
+    Identifies abuse of legitimate system binaries for malicious purposes,
+    including proxy execution, download cradles, and evasion techniques.
+    Focuses on advanced LOLBin techniques beyond basic fileless detection.
+    """
+    
+    LOLBIN_PATTERNS = {
+        'certutil': ['urlcache', 'verifyctl', 'decode', '-split'],
+        'bitsadmin': ['/transfer', '/create', '/addfile', '/download'],
+        'powershell': ['-enc', '-windowstyle hidden', 'downloadstring', 'invoke-expression', 'bypass'],
+        'rundll32': ['javascript:', 'vbscript:', 'url.dll', 'setupapi.dll'],
+        'regsvr32': ['/s', '/u', '/i:', 'scrobj.dll'],
+        'mshta': ['javascript:', 'vbscript:', 'http'],
+        'wmic': ['process call create', '/format:', 'xsl'],
+        'cscript': ['//b', '//nologo'],
+        'regasm': ['/u'],
+        'installutil': ['/logfile=', '/u']
+    }
+    
+    def _get_name(self) -> str:
+        return "Living-off-the-Land Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'source_ip', 'username', 'process_name', 'command_line']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """Analyze command execution for LOLBin abuse."""
+        
+        # Map columns
+        ts_col = col_map['timestamp']
+        src_col = col_map['source_ip']
+        user_col = col_map['username']
+        proc_col = col_map['process_name']
+        cmd_col = col_map['command_line']
+        
+        # Ensure timestamp is datetime
+        if not pd.api.types.is_datetime64_any_dtype(df[ts_col]):
+            df[ts_col] = pd.to_datetime(df[ts_col], errors='coerce')
+        
+        results = []
+        
+        # Group by source IP and username
+        for (src_ip, username), group in df.groupby([src_col, user_col]):
+            if pd.isna(src_ip) and pd.isna(username):
+                continue
+            
+            score = 0
+            flags = []
+            lolbins_used = set()
+            technique_count = 0
+            
+            for _, row in group.iterrows():
+                proc = str(row[proc_col]).lower() if pd.notna(row[proc_col]) else ''
+                cmd = str(row[cmd_col]).lower() if pd.notna(row[cmd_col]) else ''
+                
+                # Check for LOLBin usage
+                for lolbin, patterns in self.LOLBIN_PATTERNS.items():
+                    if lolbin in proc or lolbin in cmd:
+                        lolbins_used.add(lolbin)
+                        
+                        # Check for specific malicious patterns
+                        for pattern in patterns:
+                            if pattern.lower() in cmd:
+                                score += 15
+                                technique_count += 1
+                                flags.append(f'{lolbin}_abuse')
+                                break
+            
+            # Multiple LOLBins suggest orchestrated attack
+            if len(lolbins_used) > 2:
+                score += 25
+                flags.append('multiple_lolbins')
+            
+            # High technique diversity
+            if technique_count > 5:
+                score += 20
+                flags.append('varied_techniques')
+            
+            # Check for obfuscation
+            for _, row in group.iterrows():
+                cmd = str(row[cmd_col]) if pd.notna(row[cmd_col]) else ''
+                if any(x in cmd for x in ['^', '`', '++', '${', '%']):
+                    score += 15
+                    flags.append('obfuscation')
+                    break
+            
+            # Check for download cradle patterns
+            download_indicators = ['downloadstring', 'downloadfile', 'webrequest', 'webclient', 'invoke-webrequest']
+            for _, row in group.iterrows():
+                cmd = str(row[cmd_col]).lower() if pd.notna(row[cmd_col]) else ''
+                if any(dl in cmd for dl in download_indicators):
+                    score += 25
+                    flags.append('download_cradle')
+                    break
+            
+            if score >= 40:  # Report LOLBin abuse
+                results.append({
+                    'source_ip': src_ip if pd.notna(src_ip) else 'Unknown',
+                    'username': username if pd.notna(username) else 'Unknown',
+                    'total_executions': len(group),
+                    'lolbins_used': ', '.join(sorted(lolbins_used)),
+                    'technique_count': technique_count,
+                    'first_execution': group[ts_col].min(),
+                    'last_execution': group[ts_col].max(),
+                    'flags': ', '.join(set(flags)),
+                    'lolbin_score': min(score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('lolbin_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate LOLBin abuse visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Top users/IPs by LOLBin abuse score
+        top_abusers = result_df.nlargest(15, 'lolbin_score')
+        
+        labels = [f"{row['username']} ({row['source_ip']})" 
+                 for _, row in top_abusers.iterrows()]
+        
+        fig = go.Figure(go.Bar(
+            x=top_abusers['lolbin_score'],
+            y=labels,
+            orientation='h',
+            marker=dict(
+                color=top_abusers['lolbin_score'],
+                colorscale='YlOrRd',
+                showscale=True,
+                colorbar=dict(title="LOLBin Score")
+            ),
+            text=top_abusers['technique_count'],
+            textposition='auto',
+            hovertemplate='<b>%{y}</b><br>Score: %{x}<br>Techniques: %{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title='Living-off-the-Land (LOLBin) Abuse',
+            xaxis_title='LOLBin Abuse Score',
+            yaxis_title='Username (Source IP)',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for LiveOffLandStrategy output columns."""
+        return {
+            'source_ip': 'Source IP address executing LOLBin commands',
+            'username': 'User account performing LOLBin abuse',
+            'total_executions': 'Total number of suspicious executions',
+            'lolbins_used': 'List of legitimate binaries abused (certutil, bitsadmin, etc.)',
+            'technique_count': 'Number of distinct malicious techniques detected',
+            'first_execution': 'First LOLBin abuse timestamp',
+            'last_execution': 'Most recent LOLBin abuse timestamp',
+            'flags': 'Abuse indicators (download_cradle, obfuscation, multiple_lolbins, etc.)',
+            'lolbin_score': 'LOLBin abuse risk score (0-100). Scores ≥75 indicate active malicious use of system tools. Scores ≥50 require investigation for post-exploitation activity'
+        }
+
+
+class OAuthAbuseStrategy(HuntStrategy):
+    """
+    Detect OAuth token theft and refresh token abuse.
+    
+    Identifies suspicious OAuth flows including token replay attacks,
+    refresh token abuse, excessive token requests, and authorization
+    code interception. Essential for securing modern API authentication.
+    """
+    
+    SUSPICIOUS_SCOPES = [
+        'offline_access', 'full_control', 'admin', 'root',
+        'mail.read', 'files.readwrite.all', 'user.read.all'
+    ]
+    
+    def _get_name(self) -> str:
+        return "OAuth Abuse Detector"
+    
+    def _get_required_inputs(self) -> list:
+        return ['timestamp', 'source_ip', 'username', 'grant_type', 'scope']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """Analyze OAuth flows for abuse patterns."""
+        
+        # Map columns
+        ts_col = col_map['timestamp']
+        src_col = col_map['source_ip']
+        user_col = col_map['username']
+        grant_col = col_map['grant_type']
+        scope_col = col_map['scope']
+        
+        # Ensure timestamp is datetime
+        if not pd.api.types.is_datetime64_any_dtype(df[ts_col]):
+            df[ts_col] = pd.to_datetime(df[ts_col], errors='coerce')
+        
+        results = []
+        
+        # Group by username
+        for username, group in df.groupby(user_col):
+            if pd.isna(username) or username == '':
+                continue
+            
+            score = 0
+            flags = []
+            
+            # Count token requests by type
+            grant_types = group[grant_col].value_counts().to_dict()
+            refresh_count = grant_types.get('refresh_token', 0)
+            auth_code_count = grant_types.get('authorization_code', 0)
+            
+            # Check for excessive refresh token usage
+            if refresh_count > 100:
+                score += 30
+                flags.append('excessive_refresh')
+            elif refresh_count > 50:
+                score += 20
+                flags.append('high_refresh_rate')
+            
+            # Check for suspicious scopes
+            scopes = group[scope_col].dropna().astype(str)
+            dangerous_scopes = []
+            for scope_str in scopes:
+                for susp_scope in self.SUSPICIOUS_SCOPES:
+                    if susp_scope in scope_str.lower():
+                        dangerous_scopes.append(susp_scope)
+                        score += 15
+                        flags.append('dangerous_scope')
+                        break
+            
+            # Check for multiple source IPs (token replay)
+            unique_ips = group[src_col].nunique()
+            if unique_ips > 10:
+                score += 35
+                flags.append('token_replay')
+            elif unique_ips > 5:
+                score += 20
+                flags.append('multiple_locations')
+            
+            # Check for rapid token requests
+            if len(group) > 20:
+                time_diffs = group.sort_values(ts_col)[ts_col].diff().dt.total_seconds().dropna()
+                if len(time_diffs) > 0 and time_diffs.median() < 10:
+                    score += 25
+                    flags.append('rapid_requests')
+            
+            # Check for authorization code grant abuse
+            if auth_code_count > 20:
+                score += 20
+                flags.append('auth_code_abuse')
+            
+            # Check for geographically dispersed access
+            source_ips = group[src_col].unique()
+            if len(source_ips) > 0:
+                # Simple heuristic: different /24 networks
+                networks = set()
+                for ip in source_ips:
+                    if pd.notna(ip) and '.' in str(ip):
+                        parts = str(ip).split('.')
+                        if len(parts) >= 3:
+                            networks.add('.'.join(parts[:3]))
+                
+                if len(networks) > 5:
+                    score += 20
+                    flags.append('geo_dispersed')
+            
+            if score >= 50:  # Only report significant OAuth abuse
+                results.append({
+                    'username': username,
+                    'total_requests': len(group),
+                    'refresh_token_count': refresh_count,
+                    'unique_source_ips': unique_ips,
+                    'dangerous_scopes': ', '.join(list(set(dangerous_scopes))[:5]) if dangerous_scopes else 'None',
+                    'first_request': group[ts_col].min(),
+                    'last_request': group[ts_col].max(),
+                    'source_ips': ', '.join(map(str, source_ips[:3])),
+                    'flags': ', '.join(set(flags)),
+                    'oauth_abuse_score': min(score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('oauth_abuse_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate OAuth abuse visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Scatter plot: refresh token count vs unique IPs
+        fig = go.Figure(go.Scatter(
+            x=result_df['refresh_token_count'],
+            y=result_df['unique_source_ips'],
+            mode='markers',
+            marker=dict(
+                size=result_df['total_requests'] / 10,
+                color=result_df['oauth_abuse_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="OAuth Abuse Score"),
+                line=dict(width=1, color='darkred')
+            ),
+            text=result_df['username'],
+            hovertemplate='<b>%{text}</b><br>Refresh Tokens: %{x}<br>Unique IPs: %{y}<br>Score: %{marker.color}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title='OAuth Abuse: Token Requests vs Source Diversity',
+            xaxis_title='Refresh Token Count',
+            yaxis_title='Unique Source IPs',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for OAuthAbuseStrategy output columns."""
+        return {
+            'username': 'User account with suspicious OAuth activity',
+            'total_requests': 'Total OAuth token requests',
+            'refresh_token_count': 'Number of refresh token grant requests',
+            'unique_source_ips': 'Count of unique source IPs (higher = potential token theft)',
+            'dangerous_scopes': 'High-privilege scopes requested',
+            'first_request': 'First OAuth request timestamp',
+            'last_request': 'Most recent OAuth request timestamp',
+            'source_ips': 'Sample of source IP addresses',
+            'flags': 'Abuse indicators (token_replay, excessive_refresh, dangerous_scope, etc.)',
+            'oauth_abuse_score': 'OAuth abuse risk score (0-100). Scores ≥75 indicate likely stolen tokens requiring immediate revocation. Scores ≥50 suggest compromise investigation needed'
+        }

@@ -9,11 +9,12 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 ### 🆕 What's New in This Release
 
 **Expanded Detection Coverage:**
-- 7 BRAND NEW advanced threat hunting strategies added in latest release
-- Now covering **22 comprehensive threat categories** (up from 15)
-- Enhanced coverage for privilege escalation, web shells, credential dumping, ransomware indicators
-- Also includes fileless attacks, LOLBins, API scraping, unauthorized cloud services, and modern attack techniques
-- Previous additions included Geo-Anomaly, User-Agent Analysis, Crypto Mining, DNS Anomaly, Account Takeover, and Data Staging
+- 6 NEW cutting-edge threat hunting strategies added in this release
+- Now covering **28 comprehensive threat categories** (up from 22)
+- Added: Supply Chain Attacks, Container Escapes, DNS Exfiltration, Process Injection, LOLBin Abuse, OAuth Abuse
+- Enhanced coverage for modern attack vectors: compromised packages, Docker breakouts, token theft, code injection
+- Previous additions: privilege escalation, web shells, credential dumping, ransomware, fileless attacks, API abuse, shadow IT
+- Also includes: Geo-Anomaly, User-Agent Analysis, Crypto Mining, DNS Anomaly, Account Takeover, Data Staging
 
 **Visual Display Improvements:**
 - Color-coded severity indicators with visual badges (HIGH/MED/LOW)
@@ -44,7 +45,7 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 ### 🎯 Detection Strategies
 
-The dashboard includes **twenty-two comprehensive threat hunting strategies**:
+The dashboard includes **twenty-eight comprehensive threat hunting strategies**:
 
 **Beacon Hunter (C2 Detection)**
 - Detects command-and-control beaconing behavior by analyzing connection timing patterns
@@ -193,13 +194,61 @@ The dashboard includes **twenty-two comprehensive threat hunting strategies**:
 - Critical for detecting credential theft operations
 - Essential for catching pass-the-hash and credential replay attacks
 
-**Ransomware Indicator Detector (Early Warning)** ⚡ LATEST
+**Ransomware Indicator Detector (Early Warning)** ⚡
 - Detects early warning signs of ransomware deployment
 - Identifies shadow copy deletion and VSS interference
 - Flags backup service disruption and boot configuration tampering
 - Analyzes mass file operations and encryption patterns
 - Critical for ransomware prevention and early detection
 - Essential for catching attacks before encryption begins
+
+**Supply Chain Attack Detector (Package Security)** 🆕 NEW
+- Detects compromised packages and malicious dependencies
+- Identifies typosquatting attempts targeting popular packages
+- Flags suspicious registry sources and automated mass downloads
+- Analyzes package naming patterns and installation behaviors
+- Critical for detecting SolarWinds-style supply chain compromises
+- Essential for securing software development pipelines
+
+**Container Escape Detector (Cloud Security)** 🆕 NEW
+- Detects container breakout and privilege escalation attempts
+- Identifies dangerous capability abuse (CAP_SYS_ADMIN, etc.)
+- Flags host filesystem access and Docker socket manipulation
+- Analyzes kernel module loading and namespace manipulation
+- Critical for securing containerized and Kubernetes environments
+- Essential for preventing container-to-host compromises
+
+**DNS Exfiltration Detector (Covert Channels)** 🆕 NEW
+- Detects DNS-based data exfiltration beyond standard tunneling
+- Identifies base64/hex encoding in subdomain patterns
+- Flags TXT record abuse and abnormally large response sizes
+- Analyzes query burst patterns and subdomain length consistency
+- Critical for catching covert data theft via DNS queries
+- Complements DNS Anomaly strategy with exfiltration focus
+
+**Process Injection Detector (Memory Attacks)** 🆕 NEW
+- Detects process hollowing, DLL injection, and code injection
+- Identifies suspicious API calls (CreateRemoteThread, WriteProcessMemory)
+- Flags injection into system processes (lsass.exe, svchost.exe)
+- Analyzes cross-process memory manipulation patterns
+- Critical for detecting advanced malware and post-exploitation
+- Essential for catching fileless malware and in-memory attacks
+
+**Living-off-the-Land Detector (LOLBin Abuse)** 🆕 NEW
+- Detects abuse of legitimate system tools for malicious purposes
+- Identifies certutil, bitsadmin, regsvr32, and mshta abuse
+- Flags download cradles and command obfuscation techniques
+- Analyzes proxy execution and evasion patterns
+- Critical for catching attackers using built-in Windows tools
+- Goes beyond basic fileless detection with advanced LOLBin patterns
+
+**OAuth Abuse Detector (API Security)** 🆕 NEW
+- Detects OAuth token theft and refresh token abuse
+- Identifies token replay attacks across multiple IP addresses
+- Flags excessive refresh token requests and dangerous scopes
+- Analyzes authorization code interception patterns
+- Critical for securing modern API authentication flows
+- Essential for protecting cloud and SaaS environments
 
 ### 🔧 Interactive Controls
 
