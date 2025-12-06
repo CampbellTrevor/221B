@@ -2427,12 +2427,13 @@ class DNSAnomalyStrategy(HuntStrategy):
             for q in queries:
                 # Calculate entropy of the first part of the domain
                 subdomain = q.split('.')[0] if '.' in q else q
-                if len(subdomain) > 5:
+                subdomain_len = len(subdomain)
+                if subdomain_len > 5:
                     # Simple entropy calculation
                     char_counts = {}
                     for char in subdomain:
                         char_counts[char] = char_counts.get(char, 0) + 1
-                    entropy_val = -sum((count/len(subdomain)) * np.log2(count/len(subdomain)) 
+                    entropy_val = -sum((count/subdomain_len) * np.log2(count/subdomain_len) 
                                       for count in char_counts.values())
                     if entropy_val > 3.5:  # High randomness threshold
                         high_entropy_queries += 1

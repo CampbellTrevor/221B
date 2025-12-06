@@ -20,6 +20,14 @@ from ionic_scripting_framework import isf
 from strategies import HuntStrategy
 import html as html_lib  # For HTML escaping
 
+# Try to import plotly for visualizations (optional)
+try:
+    import plotly.graph_objects as go
+    import plotly.express as px
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
+
 
 # Visual styling constants for severity indicators (enhanced with modern colors)
 COLOR_HIGH_SEVERITY_BG = '#fee2e2'  # Light red background (Tailwind red-100)
