@@ -10,7 +10,7 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 ### 🎯 Detection Strategies
 
-The dashboard includes three core threat hunting strategies:
+The dashboard includes six comprehensive threat hunting strategies:
 
 **Beacon Hunter (C2 Detection)**
 - Detects command-and-control beaconing behavior by analyzing connection timing patterns
@@ -30,6 +30,24 @@ The dashboard includes three core threat hunting strategies:
 - Calculates suspicion scores based on traffic volume and ratio
 - Highlights hosts behaving abnormally compared to typical download patterns
 
+**Port Scan Detector (Reconnaissance)** 🆕
+- Detects port scanning activity indicating network reconnaissance
+- Identifies sources scanning multiple ports across multiple targets
+- Calculates scan scores based on port diversity and target count
+- Essential for detecting the early stages of network attacks
+
+**Brute Force Detector (Authentication Attacks)** 🆕
+- Identifies credential stuffing and password spraying attacks
+- Analyzes authentication logs for high failure rates
+- Detects rapid-fire authentication attempts
+- Critical for protecting authentication endpoints
+
+**Protocol Tunneling Detector (Covert Channels)** 🆕
+- Detects unusual protocol usage and covert communication channels
+- Identifies high data volumes on non-standard ports
+- Flags potential SSH tunneling, DNS tunneling, and protocol encapsulation
+- Helps uncover command-and-control over uncommon protocols
+
 ### 🔧 Interactive Controls
 
 **Dynamic Schema Discovery**
@@ -45,11 +63,13 @@ The dashboard includes three core threat hunting strategies:
 - Automatic query construction with SQL injection protection
 
 **Results Visualization**
+- Summary statistics dashboard with severity breakdowns 🆕
 - Interactive visualizations using Plotly (when available)
 - Sortable result tables with column-based ordering
 - Paginated result viewing (100 rows per page with Previous/Next navigation)
-- Column explanations displayed before results for better understanding
-- Export-ready HTML table format
+- Collapsible column explanations for cleaner display 🆕
+- CSV export functionality for offline analysis 🆕
+- Color-coded severity indicators (high/medium/low)
 
 ### 🛡️ Security Features
 
@@ -116,14 +136,24 @@ jupyter notebook 221B_Notebook.ipynb
 
 ```python
 from app import WatsonDashboard
-from strategies import BeaconStrategy, EntropyStrategy, ExfilStrategy
+from strategies import (
+    BeaconStrategy, 
+    EntropyStrategy, 
+    ExfilStrategy,
+    PortScanStrategy,
+    BruteForceStrategy,
+    TunnelingStrategy
+)
 
 # Initialize dashboard with custom cache settings
 dashboard = WatsonDashboard(
     strategies=[
         BeaconStrategy(),
         EntropyStrategy(),
-        ExfilStrategy()
+        ExfilStrategy(),
+        PortScanStrategy(),
+        BruteForceStrategy(),
+        TunnelingStrategy()
     ],
     cache_dir='.custom_cache',
     cache_days=3
