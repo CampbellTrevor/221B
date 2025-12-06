@@ -26,6 +26,13 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 - Better visual feedback for high-priority threats
 - Cleaner, more intuitive interface
 
+**🎯 NEW: Advanced Analyst Workflow Features:**
+- **Quick Triage Dashboard** - View all high-severity threats across all strategies in one place
+- **Cross-Strategy Correlation** - Automatically identify IPs appearing in multiple detection strategies
+- **HTML Investigation Reports** - Generate comprehensive, formatted reports for documentation and sharing
+- **Threat Prioritization** - Intelligent aggregation and ranking of threats across all analyses
+- **One-Click Analysis Tools** - Fast access to correlation and triage views from the main dashboard
+
 ## Features
 
 ### 🎯 Detection Strategies
@@ -215,6 +222,26 @@ dashboard.display()
 
 ### Using the Enhanced UI Features
 
+**Quick Action Buttons (at the top of the dashboard):**
+
+1. **🚨 Quick Triage** - Instant view of all high-severity threats
+   - Shows all findings with scores ≥75 across ALL strategies
+   - Perfect for rapid threat assessment and prioritization
+   - Displays threat counts by strategy and unique source IPs
+   - Export triage results to CSV for immediate action
+
+2. **🔗 Correlations** - Find threats across multiple strategies
+   - Automatically identifies IPs appearing in multiple detection strategies
+   - Ranks threats by number of strategies that flagged them
+   - Shows aggregated threat scores and detection categories
+   - Critical for identifying sophisticated, multi-stage attacks
+
+3. **📄 Generate Report** - Create comprehensive HTML investigation report
+   - Professional formatted report with all findings
+   - Includes executive summary with key statistics
+   - Color-coded findings by severity level
+   - Ready for documentation, sharing with team, or management reporting
+
 **Filtering Results by Severity:**
 - After running an analysis, use the quick filter buttons at the top of results
 - Click "High (≥75)" to see only critical threats
@@ -232,6 +259,23 @@ dashboard.display()
 - Click the "📥 Export CSV" button
 - The exported file will contain only the filtered and sorted results
 - Files are timestamped for easy tracking
+
+### Analyst Workflow Best Practices
+
+**For Rapid Incident Response:**
+1. Run multiple threat detection strategies on your data
+2. Click **Quick Triage** to see all critical threats immediately
+3. Use **Correlations** to identify IPs with multiple suspicious behaviors
+4. Investigate correlated threats first - they're most likely to be real attacks
+5. Generate a **Report** for documentation and team communication
+
+**For Comprehensive Threat Hunting:**
+1. Select a strategy tab and configure your data source
+2. Run the analysis and review the detailed results
+3. Use the severity filters to focus on high-priority findings
+4. Export individual strategy results as needed
+5. After running multiple strategies, use correlation analysis to find patterns
+6. Generate final HTML report for record-keeping
 
 ## Project Structure
 

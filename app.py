@@ -18,6 +18,7 @@ from datetime import timedelta, date
 from multiprocessing import Pool, cpu_count
 from ionic_scripting_framework import isf
 from strategies import HuntStrategy
+import html as html_lib  # For HTML escaping
 
 
 # Visual styling constants for severity indicators
@@ -27,6 +28,12 @@ COLOR_MEDIUM_SEVERITY_BG = '#fff3e0'  # Light orange background
 COLOR_MEDIUM_SEVERITY_BADGE = '#ff9800'  # Orange badge
 COLOR_LOW_SEVERITY_BG = '#e8f5e9'  # Light green background
 COLOR_LOW_SEVERITY_BADGE = '#4caf50'  # Green badge
+
+# Analysis and display constants
+HIGH_SEVERITY_THRESHOLD = 75  # Score threshold for high-severity threats
+MEDIUM_SEVERITY_THRESHOLD = 50  # Score threshold for medium-severity threats
+MAX_DISPLAY_ITEMS = 20  # Maximum items to display in correlation/triage views
+STRING_TRUNCATE_LENGTH = 50  # Length to truncate long strings for display
 
 
 class WatsonDashboard:
@@ -58,6 +65,9 @@ class WatsonDashboard:
         # UI Components - will be created per tab
         self.tab_widget = None
         self.strategy_tab_contents = {}
+        
+        # Results storage for cross-strategy correlation
+        self.strategy_results = {}  # Dict to store results from each strategy
         
         # Initialize UI
         self._initialize_ui()
@@ -1114,6 +1124,13 @@ class WatsonDashboard:
                 print(f"✅ Analysis complete! Found {len(result_df)} results.")
                 print()
                 
+                # Store results for correlation analysis
+                self.strategy_results[strategy.name] = {
+                    'dataframe': result_df.copy(),
+                    'strategy': strategy,
+                    'timestamp': datetime.datetime.now()
+                }
+                
                 # Display summary statistics dashboard
                 self._display_summary_stats(result_df, strategy)
                 
@@ -1137,10 +1154,613 @@ class WatsonDashboard:
                 # Display results in sortable table with export option
                 self._display_sortable_results(result_df, strategy.name)
                 
+                # Show correlation button if multiple strategies have results
+                if len(self.strategy_results) > 1:
+                    print()
+                    print("🔗 Multiple strategies have results. Generate a correlation analysis:")
+                    corr_button = widgets.Button(
+                        description='🎯 View Threat Correlation',
+                        button_style='warning',
+                        icon='search',
+                        layout=widgets.Layout(width='250px')
+                    )
+                    corr_output = widgets.Output()
+                    
+                    def on_correlation_click(b):
+                        with corr_output:
+                            clear_output(wait=True)
+                            self._show_correlation_analysis()
+                    
+                    corr_button.on_click(on_correlation_click)
+                    display(widgets.VBox([corr_button, corr_output]))
+                
             except Exception as e:
                 print(f"❌ Error during analysis: {e}")
                 import traceback
                 traceback.print_exc()
+    
+    def _show_correlation_analysis(self):
+        """
+        Display correlation analysis showing IPs that appear in multiple strategies.
+        """
+        if len(self.strategy_results) < 2:
+            print("⚠️ Need results from at least 2 strategies for correlation analysis.")
+            return
+        
+        print("🎯 Cross-Strategy Threat Correlation Analysis")
+        print("=" * 80)
+        print()
+        
+        # Identify common IP columns across strategies
+        ip_columns = ['source_ip', 'dest_ip']
+        
+        # Build correlation data
+        ip_to_strategies = {}  # Maps IP -> list of (strategy_name, score)
+        
+        for strategy_name, result_data in self.strategy_results.items():
+            df = result_data['dataframe']
+            
+            # Find score column
+            score_cols = [col for col in df.columns if col.endswith('_score')]
+            score_col = score_cols[0] if score_cols else None
+            
+            # Check each IP column
+            for ip_col in ip_columns:
+                if ip_col in df.columns:
+                    for _, row in df.iterrows():
+                        ip = row[ip_col]
+                        score = row[score_col] if score_col else 0
+                        
+                        if ip not in ip_to_strategies:
+                            ip_to_strategies[ip] = []
+                        
+                        ip_to_strategies[ip].append({
+                            'strategy': strategy_name,
+                            'score': score,
+                            'role': ip_col
+                        })
+        
+        # Find IPs appearing in multiple strategies
+        multi_strategy_ips = {ip: data for ip, data in ip_to_strategies.items() 
+                              if len(set(d['strategy'] for d in data)) > 1}
+        
+        if not multi_strategy_ips:
+            print("✅ No IPs found across multiple detection strategies.")
+            print("This is generally good - indicates no systematic attackers.")
+            return
+        
+        print(f"⚠️ Found {len(multi_strategy_ips)} IPs appearing in multiple strategies:")
+        print()
+        
+        # Sort by number of strategies detected in
+        sorted_ips = sorted(multi_strategy_ips.items(), 
+                           key=lambda x: len(set(d['strategy'] for d in x[1])), 
+                           reverse=True)
+        
+        # Build correlation report
+        correlation_data = []
+        for ip, detections in sorted_ips[:MAX_DISPLAY_ITEMS]:
+            strategies_detected = set(d['strategy'] for d in detections)
+            avg_score = sum(d['score'] for d in detections) / len(detections)
+            max_score = max(d['score'] for d in detections)
+            
+            correlation_data.append({
+                'IP Address': ip,
+                'Strategies': len(strategies_detected),
+                'Detection Names': ', '.join(sorted(strategies_detected)[:3]) + ('...' if len(strategies_detected) > 3 else ''),
+                'Avg Score': f"{avg_score:.1f}",
+                'Max Score': f"{max_score:.1f}",
+                'Threat Level': 'CRITICAL' if max_score >= HIGH_SEVERITY_THRESHOLD else 'HIGH' if max_score >= MEDIUM_SEVERITY_THRESHOLD else 'MEDIUM'
+            })
+        
+        corr_df = pd.DataFrame(correlation_data)
+        
+        # Display summary
+        critical_count = len([d for d in correlation_data if d['Threat Level'] == 'CRITICAL'])
+        high_count = len([d for d in correlation_data if d['Threat Level'] == 'HIGH'])
+        
+        summary_html = f"""
+        <div style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
+            <h3 style="margin-top: 0;">🚨 Correlated Threats Summary</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 2em; font-weight: bold;">{len(multi_strategy_ips)}</div>
+                    <div style="font-size: 0.9em; opacity: 0.9;">Correlated IPs</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 2em; font-weight: bold; color: #ff6b6b;">{critical_count}</div>
+                    <div style="font-size: 0.9em; opacity: 0.9;">Critical Threats</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 2em; font-weight: bold; color: #ffd93d;">{high_count}</div>
+                    <div style="font-size: 0.9em; opacity: 0.9;">High Priority</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 2em; font-weight: bold;">{len(self.strategy_results)}</div>
+                    <div style="font-size: 0.9em; opacity: 0.9;">Strategies Analyzed</div>
+                </div>
+            </div>
+        </div>
+        """
+        display(HTML(summary_html))
+        print()
+        
+        # Display correlation table with color coding
+        print("📊 Top Correlated Threats:")
+        print("-" * 80)
+        
+        # Create styled HTML table
+        table_html = '<table border="1" class="dataframe" style="border-collapse: collapse; width: 100%;">\n'
+        table_html += '  <thead>\n    <tr style="text-align: right; background-color: #e74c3c; color: white;">\n'
+        for col in corr_df.columns:
+            table_html += f'      <th style="padding: 8px; border: 1px solid #ddd;">{html_lib.escape(str(col))}</th>\n'
+        table_html += '    </tr>\n  </thead>\n  <tbody>\n'
+        
+        for _, row in corr_df.iterrows():
+            threat_level = row['Threat Level']
+            if threat_level == 'CRITICAL':
+                bg_color = COLOR_HIGH_SEVERITY_BG
+                badge_color = COLOR_HIGH_SEVERITY_BADGE
+            elif threat_level == 'HIGH':
+                bg_color = COLOR_MEDIUM_SEVERITY_BG
+                badge_color = COLOR_MEDIUM_SEVERITY_BADGE
+            else:
+                bg_color = COLOR_LOW_SEVERITY_BG
+                badge_color = COLOR_LOW_SEVERITY_BADGE
+            
+            table_html += f'    <tr style="background-color: {bg_color};">\n'
+            for col in corr_df.columns:
+                value = row[col]
+                if col == 'Threat Level':
+                    # Threat level is our own controlled value, safe to insert
+                    badge = f'<span style="background: {badge_color}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">{html_lib.escape(str(value))}</span>'
+                    table_html += f'      <td style="padding: 8px; border: 1px solid #ddd;">{badge}</td>\n'
+                else:
+                    # Escape all other values
+                    table_html += f'      <td style="padding: 8px; border: 1px solid #ddd;">{html_lib.escape(str(value))}</td>\n'
+            table_html += '    </tr>\n'
+        
+        table_html += '  </tbody>\n</table>'
+        display(HTML(table_html))
+        
+        # Try to create visualization if plotly is available
+        try:
+            import plotly.graph_objects as go
+            
+            # Create bubble chart: strategies vs max score
+            viz_data = []
+            for ip, detections in sorted_ips[:MAX_DISPLAY_ITEMS]:
+                strategies_detected = set(d['strategy'] for d in detections)
+                max_score = max(d['score'] for d in detections)
+                viz_data.append({
+                    'ip': ip,
+                    'strategies': len(strategies_detected),
+                    'score': max_score
+                })
+            
+            viz_df = pd.DataFrame(viz_data)
+            
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=viz_df['strategies'],
+                y=viz_df['score'],
+                mode='markers',
+                marker=dict(
+                    size=15,
+                    color=viz_df['score'],
+                    colorscale='Reds',
+                    showscale=True,
+                    colorbar=dict(title="Max<br>Score"),
+                    line=dict(width=1, color='white')
+                ),
+                text=[f"IP: {html_lib.escape(str(viz_df.iloc[i]['ip']))}<br>Strategies: {viz_df.iloc[i]['strategies']}<br>Score: {viz_df.iloc[i]['score']:.1f}"
+                      for i in range(len(viz_df))],
+                hovertemplate='%{text}<extra></extra>'
+            ))
+            
+            fig.update_layout(
+                title="Correlation Analysis: Detection Breadth vs Threat Score",
+                xaxis_title="Number of Strategies Detecting This IP",
+                yaxis_title="Maximum Threat Score",
+                hovermode='closest',
+                height=500,
+                showlegend=False
+            )
+            
+            print()
+            print("📊 Interactive Correlation Visualization:")
+            print("-" * 80)
+            display(fig)
+            print()
+        except ImportError:
+            pass  # Plotly not available, skip visualization
+        
+        # Export option
+        print()
+        export_button = widgets.Button(
+            description='📥 Export Correlation Report',
+            button_style='success',
+            icon='download'
+        )
+        export_output = widgets.Output()
+        
+        def on_export_corr(b):
+            with export_output:
+                clear_output(wait=True)
+                try:
+                    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                    filename = f"threat_correlation_{timestamp}.csv"
+                    corr_df.to_csv(filename, index=False)
+                    print(f"✅ Exported correlation report to {filename}")
+                except Exception as e:
+                    print(f"❌ Export failed: {e}")
+        
+        export_button.on_click(on_export_corr)
+        display(widgets.VBox([export_button, export_output]))
+        print()
+        print("💡 Tip: IPs appearing in multiple strategies warrant immediate investigation!")
+    
+    def _show_quick_triage(self):
+        """
+        Display a quick triage view showing all high-severity threats across all strategies.
+        """
+        if not self.strategy_results:
+            print("⚠️ No strategy results available yet. Run some analyses first!")
+            return
+        
+        print("🚨 Quick Triage - All High-Priority Threats")
+        print("=" * 80)
+        print()
+        
+        # Collect all high-severity findings
+        high_severity_findings = []
+        
+        for strategy_name, result_data in self.strategy_results.items():
+            df = result_data['dataframe']
+            
+            # Find score column
+            score_cols = [col for col in df.columns if col.endswith('_score')]
+            if not score_cols:
+                continue
+            
+            score_col = score_cols[0]
+            
+            # Filter high-severity
+            high_severity_df = df[df[score_col] >= HIGH_SEVERITY_THRESHOLD]
+            
+            for _, row in high_severity_df.iterrows():
+                finding = {
+                    'Strategy': strategy_name.split('(')[0].strip(),  # Short name
+                    'Score': row[score_col],
+                }
+                
+                # Add key identifying information
+                if 'source_ip' in row:
+                    finding['Source IP'] = row['source_ip']
+                if 'dest_ip' in row:
+                    finding['Dest IP'] = row['dest_ip']
+                if 'target_string' in row:
+                    finding['Target'] = str(row['target_string'])[:STRING_TRUNCATE_LENGTH]
+                
+                high_severity_findings.append(finding)
+        
+        if not high_severity_findings:
+            print("✅ No high-severity threats found across all strategies!")
+            print("System appears to be in good health.")
+            return
+        
+        # Create summary
+        summary_html = f"""
+        <div style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
+            <h3 style="margin-top: 0;">🚨 Quick Triage Summary</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 2em; font-weight: bold;">{len(high_severity_findings)}</div>
+                    <div style="font-size: 0.9em; opacity: 0.9;">Critical Threats</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 2em; font-weight: bold;">{len(self.strategy_results)}</div>
+                    <div style="font-size: 0.9em; opacity: 0.9;">Strategies Analyzed</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 2em; font-weight: bold;">{len(set(f.get('Source IP', '') for f in high_severity_findings if f.get('Source IP')))}</div>
+                    <div style="font-size: 0.9em; opacity: 0.9;">Unique Source IPs</div>
+                </div>
+            </div>
+        </div>
+        """
+        display(HTML(summary_html))
+        print()
+        
+        # Display findings table
+        triage_df = pd.DataFrame(high_severity_findings)
+        
+        # Sort by score descending
+        triage_df = triage_df.sort_values('Score', ascending=False)
+        
+        print(f"📊 All High-Severity Findings (Score ≥ {HIGH_SEVERITY_THRESHOLD}):")
+        print("-" * 80)
+        # Use escape=True (default) to prevent XSS
+        display(HTML(triage_df.to_html(index=False)))
+        
+        # Export option
+        print()
+        export_button = widgets.Button(
+            description='📥 Export Triage Report',
+            button_style='success',
+            icon='download'
+        )
+        export_output = widgets.Output()
+        
+        def on_export_triage(b):
+            with export_output:
+                clear_output(wait=True)
+                try:
+                    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                    filename = f"quick_triage_{timestamp}.csv"
+                    triage_df.to_csv(filename, index=False)
+                    print(f"✅ Exported triage report to {filename}")
+                except Exception as e:
+                    print(f"❌ Export failed: {e}")
+        
+        export_button.on_click(on_export_triage)
+        display(widgets.VBox([export_button, export_output]))
+        print()
+        print("💡 Tip: Prioritize investigation of threats with scores ≥ 90!")
+    
+    def _generate_investigation_report(self):
+        """
+        Generate a comprehensive HTML investigation report with all findings.
+        """
+        if not self.strategy_results:
+            print("⚠️ No results available. Run some analyses first!")
+            return
+        
+        print("📄 Generating Investigation Report...")
+        
+        timestamp = datetime.datetime.now()
+        report_filename = f"investigation_report_{timestamp.strftime('%Y%m%d_%H%M%S')}.html"
+        
+        # Start building HTML report
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>221B Threat Hunting Investigation Report</title>
+            <style>
+                body {{
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    margin: 0;
+                    padding: 20px;
+                    background: #f5f5f5;
+                }}
+                .container {{
+                    max-width: 1200px;
+                    margin: 0 auto;
+                    background: white;
+                    padding: 30px;
+                    border-radius: 10px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                }}
+                h1 {{
+                    color: #2c3e50;
+                    border-bottom: 3px solid #3498db;
+                    padding-bottom: 10px;
+                }}
+                h2 {{
+                    color: #34495e;
+                    margin-top: 30px;
+                    border-left: 4px solid #3498db;
+                    padding-left: 15px;
+                }}
+                .summary-card {{
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 20px;
+                    border-radius: 10px;
+                    margin: 20px 0;
+                }}
+                .stats-grid {{
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    gap: 15px;
+                    margin-top: 15px;
+                }}
+                .stat-box {{
+                    background: rgba(255,255,255,0.2);
+                    padding: 15px;
+                    border-radius: 8px;
+                    text-align: center;
+                }}
+                .stat-value {{
+                    font-size: 2em;
+                    font-weight: bold;
+                }}
+                .stat-label {{
+                    font-size: 0.9em;
+                    opacity: 0.9;
+                }}
+                table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 20px 0;
+                }}
+                th {{
+                    background: #34495e;
+                    color: white;
+                    padding: 12px;
+                    text-align: left;
+                }}
+                td {{
+                    padding: 10px;
+                    border: 1px solid #ddd;
+                }}
+                tr:nth-child(even) {{
+                    background: #f9f9f9;
+                }}
+                .severity-high {{
+                    background: {COLOR_HIGH_SEVERITY_BG} !important;
+                }}
+                .severity-medium {{
+                    background: {COLOR_MEDIUM_SEVERITY_BG} !important;
+                }}
+                .severity-low {{
+                    background: {COLOR_LOW_SEVERITY_BG} !important;
+                }}
+                .badge {{
+                    padding: 4px 10px;
+                    border-radius: 4px;
+                    font-size: 0.85em;
+                    font-weight: bold;
+                    color: white;
+                }}
+                .badge-high {{ background: {COLOR_HIGH_SEVERITY_BADGE}; }}
+                .badge-medium {{ background: {COLOR_MEDIUM_SEVERITY_BADGE}; }}
+                .badge-low {{ background: {COLOR_LOW_SEVERITY_BADGE}; }}
+                .footer {{
+                    margin-top: 40px;
+                    padding-top: 20px;
+                    border-top: 2px solid #eee;
+                    text-align: center;
+                    color: #7f8c8d;
+                    font-size: 0.9em;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🔍 221B Threat Hunting Investigation Report</h1>
+                <p><strong>Generated:</strong> {timestamp.strftime('%Y-%m-%d %H:%M:%S')}</p>
+                
+                <div class="summary-card">
+                    <h3 style="margin-top: 0;">Executive Summary</h3>
+                    <div class="stats-grid">
+        """
+        
+        # Calculate overall statistics
+        total_findings = sum(len(r['dataframe']) for r in self.strategy_results.values())
+        high_severity = 0
+        medium_severity = 0
+        
+        for result_data in self.strategy_results.values():
+            df = result_data['dataframe']
+            score_cols = [col for col in df.columns if col.endswith('_score')]
+            if score_cols:
+                score_col = score_cols[0]
+                high_severity += len(df[df[score_col] >= HIGH_SEVERITY_THRESHOLD])
+                medium_severity += len(df[(df[score_col] >= MEDIUM_SEVERITY_THRESHOLD) & (df[score_col] < HIGH_SEVERITY_THRESHOLD)])
+        
+        html += f"""
+                        <div class="stat-box">
+                            <div class="stat-value">{len(self.strategy_results)}</div>
+                            <div class="stat-label">Strategies Executed</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value">{total_findings}</div>
+                            <div class="stat-label">Total Findings</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value">{high_severity}</div>
+                            <div class="stat-label">High Severity</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value">{medium_severity}</div>
+                            <div class="stat-label">Medium Severity</div>
+                        </div>
+                    </div>
+                </div>
+        """
+        
+        # Add findings by strategy
+        for strategy_name, result_data in self.strategy_results.items():
+            df = result_data['dataframe']
+            strategy = result_data['strategy']
+            
+            # Escape HTML in user-controlled content
+            safe_strategy_name = html_lib.escape(strategy_name)
+            strategy_doc = strategy.__class__.__doc__
+            safe_doc = html_lib.escape(strategy_doc.strip()) if strategy_doc else 'No description available'
+            
+            html += f"""
+                <h2>{safe_strategy_name}</h2>
+                <p><em>{safe_doc}</em></p>
+                <p><strong>Findings:</strong> {len(df)} total</p>
+            """
+            
+            # Find score column
+            score_cols = [col for col in df.columns if col.endswith('_score')]
+            
+            if not df.empty:
+                # Show top 10 findings
+                display_df = df.head(10).copy()
+                
+                html += '<table><thead><tr>'
+                for col in display_df.columns:
+                    html += f'<th>{html_lib.escape(str(col))}</th>'
+                html += '</tr></thead><tbody>'
+                
+                for _, row in display_df.iterrows():
+                    # Determine severity class
+                    severity_class = ''
+                    if score_cols:
+                        score = row[score_cols[0]]
+                        if score >= HIGH_SEVERITY_THRESHOLD:
+                            severity_class = 'severity-high'
+                        elif score >= MEDIUM_SEVERITY_THRESHOLD:
+                            severity_class = 'severity-medium'
+                        else:
+                            severity_class = 'severity-low'
+                    
+                    html += f'<tr class="{severity_class}">'
+                    for col in display_df.columns:
+                        value = row[col]
+                        # Add badge for score columns
+                        if col.endswith('_score'):
+                            if value >= HIGH_SEVERITY_THRESHOLD:
+                                badge_class = 'badge-high'
+                                badge_text = 'HIGH'
+                            elif value >= MEDIUM_SEVERITY_THRESHOLD:
+                                badge_class = 'badge-medium'
+                                badge_text = 'MED'
+                            else:
+                                badge_class = 'badge-low'
+                                badge_text = 'LOW'
+                            html += f'<td>{value:.1f} <span class="badge {badge_class}">{badge_text}</span></td>'
+                        else:
+                            # Escape all values to prevent XSS
+                            html += f'<td>{html_lib.escape(str(value))}</td>'
+                    html += '</tr>'
+                
+                html += '</tbody></table>'
+                
+                if len(df) > 10:
+                    html += f'<p><em>... and {len(df) - 10} more findings</em></p>'
+            else:
+                html += '<p><em>No findings for this strategy.</em></p>'
+        
+        # Add footer
+        html += """
+                <div class="footer">
+                    <p>Generated by 221B Interactive Threat Hunting Dashboard</p>
+                    <p>This report contains sensitive security information - handle appropriately</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Write report to file
+        try:
+            with open(report_filename, 'w', encoding='utf-8') as f:
+                f.write(html)
+            print(f"✅ Investigation report generated: {report_filename}")
+            print(f"📊 Report contains {total_findings} findings from {len(self.strategy_results)} strategies")
+            print(f"🚨 {high_severity} high-severity threats identified")
+            print()
+            print(f"💡 Open {report_filename} in your browser to view the full report")
+        except Exception as e:
+            print(f"❌ Failed to generate report: {e}")
     
     def display(self):
         """
@@ -1156,9 +1776,126 @@ class WatsonDashboard:
             """
         )
         
+        # Create quick action buttons
+        triage_button = widgets.Button(
+            description='🚨 Quick Triage',
+            button_style='danger',
+            tooltip='View all high-severity threats across all strategies',
+            icon='exclamation-triangle',
+            layout=widgets.Layout(width='150px')
+        )
+        
+        correlation_button = widgets.Button(
+            description='🔗 Correlations',
+            button_style='warning',
+            tooltip='Find IPs appearing in multiple strategies',
+            icon='link',
+            layout=widgets.Layout(width='150px')
+        )
+        
+        report_button = widgets.Button(
+            description='📄 Generate Report',
+            button_style='info',
+            tooltip='Generate comprehensive HTML investigation report',
+            icon='file-text',
+            layout=widgets.Layout(width='180px')
+        )
+        
+        help_button = widgets.Button(
+            description='❓ Tips',
+            button_style='',
+            tooltip='Show usage tips and best practices',
+            icon='question-circle',
+            layout=widgets.Layout(width='100px')
+        )
+        
+        action_output = widgets.Output()
+        
+        def show_tips():
+            """Display usage tips and best practices."""
+            tips_html = """
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
+                <h3 style="margin-top: 0;">💡 Quick Tips & Best Practices</h3>
+                
+                <h4>🚀 Quick Start Workflow:</h4>
+                <ol style="line-height: 1.8;">
+                    <li><strong>Select a Strategy Tab</strong> - Choose from 9 threat hunting strategies</li>
+                    <li><strong>Load Data</strong> - Pick a table and map required columns</li>
+                    <li><strong>Run Analysis</strong> - Click the green "Run Analysis" button</li>
+                    <li><strong>Review Results</strong> - Use filters to focus on high-severity findings</li>
+                </ol>
+                
+                <h4>🎯 Power User Features:</h4>
+                <ul style="line-height: 1.8;">
+                    <li><strong>Quick Triage:</strong> After running multiple analyses, click the 🚨 button to see all critical threats at once</li>
+                    <li><strong>Correlation Analysis:</strong> Click 🔗 to find IPs appearing in multiple strategies - these are your highest-priority targets</li>
+                    <li><strong>HTML Reports:</strong> Generate professional reports with the 📄 button for management briefings</li>
+                    <li><strong>Export Options:</strong> All views support CSV export for further analysis in Excel or other tools</li>
+                </ul>
+                
+                <h4>🔍 Investigation Strategy:</h4>
+                <ul style="line-height: 1.8;">
+                    <li><strong>Start Broad:</strong> Run multiple strategies on your data to get different perspectives</li>
+                    <li><strong>Correlate:</strong> Use correlation analysis to identify systematic attackers</li>
+                    <li><strong>Triage:</strong> Focus on high-severity (≥75 score) findings first</li>
+                    <li><strong>Document:</strong> Export findings and generate reports for your records</li>
+                </ul>
+                
+                <h4>⚡ Performance Tips:</h4>
+                <ul style="line-height: 1.8;">
+                    <li>Use date filters to limit data range and improve speed</li>
+                    <li>Start with smaller row limits (10,000) for initial exploration</li>
+                    <li>Cache is automatically used for table listings (refreshes every 7 days)</li>
+                    <li>Results are stored in memory for correlation - no need to re-run analyses</li>
+                </ul>
+                
+                <h4>📊 Understanding Scores:</h4>
+                <ul style="line-height: 1.8;">
+                    <li><strong>75-100 (Critical):</strong> Strong evidence of malicious activity - investigate immediately</li>
+                    <li><strong>50-74 (High):</strong> Suspicious behavior worth investigating</li>
+                    <li><strong>&lt;50 (Medium/Low):</strong> Anomalies that may be benign but worth noting</li>
+                </ul>
+            </div>
+            """
+            with action_output:
+                clear_output(wait=True)
+                display(HTML(tips_html))
+        
+        def on_triage_click(b):
+            with action_output:
+                clear_output(wait=True)
+                self._show_quick_triage()
+        
+        def on_correlation_click(b):
+            with action_output:
+                clear_output(wait=True)
+                self._show_correlation_analysis()
+        
+        def on_report_click(b):
+            with action_output:
+                clear_output(wait=True)
+                self._generate_investigation_report()
+        
+        def on_help_click(b):
+            show_tips()
+        
+        triage_button.on_click(on_triage_click)
+        correlation_button.on_click(on_correlation_click)
+        report_button.on_click(on_report_click)
+        help_button.on_click(on_help_click)
+        
+        action_buttons = widgets.HBox([
+            triage_button,
+            correlation_button,
+            report_button,
+            help_button
+        ], layout=widgets.Layout(justify_content='flex-start', margin='10px 0'))
+        
         # Arrange layout with tabs
         dashboard = widgets.VBox([
             header,
+            action_buttons,
+            action_output,
             widgets.HTML("<hr>"),
             self.tab_widget,
         ])
