@@ -20,6 +20,15 @@ from ionic_scripting_framework import isf
 from strategies import HuntStrategy
 
 
+# Visual styling constants for severity indicators
+COLOR_HIGH_SEVERITY_BG = '#ffebee'  # Light red background
+COLOR_HIGH_SEVERITY_BADGE = '#f44336'  # Red badge
+COLOR_MEDIUM_SEVERITY_BG = '#fff3e0'  # Light orange background
+COLOR_MEDIUM_SEVERITY_BADGE = '#ff9800'  # Orange badge
+COLOR_LOW_SEVERITY_BG = '#e8f5e9'  # Light green background
+COLOR_LOW_SEVERITY_BADGE = '#4caf50'  # Green badge
+
+
 class WatsonDashboard:
     """
     Interactive dashboard for threat hunting using various strategies.
@@ -451,7 +460,7 @@ class WatsonDashboard:
     
     def _display_sortable_results(self, df: pd.DataFrame, strategy_name: str = "Results", rows_per_page: int = 100):
         """
-        Display results with sorting, pagination, and export controls using ipywidgets.
+        Display results with sorting, pagination, filtering, and export controls using ipywidgets.
         
         Args:
             df: DataFrame to display
@@ -461,9 +470,15 @@ class WatsonDashboard:
         # Store the full dataframe for pagination
         full_df = df
         
-        # State variables for pagination and sorting
+        # Identify score column for filtering
+        score_cols = [col for col in df.columns if col.endswith('_score')]
+        has_score_column = len(score_cols) > 0
+        score_col = score_cols[0] if has_score_column else None
+        
+        # State variables for pagination, sorting, and filtering
         current_page = {'value': 0}
         current_sort = {'column': '(unsorted)', 'ascending': False}
+        current_filter = {'level': 'All'}
         cached_sorted_df = {'df': full_df, 'total_pages': 1}  # Cache for sorted DataFrame
         
         # Create sorting controls
@@ -481,6 +496,18 @@ class WatsonDashboard:
             button_style='info',
             style={'description_width': 'initial'}
         )
+        
+        # Create severity filter buttons (only if score column exists)
+        filter_buttons = None
+        if has_score_column:
+            filter_buttons = widgets.ToggleButtons(
+                options=['All', 'High (≥75)', 'Medium (50-74)', 'Low (<50)'],
+                value='All',
+                description='Filter:',
+                button_style='',
+                tooltips=['Show all results', 'Show only high severity', 'Show only medium severity', 'Show only low severity'],
+                style={'description_width': 'initial', 'button_width': 'auto'}
+            )
         
         # Create pagination controls
         prev_button = widgets.Button(
@@ -512,14 +539,28 @@ class WatsonDashboard:
         table_output = widgets.Output()
         
         def get_sorted_df():
-            """Get the dataframe with current sorting applied (cached)."""
+            """Get the dataframe with current sorting and filtering applied (cached)."""
+            # First apply filtering
+            if has_score_column and current_filter['level'] != 'All':
+                if current_filter['level'] == 'High (≥75)':
+                    filtered_df = full_df[full_df[score_col] >= 75]
+                elif current_filter['level'] == 'Medium (50-74)':
+                    filtered_df = full_df[(full_df[score_col] >= 50) & (full_df[score_col] < 75)]
+                elif current_filter['level'] == 'Low (<50)':
+                    filtered_df = full_df[full_df[score_col] < 50]
+                else:
+                    filtered_df = full_df
+            else:
+                filtered_df = full_df
+            
+            # Then apply sorting
             if current_sort['column'] != '(unsorted)':
-                sorted_df = full_df.sort_values(
+                sorted_df = filtered_df.sort_values(
                     by=current_sort['column'],
                     ascending=current_sort['ascending']
                 )
             else:
-                sorted_df = full_df
+                sorted_df = filtered_df
             
             # Update cache
             total_rows = len(sorted_df)
@@ -540,12 +581,51 @@ class WatsonDashboard:
             end_idx = min(start_idx + rows_per_page, total_rows)
             
             # Get the page data
-            page_df = sorted_df.iloc[start_idx:end_idx]
+            page_df = sorted_df.iloc[start_idx:end_idx].copy()
             
-            # Update table display
-            with table_output:
-                clear_output(wait=True)
-                display(HTML(page_df.to_html(index=False)))
+            # Add color-coded styling to table based on score if available
+            if has_score_column and score_col in page_df.columns:
+                # Create styled HTML table with color-coded rows
+                table_html = '<table border="1" class="dataframe" style="border-collapse: collapse; width: 100%;">\n'
+                table_html += '  <thead>\n    <tr style="text-align: right; background-color: #667eea; color: white;">\n'
+                for col in page_df.columns:
+                    table_html += f'      <th style="padding: 8px; border: 1px solid #ddd;">{col}</th>\n'
+                table_html += '    </tr>\n  </thead>\n  <tbody>\n'
+                
+                for idx, row in page_df.iterrows():
+                    score = row[score_col]
+                    # Color code based on severity
+                    if score >= 75:
+                        bg_color = COLOR_HIGH_SEVERITY_BG
+                        badge = f'<span style="background: {COLOR_HIGH_SEVERITY_BADGE}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">HIGH</span>'
+                    elif score >= 50:
+                        bg_color = COLOR_MEDIUM_SEVERITY_BG
+                        badge = f'<span style="background: {COLOR_MEDIUM_SEVERITY_BADGE}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">MED</span>'
+                    else:
+                        bg_color = COLOR_LOW_SEVERITY_BG
+                        badge = f'<span style="background: {COLOR_LOW_SEVERITY_BADGE}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold;">LOW</span>'
+                    
+                    table_html += f'    <tr style="background-color: {bg_color};">\n'
+                    for col in page_df.columns:
+                        value = row[col]
+                        # Format score column with badge
+                        if col == score_col:
+                            table_html += f'      <td style="padding: 8px; border: 1px solid #ddd;">{value:.1f} {badge}</td>\n'
+                        else:
+                            table_html += f'      <td style="padding: 8px; border: 1px solid #ddd;">{value}</td>\n'
+                    table_html += '    </tr>\n'
+                
+                table_html += '  </tbody>\n</table>'
+                
+                # Update table display with styled HTML
+                with table_output:
+                    clear_output(wait=True)
+                    display(HTML(table_html))
+            else:
+                # No score column, use standard table
+                with table_output:
+                    clear_output(wait=True)
+                    display(HTML(page_df.to_html(index=False)))
             
             # Update page info
             page_info.value = f"<b>Page {current_page['value'] + 1} of {total_pages}</b> (Rows {start_idx + 1}-{end_idx} of {total_rows})"
@@ -559,6 +639,13 @@ class WatsonDashboard:
             current_sort['column'] = sort_column.value
             current_sort['ascending'] = (sort_order.value == 'Ascending')
             current_page['value'] = 0  # Reset to first page when sorting changes
+            get_sorted_df()  # Refresh cache
+            update_table()
+        
+        def on_filter_change(change):
+            """Handle filter changes."""
+            current_filter['level'] = filter_buttons.value
+            current_page['value'] = 0  # Reset to first page when filtering changes
             get_sorted_df()  # Refresh cache
             update_table()
         
@@ -585,7 +672,7 @@ class WatsonDashboard:
                     safe_name = re.sub(r'[^\w\s-]', '', strategy_name).strip().replace(' ', '_')
                     filename = f"{safe_name}_{timestamp}.csv"
                     
-                    # Save CSV
+                    # Save CSV (use current filtered/sorted df)
                     sorted_df = cached_sorted_df['df']
                     sorted_df.to_csv(filename, index=False)
                     
@@ -596,6 +683,8 @@ class WatsonDashboard:
         # Attach observers and handlers
         sort_column.observe(on_sort_change, names='value')
         sort_order.observe(on_sort_change, names='value')
+        if filter_buttons:
+            filter_buttons.observe(on_filter_change, names='value')
         prev_button.on_click(on_prev_click)
         next_button.on_click(on_next_click)
         export_button.on_click(on_export_click)
@@ -608,14 +697,25 @@ class WatsonDashboard:
         pagination_controls = widgets.HBox([prev_button, page_info, next_button], 
                                           layout=widgets.Layout(justify_content='center'))
         
-        sortable_table = widgets.VBox([
+        # Build the results UI components
+        ui_components = [
             widgets.HTML("<h4>📊 Results</h4>"),
+        ]
+        
+        # Add filter buttons if score column exists
+        if filter_buttons:
+            ui_components.append(widgets.HTML("<div style='margin: 5px 0;'><b>Quick Filter:</b></div>"))
+            ui_components.append(filter_buttons)
+        
+        ui_components.extend([
             sort_controls,
             export_output,
             pagination_controls,
             table_output,
             pagination_controls  # Show pagination at bottom too for convenience
         ])
+        
+        sortable_table = widgets.VBox(ui_components)
         
         display(sortable_table)
     

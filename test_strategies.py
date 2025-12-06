@@ -15,7 +15,10 @@ from strategies import (
     ExfilStrategy,
     PortScanStrategy,
     BruteForceStrategy,
-    TunnelingStrategy
+    TunnelingStrategy,
+    LateralMovementStrategy,
+    DataHoardingStrategy,
+    TimeAnomalyStrategy
 )
 
 
@@ -388,6 +391,190 @@ class TestTunnelingStrategy(unittest.TestCase):
         self.assertIn('dest_port', explanations)
 
 
+class TestLateralMovementStrategy(unittest.TestCase):
+    """Test the Lateral Movement Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = LateralMovementStrategy()
+    
+    def test_lateral_movement_detection(self):
+        """Test that lateral movement is detected."""
+        # Create mock data with one source contacting many targets
+        base_time = datetime.now()
+        data = []
+        for i in range(20):
+            data.append({
+                'timestamp': base_time + timedelta(minutes=i * 5),
+                'source_ip': '192.168.1.100',
+                'dest_ip': f'10.0.0.{i + 1}'  # Different target each time
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'dest_ip': 'dest_ip'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect lateral movement
+        self.assertFalse(result.empty)
+        self.assertEqual(result.iloc[0]['unique_targets'], 20)
+        self.assertGreaterEqual(result.iloc[0]['lateral_score'], 50)
+    
+    def test_normal_traffic_not_flagged(self):
+        """Test that normal traffic is not flagged."""
+        # Create mock data with few unique targets
+        data = [
+            {'timestamp': datetime.now(), 'source_ip': '192.168.1.100', 'dest_ip': '10.0.0.1'},
+            {'timestamp': datetime.now(), 'source_ip': '192.168.1.100', 'dest_ip': '10.0.0.1'},
+            {'timestamp': datetime.now(), 'source_ip': '192.168.1.100', 'dest_ip': '10.0.0.2'},
+        ]
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'dest_ip': 'dest_ip'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not detect lateral movement
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('lateral_score', explanations)
+        self.assertIn('unique_targets', explanations)
+
+
+class TestDataHoardingStrategy(unittest.TestCase):
+    """Test the Data Hoarding Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = DataHoardingStrategy()
+    
+    def test_data_hoarding_detection(self):
+        """Test that data hoarding is detected."""
+        # Create mock data with large downloads from many sources
+        data = []
+        for i in range(30):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'dest_ip': f'10.0.0.{i + 1}',
+                'bytes_in': 50_000_000  # 50MB per connection
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'dest_ip': 'dest_ip',
+            'bytes_in': 'bytes_in'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect hoarding
+        self.assertFalse(result.empty)
+        self.assertEqual(result.iloc[0]['unique_data_sources'], 30)
+        self.assertGreaterEqual(result.iloc[0]['hoarding_score'], 50)
+    
+    def test_normal_downloads_not_flagged(self):
+        """Test that normal downloads are not flagged."""
+        # Create mock data with small downloads
+        data = [
+            {'source_ip': '192.168.1.100', 'dest_ip': '10.0.0.1', 'bytes_in': 500_000},
+            {'source_ip': '192.168.1.100', 'dest_ip': '10.0.0.2', 'bytes_in': 600_000},
+        ]
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'dest_ip': 'dest_ip',
+            'bytes_in': 'bytes_in'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not detect hoarding
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('hoarding_score', explanations)
+        self.assertIn('unique_data_sources', explanations)
+
+
+class TestTimeAnomalyStrategy(unittest.TestCase):
+    """Test the Time-Based Anomaly Detector strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = TimeAnomalyStrategy()
+    
+    def test_off_hours_detection(self):
+        """Test that off-hours activity is detected."""
+        # Create mock data with activity at 2am (off-hours)
+        base_time = datetime.now().replace(hour=2, minute=0, second=0, microsecond=0)
+        data = []
+        for i in range(50):
+            data.append({
+                'timestamp': base_time + timedelta(minutes=i),
+                'source_ip': '192.168.1.100'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect off-hours anomaly
+        self.assertFalse(result.empty)
+        self.assertGreater(result.iloc[0]['off_hours_percentage'], 50)
+        self.assertGreaterEqual(result.iloc[0]['anomaly_score'], 50)
+    
+    def test_business_hours_not_flagged(self):
+        """Test that business hours activity is not flagged."""
+        # Create mock data with activity at 10am on Monday (business hours)
+        base_time = datetime.now().replace(hour=10, minute=0, second=0, microsecond=0)
+        # Adjust to make sure it's a Monday
+        while base_time.weekday() != 0:  # 0 = Monday
+            base_time += timedelta(days=1)
+        
+        data = []
+        for i in range(20):
+            data.append({
+                'timestamp': base_time + timedelta(minutes=i),
+                'source_ip': '192.168.1.100'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not detect off-hours anomaly
+        self.assertTrue(result.empty)
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('anomaly_score', explanations)
+        self.assertIn('off_hours_percentage', explanations)
+
+
 class TestStrategyRequirements(unittest.TestCase):
     """Test that all strategies meet basic requirements."""
     
@@ -399,7 +586,10 @@ class TestStrategyRequirements(unittest.TestCase):
             ExfilStrategy(),
             PortScanStrategy(),
             BruteForceStrategy(),
-            TunnelingStrategy()
+            TunnelingStrategy(),
+            LateralMovementStrategy(),
+            DataHoardingStrategy(),
+            TimeAnomalyStrategy()
         ]
         
         for strategy in strategies:
@@ -414,7 +604,10 @@ class TestStrategyRequirements(unittest.TestCase):
             ExfilStrategy(),
             PortScanStrategy(),
             BruteForceStrategy(),
-            TunnelingStrategy()
+            TunnelingStrategy(),
+            LateralMovementStrategy(),
+            DataHoardingStrategy(),
+            TimeAnomalyStrategy()
         ]
         
         for strategy in strategies:
@@ -429,7 +622,10 @@ class TestStrategyRequirements(unittest.TestCase):
             ExfilStrategy(),
             PortScanStrategy(),
             BruteForceStrategy(),
-            TunnelingStrategy()
+            TunnelingStrategy(),
+            LateralMovementStrategy(),
+            DataHoardingStrategy(),
+            TimeAnomalyStrategy()
         ]
         
         for strategy in strategies:
