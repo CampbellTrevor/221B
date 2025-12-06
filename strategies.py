@@ -1104,9 +1104,9 @@ class BruteForceStrategy(HuntStrategy):
         
         # Determine what constitutes a failure
         # Common patterns: "failed", "failure", "fail", "rejected", "denied", "error"
-        # or numeric codes like 401, 403, etc.
+        # or numeric codes like 401, 403, etc. (using word boundaries for exact matches)
         df['is_failure'] = df[status_col].astype(str).str.lower().str.contains(
-            'fail|reject|denied|error|401|403|invalid|wrong', 
+            r'\bfail|\breject|\bdenied|\berror|\b401\b|\b403\b|\binvalid|\bwrong', 
             na=False, 
             regex=True
         )
