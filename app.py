@@ -12,8 +12,9 @@ import pandas as pd
 import re
 import json
 import os
+import time
 import datetime
-from datetime import timedelta
+from datetime import timedelta, date
 from multiprocessing import Pool, cpu_count
 from ionic_scripting_framework import isf
 from strategies import HuntStrategy
@@ -361,12 +362,100 @@ class WatsonDashboard:
             print(f"✅ Loaded {len(tab_data['available_columns'])} columns from {current_table}")
             print("Configure column mappings above and click 'Run Analysis' when ready.")
     
-    def _display_sortable_results(self, df: pd.DataFrame, rows_per_page: int = 100):
+    def _display_summary_stats(self, df: pd.DataFrame, strategy: HuntStrategy):
         """
-        Display results with sorting and pagination controls using ipywidgets.
+        Display summary statistics dashboard for analysis results.
+        
+        Args:
+            df: Results DataFrame
+            strategy: The strategy that produced these results
+        """
+        # Identify score columns (typically end with '_score')
+        score_cols = [col for col in df.columns if col.endswith('_score')]
+        
+        # Calculate basic stats
+        total_results = len(df)
+        
+        # Build summary HTML
+        summary_html = f"""
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
+            <h3 style="margin-top: 0;">📊 Analysis Summary</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 2em; font-weight: bold;">{total_results}</div>
+                    <div style="font-size: 0.9em; opacity: 0.9;">Suspicious Activities</div>
+                </div>
+        """
+        
+        # Add severity breakdown if score columns exist
+        if score_cols:
+            score_col = score_cols[0]  # Use first score column
+            high_severity = len(df[df[score_col] >= 75])
+            medium_severity = len(df[(df[score_col] >= 50) & (df[score_col] < 75)])
+            
+            summary_html += f"""
+                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 2em; font-weight: bold; color: #ff6b6b;">{high_severity}</div>
+                    <div style="font-size: 0.9em; opacity: 0.9;">High Severity (≥75)</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 2em; font-weight: bold; color: #ffd93d;">{medium_severity}</div>
+                    <div style="font-size: 0.9em; opacity: 0.9;">Medium Severity (50-74)</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 2em; font-weight: bold;">{df[score_col].mean():.1f}</div>
+                    <div style="font-size: 0.9em; opacity: 0.9;">Average Score</div>
+                </div>
+            """
+        
+        summary_html += """
+            </div>
+        </div>
+        """
+        
+        display(HTML(summary_html))
+        print()
+    
+    def _display_collapsible_explanations(self, explanations: dict, df: pd.DataFrame):
+        """
+        Display column explanations in a collapsible widget.
+        
+        Args:
+            explanations: Dictionary of column explanations
+            df: Results DataFrame to filter relevant columns
+        """
+        # Filter to only show explanations for columns in the result
+        relevant_explanations = {k: v for k, v in explanations.items() if k in df.columns}
+        
+        if not relevant_explanations:
+            return
+        
+        # Build explanations HTML
+        explanations_html = "<div style='padding: 10px; background: #f8f9fa; border-radius: 5px; margin: 10px 0;'>"
+        for col_name, explanation in relevant_explanations.items():
+            explanations_html += f"""
+            <div style="margin: 8px 0; padding: 8px; background: white; border-left: 3px solid #007bff; border-radius: 3px;">
+                <b style="color: #007bff;">{col_name}:</b> 
+                <span style="color: #495057;">{explanation}</span>
+            </div>
+            """
+        explanations_html += "</div>"
+        
+        # Create accordion widget
+        accordion = widgets.Accordion(children=[widgets.HTML(value=explanations_html)])
+        accordion.set_title(0, '📖 Column Explanations (click to expand)')
+        accordion.selected_index = None  # Start collapsed
+        
+        display(accordion)
+        print()
+    
+    def _display_sortable_results(self, df: pd.DataFrame, strategy_name: str = "Results", rows_per_page: int = 100):
+        """
+        Display results with sorting, pagination, and export controls using ipywidgets.
         
         Args:
             df: DataFrame to display
+            strategy_name: Name of the strategy for export filename
             rows_per_page: Number of rows to display per page
         """
         # Store the full dataframe for pagination
@@ -408,6 +497,16 @@ class WatsonDashboard:
         )
         
         page_info = widgets.HTML(value='')
+        
+        # Create export button
+        export_button = widgets.Button(
+            description='📥 Export CSV',
+            button_style='success',
+            icon='download',
+            layout=widgets.Layout(width='150px')
+        )
+        
+        export_output = widgets.Output()
         
         # Create output area for the table
         table_output = widgets.Output()
@@ -475,23 +574,44 @@ class WatsonDashboard:
                 current_page['value'] += 1
                 update_table()
         
+        def on_export_click(b):
+            """Handle export button click."""
+            with export_output:
+                clear_output(wait=True)
+                try:
+                    # Generate filename with timestamp
+                    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                    # Sanitize strategy name for filename
+                    safe_name = re.sub(r'[^\w\s-]', '', strategy_name).strip().replace(' ', '_')
+                    filename = f"{safe_name}_{timestamp}.csv"
+                    
+                    # Save CSV
+                    sorted_df = cached_sorted_df['df']
+                    sorted_df.to_csv(filename, index=False)
+                    
+                    print(f"✅ Exported {len(sorted_df)} rows to {filename}")
+                except Exception as e:
+                    print(f"❌ Export failed: {e}")
+        
         # Attach observers and handlers
         sort_column.observe(on_sort_change, names='value')
         sort_order.observe(on_sort_change, names='value')
         prev_button.on_click(on_prev_click)
         next_button.on_click(on_next_click)
+        export_button.on_click(on_export_click)
         
         # Initial display
         update_table()
         
         # Create the UI layout
-        sort_controls = widgets.HBox([sort_column, sort_order])
+        sort_controls = widgets.HBox([sort_column, sort_order, export_button])
         pagination_controls = widgets.HBox([prev_button, page_info, next_button], 
                                           layout=widgets.Layout(justify_content='center'))
         
         sortable_table = widgets.VBox([
             widgets.HTML("<h4>📊 Results</h4>"),
             sort_controls,
+            export_output,
             pagination_controls,
             table_output,
             pagination_controls  # Show pagination at bottom too for convenience
@@ -799,7 +919,7 @@ class WatsonDashboard:
                     if tab_data['start_date'].value:
                         # Validate date value - DatePicker should provide datetime.date object
                         start_date = tab_data['start_date'].value
-                        if not isinstance(start_date, (datetime.date, datetime)):
+                        if not isinstance(start_date, (date, datetime.datetime)):
                             with tab_data['output_widget']:
                                 print("⚠️ Invalid start date format")
                             return
@@ -814,7 +934,7 @@ class WatsonDashboard:
                     if tab_data['end_date'].value:
                         # Validate date value - DatePicker should provide datetime.date object
                         end_date = tab_data['end_date'].value
-                        if not isinstance(end_date, (datetime.date, datetime)):
+                        if not isinstance(end_date, (date, datetime.datetime)):
                             with tab_data['output_widget']:
                                 print("⚠️ Invalid end date format")
                             return
@@ -846,20 +966,46 @@ class WatsonDashboard:
             print(f"📊 Query: {query}")
             print()
             
+            # Create progress indicator
+            progress_bar = widgets.IntProgress(
+                value=0,
+                min=0,
+                max=100,
+                description='Progress:',
+                bar_style='info',
+                style={'bar_color': '#667eea'},
+                orientation='horizontal'
+            )
+            progress_label = widgets.HTML(value="<b>Querying database...</b>")
+            progress_box = widgets.VBox([progress_label, progress_bar])
+            display(progress_box)
+            
             try:
                 # Execute query
+                progress_bar.value = 20
                 df = isf.run_query(query)
                 
                 if df is None or df.empty:
+                    progress_box.close()
                     print("⚠️ Query returned no data.")
                     return
                 
+                progress_bar.value = 40
+                progress_label.value = f"<b>Retrieved {len(df)} rows, analyzing...</b>"
                 print(f"✅ Retrieved {len(df)} rows from {current_table}")
                 print()
                 
                 # Run strategy analysis with multiprocessing support
                 print(f"🔬 Analyzing data with {strategy.name}...")
+                progress_bar.value = 60
                 result_df = self._run_parallel_analysis(strategy, df, col_map)
+                progress_bar.value = 100
+                progress_label.value = "<b>Analysis complete!</b>"
+                progress_bar.bar_style = 'success'
+                
+                # Hide progress bar after a moment
+                time.sleep(0.5)
+                progress_box.close()
                 
                 if result_df is None or result_df.empty:
                     print("⚠️ Analysis returned no results.")
@@ -868,15 +1014,14 @@ class WatsonDashboard:
                 print(f"✅ Analysis complete! Found {len(result_df)} results.")
                 print()
                 
-                # Display column explanations for junior analysts FIRST
+                # Display summary statistics dashboard
+                self._display_summary_stats(result_df, strategy)
+                
+                # Display column explanations for junior analysts
                 explanations = strategy.get_column_explanations()
                 if explanations:
-                    print("📖 Column Explanations:")
-                    print("-" * 80)
-                    for col_name, explanation in explanations.items():
-                        if col_name in result_df.columns:
-                            print(f"• {col_name}: {explanation}")
-                    print()
+                    # Create collapsible explanation section
+                    self._display_collapsible_explanations(explanations, result_df)
                 
                 # Generate and display visualization if available
                 viz = strategy.visualize(result_df, col_map)
@@ -886,11 +1031,11 @@ class WatsonDashboard:
                     display(viz)
                     print()
                 
-                print("📈 Results (sortable by selecting column):")
+                print("📈 Results (sortable and exportable):")
                 print("-" * 80)
                 
-                # Display results in sortable table
-                self._display_sortable_results(result_df)
+                # Display results in sortable table with export option
+                self._display_sortable_results(result_df, strategy.name)
                 
             except Exception as e:
                 print(f"❌ Error during analysis: {e}")

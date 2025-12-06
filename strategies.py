@@ -922,3 +922,463 @@ class ExfilStrategy(HuntStrategy):
             'upload_percentile': "Percentile rank (0-100) of this source's upload volume compared to all sources. Values ≥90 indicate this source is in the top 10% of uploaders",
             'exfil_score': 'Overall exfiltration suspiciousness score (0-100) based on ratio, upload volume, and total traffic. Higher scores indicate stronger evidence of data exfiltration. Scores ≥50 suggest potential data theft worth investigating'
         }
+
+
+class PortScanStrategy(HuntStrategy):
+    """
+    Port Scan Detector - Identifies port scanning activity.
+    
+    Detects hosts scanning multiple ports on multiple targets by analyzing
+    connection patterns. Classic indicator of reconnaissance activity.
+    """
+    
+    MIN_UNIQUE_PORTS = 10
+    MIN_SCAN_SCORE = 50
+    
+    def _get_name(self) -> str:
+        return "Port Scan Detector (Reconnaissance)"
+    
+    def _get_required_inputs(self) -> list:
+        return ['source_ip', 'dest_ip', 'dest_port']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze connection patterns to detect port scanning.
+        
+        Args:
+            df: DataFrame with connection logs
+            col_map: Mapping of {'source_ip': actual_col, 'dest_ip': actual_col,
+                                  'dest_port': actual_col}
+        
+        Returns:
+            DataFrame with source_ip, unique_ports, unique_targets, scan_score
+        """
+        src_col = col_map['source_ip']
+        dst_col = col_map['dest_ip']
+        port_col = col_map['dest_port']
+        
+        df = df.copy()
+        df[port_col] = pd.to_numeric(df[port_col], errors='coerce')
+        df = df.dropna(subset=[port_col])
+        
+        # Group by source IP and analyze scanning patterns
+        results = []
+        for src_ip, group in df.groupby(src_col):
+            unique_ports = group[port_col].nunique()
+            unique_targets = group[dst_col].nunique()
+            total_connections = len(group)
+            
+            # Filter noise - must scan multiple ports
+            if unique_ports < self.MIN_UNIQUE_PORTS:
+                continue
+            
+            # Calculate port diversity (how many different ports per target)
+            port_diversity = unique_ports / max(unique_targets, 1)
+            
+            # Calculate scan score (0-100)
+            scan_score = 0.0
+            
+            # Factor 1: Number of unique ports (40 points)
+            if unique_ports >= 100:
+                scan_score += 40
+            elif unique_ports >= 50:
+                scan_score += 30
+            elif unique_ports >= 20:
+                scan_score += 20
+            elif unique_ports >= 10:
+                scan_score += 10
+            
+            # Factor 2: Port diversity (30 points)
+            # High diversity = scanning many ports per target
+            if port_diversity >= 10:
+                scan_score += 30
+            elif port_diversity >= 5:
+                scan_score += 20
+            elif port_diversity >= 2:
+                scan_score += 10
+            
+            # Factor 3: Multiple targets (30 points)
+            if unique_targets >= 10:
+                scan_score += 30
+            elif unique_targets >= 5:
+                scan_score += 20
+            elif unique_targets >= 2:
+                scan_score += 10
+            
+            if scan_score >= self.MIN_SCAN_SCORE:
+                results.append({
+                    'source_ip': src_ip,
+                    'unique_ports': unique_ports,
+                    'unique_targets': unique_targets,
+                    'total_connections': total_connections,
+                    'port_diversity': port_diversity,
+                    'scan_score': min(scan_score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('scan_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate port scan visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=result_df['unique_ports'],
+            y=result_df['unique_targets'],
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=result_df['scan_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Scan<br>Score")
+            ),
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Ports: {result_df.iloc[i]['unique_ports']}<br>Targets: {result_df.iloc[i]['unique_targets']}<br>Score: {result_df.iloc[i]['scan_score']:.0f}" 
+                  for i in range(len(result_df))],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title="Port Scan Detection: Unique Ports vs Unique Targets",
+            xaxis_title="Unique Ports Scanned",
+            yaxis_title="Unique Target IPs",
+            hovermode='closest',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for PortScanStrategy output columns."""
+        return {
+            'source_ip': 'The IP address performing the port scanning activity',
+            'unique_ports': 'Number of distinct destination ports contacted. High values (20+) suggest systematic scanning',
+            'unique_targets': 'Number of distinct target IP addresses scanned. Multiple targets indicate network-wide reconnaissance',
+            'total_connections': 'Total number of connection attempts made by this source',
+            'port_diversity': 'Average ports scanned per target. Values ≥5 indicate aggressive scanning across the port range',
+            'scan_score': 'Overall port scanning suspiciousness score (0-100). Higher scores indicate reconnaissance activity. Scores ≥50 suggest active port scanning that should be investigated for potential attack preparation'
+        }
+
+
+class BruteForceStrategy(HuntStrategy):
+    """
+    Brute Force Detector - Identifies authentication attack attempts.
+    
+    Analyzes authentication logs to detect brute force attacks by
+    looking for high failure rates and rapid-fire attempts.
+    """
+    
+    MIN_ATTEMPTS = 10
+    MIN_BRUTE_SCORE = 50
+    
+    def _get_name(self) -> str:
+        return "Brute Force Detector (Authentication Attacks)"
+    
+    def _get_required_inputs(self) -> list:
+        return ['source_ip', 'dest_ip', 'status']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze authentication patterns to detect brute force attacks.
+        
+        Args:
+            df: DataFrame with authentication logs
+            col_map: Mapping of {'source_ip': actual_col, 'dest_ip': actual_col,
+                                  'status': actual_col (success/failure indicator)}
+        
+        Returns:
+            DataFrame with source_ip, dest_ip, total_attempts, failed_attempts, 
+                     failure_rate, brute_force_score
+        """
+        src_col = col_map['source_ip']
+        dst_col = col_map['dest_ip']
+        status_col = col_map['status']
+        
+        df = df.copy()
+        
+        # Determine what constitutes a failure
+        # Common patterns: "failed", "failure", "fail", "rejected", "denied", "error"
+        # or numeric codes like 401, 403, etc. (using word boundaries for exact matches)
+        df['is_failure'] = df[status_col].astype(str).str.lower().str.contains(
+            r'\bfail|\breject|\bdenied|\berror|\b401\b|\b403\b|\binvalid|\bwrong', 
+            na=False, 
+            regex=True
+        )
+        
+        # Group by source and destination
+        results = []
+        for (src_ip, dst_ip), group in df.groupby([src_col, dst_col]):
+            total_attempts = len(group)
+            failed_attempts = group['is_failure'].sum()
+            
+            # Filter noise - need minimum attempts
+            if total_attempts < self.MIN_ATTEMPTS:
+                continue
+            
+            # Calculate failure rate
+            failure_rate = failed_attempts / total_attempts if total_attempts > 0 else 0
+            
+            # Calculate brute force score (0-100)
+            brute_score = 0.0
+            
+            # Factor 1: High failure rate (50 points)
+            if failure_rate >= 0.9:  # 90%+ failure
+                brute_score += 50
+            elif failure_rate >= 0.7:  # 70%+ failure
+                brute_score += 35
+            elif failure_rate >= 0.5:  # 50%+ failure
+                brute_score += 20
+            
+            # Factor 2: Volume of attempts (30 points)
+            if total_attempts >= 100:
+                brute_score += 30
+            elif total_attempts >= 50:
+                brute_score += 20
+            elif total_attempts >= 20:
+                brute_score += 10
+            
+            # Factor 3: Failed attempts count (20 points)
+            if failed_attempts >= 50:
+                brute_score += 20
+            elif failed_attempts >= 25:
+                brute_score += 15
+            elif failed_attempts >= 10:
+                brute_score += 10
+            
+            if brute_score >= self.MIN_BRUTE_SCORE:
+                results.append({
+                    'source_ip': src_ip,
+                    'dest_ip': dst_ip,
+                    'total_attempts': total_attempts,
+                    'failed_attempts': int(failed_attempts),
+                    'successful_attempts': int(total_attempts - failed_attempts),
+                    'failure_rate': failure_rate,
+                    'brute_force_score': min(brute_score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('brute_force_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate brute force visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=result_df['total_attempts'],
+            y=result_df['failure_rate'] * 100,  # Convert to percentage
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=result_df['brute_force_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Brute<br>Force<br>Score")
+            ),
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Target: {result_df.iloc[i]['dest_ip']}<br>Attempts: {result_df.iloc[i]['total_attempts']}<br>Failures: {result_df.iloc[i]['failed_attempts']}<br>Rate: {result_df.iloc[i]['failure_rate']*100:.1f}%<br>Score: {result_df.iloc[i]['brute_force_score']:.0f}" 
+                  for i in range(len(result_df))],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title="Brute Force Detection: Attempts vs Failure Rate",
+            xaxis_title="Total Authentication Attempts",
+            yaxis_title="Failure Rate (%)",
+            hovermode='closest',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for BruteForceStrategy output columns."""
+        return {
+            'source_ip': 'The IP address attempting authentication',
+            'dest_ip': 'The target system being attacked',
+            'total_attempts': 'Total number of authentication attempts observed',
+            'failed_attempts': 'Number of authentication attempts that failed',
+            'successful_attempts': 'Number of authentication attempts that succeeded',
+            'failure_rate': 'Percentage of failed attempts (0-1). Values ≥0.7 indicate likely brute force attempts where attacker is guessing credentials',
+            'brute_force_score': 'Overall brute force attack suspiciousness score (0-100). Higher scores indicate credential stuffing or password spraying attacks. Scores ≥50 suggest active authentication attacks requiring immediate investigation'
+        }
+
+
+class TunnelingStrategy(HuntStrategy):
+    """
+    Protocol Tunneling Detector - Identifies unusual protocol usage.
+    
+    Detects potential protocol tunneling by analyzing traffic patterns,
+    unusual ports, and high data volumes on non-standard services.
+    """
+    
+    MIN_TUNNEL_SCORE = 50
+    MIN_BYTES_THRESHOLD = 10000  # 10KB
+    
+    # Common legitimate ports for various protocols
+    STANDARD_PORTS = {
+        'http': [80, 8080, 8000, 8888],
+        'https': [443, 8443],
+        'dns': [53],
+        'ssh': [22],
+        'ftp': [20, 21],
+        'smtp': [25, 587],
+        'pop3': [110, 995],
+        'imap': [143, 993],
+        'rdp': [3389],
+        'smb': [139, 445]
+    }
+    
+    def _get_name(self) -> str:
+        return "Protocol Tunneling Detector (Covert Channels)"
+    
+    def _get_required_inputs(self) -> list:
+        return ['source_ip', 'dest_ip', 'dest_port', 'bytes_total']
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Analyze traffic patterns to detect protocol tunneling.
+        
+        Args:
+            df: DataFrame with connection logs
+            col_map: Mapping of column names
+        
+        Returns:
+            DataFrame with suspicious tunneling activity
+        """
+        src_col = col_map['source_ip']
+        dst_col = col_map['dest_ip']
+        port_col = col_map['dest_port']
+        bytes_col = col_map['bytes_total']
+        
+        df = df.copy()
+        df[port_col] = pd.to_numeric(df[port_col], errors='coerce')
+        df[bytes_col] = pd.to_numeric(df[bytes_col], errors='coerce').fillna(0)
+        df = df.dropna(subset=[port_col])
+        
+        # Filter out minimal traffic
+        df = df[df[bytes_col] >= self.MIN_BYTES_THRESHOLD]
+        
+        # Flatten standard ports list
+        all_standard_ports = set()
+        for ports in self.STANDARD_PORTS.values():
+            all_standard_ports.update(ports)
+        
+        # Identify non-standard ports
+        df['is_nonstandard'] = ~df[port_col].isin(all_standard_ports)
+        
+        # Group by source, dest, and port
+        results = []
+        for (src_ip, dst_ip, port), group in df.groupby([src_col, dst_col, port_col]):
+            total_bytes = group[bytes_col].sum()
+            connection_count = len(group)
+            avg_bytes_per_conn = total_bytes / connection_count if connection_count > 0 else 0
+            is_nonstandard = group['is_nonstandard'].iloc[0]
+            
+            # Calculate tunnel score (0-100)
+            tunnel_score = 0.0
+            
+            # Factor 1: Non-standard port usage (30 points)
+            if is_nonstandard:
+                tunnel_score += 30
+            
+            # Factor 2: High data volume (40 points)
+            # Large data transfers on unusual ports are suspicious
+            if total_bytes >= 100_000_000:  # 100MB+
+                tunnel_score += 40
+            elif total_bytes >= 10_000_000:  # 10MB+
+                tunnel_score += 30
+            elif total_bytes >= 1_000_000:  # 1MB+
+                tunnel_score += 20
+            
+            # Factor 3: Connection pattern (30 points)
+            # Many connections with consistent sizes suggest tunneling
+            if connection_count >= 50:
+                tunnel_score += 20
+                # Check for consistent connection sizes (low variance)
+                if connection_count > 1:
+                    byte_variance = group[bytes_col].std() / group[bytes_col].mean() if group[bytes_col].mean() > 0 else 0
+                    if byte_variance < 0.3:  # Low variance = consistent sizes
+                        tunnel_score += 10
+            elif connection_count >= 20:
+                tunnel_score += 10
+            
+            # Flag if score is high enough
+            # Non-standard ports get preferential scoring, but allow high-scoring
+            # standard ports too (e.g., very high volume on HTTPS could be tunneling)
+            if tunnel_score >= self.MIN_TUNNEL_SCORE:
+                results.append({
+                    'source_ip': src_ip,
+                    'dest_ip': dst_ip,
+                    'dest_port': int(port),
+                    'total_bytes': total_bytes,
+                    'connection_count': connection_count,
+                    'avg_bytes_per_conn': avg_bytes_per_conn,
+                    'is_standard_port': not is_nonstandard,
+                    'tunnel_score': min(tunnel_score, 100)
+                })
+        
+        result_df = pd.DataFrame(results)
+        if not result_df.empty:
+            result_df = result_df.sort_values('tunnel_score', ascending=False)
+        
+        return result_df
+    
+    def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
+        """Generate tunneling visualization."""
+        if not HAS_PLOTLY or result_df.empty:
+            return None
+        
+        # Convert bytes to MB for readability
+        result_df['total_mb'] = result_df['total_bytes'] / 1_000_000
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=result_df['dest_port'],
+            y=result_df['total_mb'],
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=result_df['tunnel_score'],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Tunnel<br>Score")
+            ),
+            text=[f"Source: {result_df.iloc[i]['source_ip']}<br>Dest: {result_df.iloc[i]['dest_ip']}<br>Port: {result_df.iloc[i]['dest_port']}<br>Data: {result_df.iloc[i]['total_mb']:.2f} MB<br>Connections: {result_df.iloc[i]['connection_count']}<br>Score: {result_df.iloc[i]['tunnel_score']:.0f}" 
+                  for i in range(len(result_df))],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title="Protocol Tunneling Detection: Port vs Data Volume",
+            xaxis_title="Destination Port",
+            yaxis_title="Total Data Transferred (MB)",
+            hovermode='closest',
+            height=500
+        )
+        
+        return fig
+    
+    def get_column_explanations(self) -> dict:
+        """Get explanations for TunnelingStrategy output columns."""
+        return {
+            'source_ip': 'The IP address initiating the potentially tunneled traffic',
+            'dest_ip': 'The destination IP address for the tunneled traffic',
+            'dest_port': 'The destination port being used. Non-standard ports with high traffic may indicate tunneling',
+            'total_bytes': 'Total data volume transferred on this connection (in bytes)',
+            'connection_count': 'Number of connections established on this port',
+            'avg_bytes_per_conn': 'Average bytes per connection. Consistent sizes across many connections suggest automated tunneling',
+            'is_standard_port': 'Whether this is a commonly-used port. False (non-standard) ports are more suspicious, but high-volume standard ports can also indicate tunneling',
+            'tunnel_score': 'Overall protocol tunneling suspiciousness score (0-100). Higher scores indicate covert channel activity like DNS tunneling, SSH tunneling, or other protocol encapsulation. Scores ≥50 suggest unusual traffic patterns worth investigating for data hiding or command-and-control'
+        }
