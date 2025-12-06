@@ -6,11 +6,31 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 221B is a no-code threat hunting tool designed for security analysts to investigate network traffic and detect malicious behavior patterns. It connects to IONIC data stores via the `ionic_scripting_framework` and provides an intuitive widget-based interface for running various threat detection strategies.
 
+### 🆕 What's New in This Release
+
+**Expanded Detection Coverage:**
+- 3 new advanced threat hunting strategies (Lateral Movement, Data Hoarding, Time Anomalies)
+- Now covering 9 comprehensive threat categories
+- Enhanced coverage for insider threats and APT behavior
+
+**Visual Display Improvements:**
+- Color-coded severity indicators with visual badges (HIGH/MED/LOW)
+- Smart row highlighting based on threat scores
+- Quick-filter buttons for instant severity filtering
+- Professional table styling with clear visual hierarchy
+- Improved summary statistics dashboard
+
+**Enhanced User Experience:**
+- One-click severity filtering for rapid threat triage
+- Export respects current filters and sorting
+- Better visual feedback for high-priority threats
+- Cleaner, more intuitive interface
+
 ## Features
 
 ### 🎯 Detection Strategies
 
-The dashboard includes six comprehensive threat hunting strategies:
+The dashboard includes **nine comprehensive threat hunting strategies**:
 
 **Beacon Hunter (C2 Detection)**
 - Detects command-and-control beaconing behavior by analyzing connection timing patterns
@@ -30,23 +50,41 @@ The dashboard includes six comprehensive threat hunting strategies:
 - Calculates suspicion scores based on traffic volume and ratio
 - Highlights hosts behaving abnormally compared to typical download patterns
 
-**Port Scan Detector (Reconnaissance)** 🆕
+**Port Scan Detector (Reconnaissance)**
 - Detects port scanning activity indicating network reconnaissance
 - Identifies sources scanning multiple ports across multiple targets
 - Calculates scan scores based on port diversity and target count
 - Essential for detecting the early stages of network attacks
 
-**Brute Force Detector (Authentication Attacks)** 🆕
+**Brute Force Detector (Authentication Attacks)**
 - Identifies credential stuffing and password spraying attacks
 - Analyzes authentication logs for high failure rates
 - Detects rapid-fire authentication attempts
 - Critical for protecting authentication endpoints
 
-**Protocol Tunneling Detector (Covert Channels)** 🆕
+**Protocol Tunneling Detector (Covert Channels)**
 - Detects unusual protocol usage and covert communication channels
 - Identifies high data volumes on non-standard ports
 - Flags potential SSH tunneling, DNS tunneling, and protocol encapsulation
 - Helps uncover command-and-control over uncommon protocols
+
+**Lateral Movement Detector (Privilege Escalation)** 🆕
+- Identifies suspicious lateral movement patterns across the network
+- Detects single sources accessing many targets in short time windows
+- Tracks speed and breadth of network access
+- Critical for catching attackers moving through your infrastructure
+
+**Data Hoarding Detector (Theft Preparation)** 🆕
+- Identifies unusual data collection and bulk download patterns
+- Detects hosts accessing many data sources or downloading large volumes
+- Flags potential data theft preparation before exfiltration
+- Helps identify insider threats and compromised accounts collecting sensitive data
+
+**Time-Based Anomaly Detector (Off-Hours Activity)** 🆕
+- Identifies suspicious activity outside normal business hours
+- Detects weekend and late-night access patterns
+- Flags potential unauthorized access and insider threats
+- Essential for catching activity that doesn't match normal user behavior
 
 ### 🔧 Interactive Controls
 
@@ -62,14 +100,20 @@ The dashboard includes six comprehensive threat hunting strategies:
 - Optional date range filtering with enable/disable toggle
 - Automatic query construction with SQL injection protection
 
-**Results Visualization**
-- Summary statistics dashboard with severity breakdowns 🆕
+**Results Visualization** 🎨 Enhanced!
+- **Color-coded severity badges** - Visual HIGH/MED/LOW indicators in results
+- **Quick severity filters** - One-click filtering by High (≥75), Medium (50-74), or Low (<50) scores
+- **Smart row highlighting** - Automatic color-coding based on threat severity
+  - High severity: Light red background (#ffebee)
+  - Medium severity: Light orange background (#fff3e0)
+  - Low severity: Light green background (#e8f5e9)
+- Summary statistics dashboard with severity breakdowns
 - Interactive visualizations using Plotly (when available)
 - Sortable result tables with column-based ordering
 - Paginated result viewing (100 rows per page with Previous/Next navigation)
-- Collapsible column explanations for cleaner display 🆕
-- CSV export functionality for offline analysis 🆕
-- Color-coded severity indicators (high/medium/low)
+- Collapsible column explanations for cleaner display
+- CSV export functionality respecting current filters and sorting
+- Professional table styling with clear visual hierarchy
 
 ### 🛡️ Security Features
 
@@ -142,10 +186,13 @@ from strategies import (
     ExfilStrategy,
     PortScanStrategy,
     BruteForceStrategy,
-    TunnelingStrategy
+    TunnelingStrategy,
+    LateralMovementStrategy,
+    DataHoardingStrategy,
+    TimeAnomalyStrategy
 )
 
-# Initialize dashboard with custom cache settings
+# Initialize dashboard with all strategies and custom cache settings
 dashboard = WatsonDashboard(
     strategies=[
         BeaconStrategy(),
@@ -153,7 +200,10 @@ dashboard = WatsonDashboard(
         ExfilStrategy(),
         PortScanStrategy(),
         BruteForceStrategy(),
-        TunnelingStrategy()
+        TunnelingStrategy(),
+        LateralMovementStrategy(),
+        DataHoardingStrategy(),
+        TimeAnomalyStrategy()
     ],
     cache_dir='.custom_cache',
     cache_days=3
@@ -162,6 +212,26 @@ dashboard = WatsonDashboard(
 # Display the dashboard
 dashboard.display()
 ```
+
+### Using the Enhanced UI Features
+
+**Filtering Results by Severity:**
+- After running an analysis, use the quick filter buttons at the top of results
+- Click "High (≥75)" to see only critical threats
+- Click "Medium (50-74)" for moderate threats
+- Click "Low (<50)" for informational findings
+- Click "All" to reset and show everything
+
+**Understanding Visual Indicators:**
+- **RED rows with HIGH badge** = Critical threats requiring immediate attention (score ≥75)
+- **ORANGE rows with MED badge** = Suspicious activity worth investigating (score 50-74)
+- **GREEN rows with LOW badge** = Lower priority anomalies (score <50)
+
+**Exporting Filtered Results:**
+- Apply any filters and sorting you want
+- Click the "📥 Export CSV" button
+- The exported file will contain only the filtered and sorted results
+- Files are timestamped for easy tracking
 
 ## Project Structure
 
