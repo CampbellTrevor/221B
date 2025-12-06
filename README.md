@@ -22,6 +22,9 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 - Quick-filter buttons for instant severity filtering
 - Professional table styling with clear visual hierarchy
 - Improved summary statistics dashboard
+- **🆕 IP Address Threat Heatmap** - Visualize which IPs generate the most threats across strategies
+- **🆕 Strategy Effectiveness Insights** - Compare detection rates and severity distributions
+- **🆕 Three-Row Quick Action Layout** - Better organized controls for improved accessibility
 
 **Enhanced User Experience:**
 - One-click severity filtering for rapid threat triage
@@ -33,13 +36,16 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 - Interactive timeline analysis with temporal heatmaps
 - Smart recommendations that suggest next investigation steps
 - Context-aware workflow guidance based on detections
+- **🆕 11 Quick Action Buttons** - Comprehensive one-click analysis tools
 
-**🎯 NEW: Advanced Analyst Workflow Features:**
+**🎯 Advanced Analyst Workflow Features:**
 - **Quick Triage Dashboard** - View all high-severity threats across all strategies in one place
 - **Cross-Strategy Correlation** - Automatically identify IPs appearing in multiple detection strategies
 - **HTML Investigation Reports** - Generate comprehensive, formatted reports for documentation and sharing
 - **Threat Prioritization** - Intelligent aggregation and ranking of threats across all analyses
-- **One-Click Analysis Tools** - Fast access to correlation and triage views from the main dashboard
+- **IP Threat Heatmap** 🆕 - Bubble chart showing IP distribution across strategies with threat scores
+- **Strategy Insights** 🆕 - Stacked bar charts comparing effectiveness and severity breakdowns
+- **One-Click Analysis Tools** - Fast access to correlation, triage, and visualization views
 
 ## Features
 

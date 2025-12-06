@@ -828,6 +828,276 @@ class WatsonDashboard:
         print("   • Correlate timeline with known incidents")
         print("   • Use this to tune detection windows")
     
+    def _show_threat_heatmap(self):
+        """
+        Display an IP address threat heatmap showing which IPs have the most/highest threats.
+        """
+        if not self.strategy_results:
+            print("⚠️ No threat data available yet. Run some strategies first.")
+            return
+        
+        print("=" * 80)
+        print("🗺️  IP ADDRESS THREAT HEATMAP")
+        print("=" * 80)
+        print()
+        
+        # Collect IP and score data from all strategies
+        ip_threat_data = []
+        
+        for strategy_name, result_data in self.strategy_results.items():
+            df = result_data['dataframe']
+            
+            # Look for IP columns
+            ip_cols = [col for col in df.columns if 'ip' in col.lower() or 'address' in col.lower()]
+            if not ip_cols:
+                continue
+            
+            ip_col = ip_cols[0]
+            
+            # Find score column
+            score_cols = [col for col in df.columns if col.endswith('_score')]
+            if not score_cols:
+                continue
+            
+            score_col = score_cols[0]
+            
+            # Extract IP and score data
+            for _, row in df.iterrows():
+                ip = str(row[ip_col]) if pd.notna(row[ip_col]) else None
+                score = row[score_col] if pd.notna(row[score_col]) else 0
+                
+                if ip and ip != 'Unknown':
+                    ip_threat_data.append({
+                        'ip': ip,
+                        'strategy': strategy_name.split('(')[0].strip()[:25],
+                        'score': score,
+                        'severity': 'High' if score >= HIGH_SEVERITY_THRESHOLD else 'Medium' if score >= MEDIUM_SEVERITY_THRESHOLD else 'Low'
+                    })
+        
+        if not ip_threat_data:
+            print("⚠️ No IP address data available in results.")
+            return
+        
+        ip_df = pd.DataFrame(ip_threat_data)
+        
+        # Aggregate by IP
+        ip_summary = ip_df.groupby('ip').agg({
+            'score': ['count', 'mean', 'max'],
+            'strategy': lambda x: ', '.join(x.unique()[:3])
+        }).reset_index()
+        
+        ip_summary.columns = ['IP Address', 'Threat Count', 'Avg Score', 'Max Score', 'Strategies']
+        ip_summary = ip_summary.sort_values('Max Score', ascending=False)
+        
+        # Display top threatening IPs
+        print(f"📊 Top 20 Most Threatening IP Addresses:")
+        print("-" * 80)
+        
+        top_ips = ip_summary.head(20).copy()
+        top_ips['Max Score'] = top_ips['Max Score'].apply(lambda x: f"{x:.1f}")
+        top_ips['Avg Score'] = top_ips['Avg Score'].apply(lambda x: f"{x:.1f}")
+        top_ips['Strategies'] = top_ips['Strategies'].apply(lambda x: x[:50] + '...' if len(x) > 50 else x)
+        
+        display(HTML(top_ips.to_html(index=False, escape=True, classes='table')))
+        print()
+        
+        # Show severity breakdown
+        severity_counts = ip_df.groupby('severity').size()
+        print("🎯 Threat Severity Distribution:")
+        for severity in ['High', 'Medium', 'Low']:
+            count = severity_counts.get(severity, 0)
+            emoji = '🔴' if severity == 'High' else '🟡' if severity == 'Medium' else '🟢'
+            print(f"   {emoji} {severity}: {count:,} detections")
+        print()
+        
+        # Visualization if plotly available
+        if HAS_PLOTLY and len(ip_summary) > 0:
+            try:
+                # Create bubble chart: IP vs Strategy with size=count, color=max_score
+                plot_data = ip_df[ip_df['ip'].isin(top_ips['IP Address'].head(15))]
+                
+                fig = go.Figure()
+                
+                for severity, color in [('High', '#ef4444'), ('Medium', '#f59e0b'), ('Low', '#10b981')]:
+                    severity_data = plot_data[plot_data['severity'] == severity]
+                    
+                    if len(severity_data) > 0:
+                        fig.add_trace(go.Scatter(
+                            x=severity_data['ip'],
+                            y=severity_data['strategy'],
+                            mode='markers',
+                            name=severity,
+                            marker=dict(
+                                size=severity_data['score'] / 3,
+                                color=color,
+                                line=dict(width=1, color='white'),
+                                opacity=0.7
+                            ),
+                            text=severity_data['score'].apply(lambda x: f"Score: {x:.1f}"),
+                            hovertemplate='<b>%{x}</b><br>Strategy: %{y}<br>%{text}<extra></extra>'
+                        ))
+                
+                fig.update_layout(
+                    title='IP Threat Heatmap: Distribution Across Strategies',
+                    xaxis_title='IP Address',
+                    yaxis_title='Detection Strategy',
+                    height=600,
+                    xaxis={'tickangle': -45},
+                    showlegend=True,
+                    legend=dict(title='Severity')
+                )
+                
+                display(fig)
+                print()
+                
+            except Exception as e:
+                print(f"⚠️ Could not generate heatmap visualization: {e}")
+        
+        print("💡 Heatmap Analysis Tips:")
+        print("   • Focus investigation on IPs with multiple high-severity detections")
+        print("   • IPs appearing in many strategies suggest coordinated attack")
+        print("   • Use correlation analysis for deeper IP relationship insights")
+        print("   • Export top IPs for blocklist or SIEM integration")
+        print()
+    
+    def _show_strategy_insights(self):
+        """
+        Display advanced insights comparing strategy effectiveness and coverage.
+        """
+        if not self.strategy_results:
+            print("⚠️ No analysis results available yet. Run some strategies first.")
+            return
+        
+        print("=" * 80)
+        print("🎓 STRATEGY EFFECTIVENESS INSIGHTS")
+        print("=" * 80)
+        print()
+        
+        # Calculate metrics for each strategy
+        insights = []
+        
+        for strategy_name, result_data in self.strategy_results.items():
+            df = result_data['dataframe']
+            strategy = result_data['strategy']
+            
+            if df.empty:
+                continue
+            
+            # Find score column
+            score_cols = [col for col in df.columns if col.endswith('_score')]
+            if not score_cols:
+                continue
+            
+            score_col = score_cols[0]
+            
+            # Calculate metrics
+            total_detections = len(df)
+            high_severity = len(df[df[score_col] >= HIGH_SEVERITY_THRESHOLD])
+            medium_severity = len(df[(df[score_col] >= MEDIUM_SEVERITY_THRESHOLD) & (df[score_col] < HIGH_SEVERITY_THRESHOLD)])
+            low_severity = len(df[df[score_col] < MEDIUM_SEVERITY_THRESHOLD])
+            avg_score = df[score_col].mean()
+            max_score = df[score_col].max()
+            
+            # Calculate coverage (unique IPs)
+            ip_cols = [col for col in df.columns if 'ip' in col.lower() or 'address' in col.lower()]
+            unique_ips = df[ip_cols[0]].nunique() if ip_cols else 0
+            
+            insights.append({
+                'Strategy': strategy_name.split('(')[0].strip()[:30],
+                'Total Findings': total_detections,
+                'High Severity': high_severity,
+                'Medium Severity': medium_severity,
+                'Low Severity': low_severity,
+                'Avg Score': f"{avg_score:.1f}",
+                'Max Score': f"{max_score:.1f}",
+                'Unique IPs': unique_ips,
+                'Detection Rate': f"{(high_severity/total_detections*100):.1f}%" if total_detections > 0 else "0%"
+            })
+        
+        if not insights:
+            print("⚠️ No strategy data with scores available.")
+            return
+        
+        insights_df = pd.DataFrame(insights)
+        insights_df = insights_df.sort_values('High Severity', ascending=False)
+        
+        print("📊 Strategy Performance Comparison:")
+        print("-" * 80)
+        display(HTML(insights_df.to_html(index=False, escape=True, classes='table')))
+        print()
+        
+        # Calculate overall statistics
+        total_findings = insights_df['Total Findings'].sum()
+        total_high = insights_df['High Severity'].sum()
+        total_medium = insights_df['Medium Severity'].sum()
+        total_low = insights_df['Low Severity'].sum()
+        
+        print("🎯 Overall Threat Landscape:")
+        print(f"   • Total detections: {total_findings:,}")
+        print(f"   • 🔴 High severity: {total_high:,} ({total_high/total_findings*100:.1f}%)")
+        print(f"   • 🟡 Medium severity: {total_medium:,} ({total_medium/total_findings*100:.1f}%)")
+        print(f"   • 🟢 Low severity: {total_low:,} ({total_low/total_findings*100:.1f}%)")
+        print()
+        
+        # Identify most effective strategies
+        most_effective = insights_df.nlargest(3, 'High Severity')
+        print("🏆 Most Effective Strategies (by high-severity detections):")
+        for i, row in enumerate(most_effective.itertuples(), 1):
+            print(f"   {i}. {row.Strategy}: {row._2} high-severity threats")
+        print()
+        
+        # Visualization if plotly available
+        if HAS_PLOTLY and len(insights_df) > 0:
+            try:
+                from plotly.subplots import make_subplots
+                
+                # Create stacked bar chart of severity distribution
+                fig = go.Figure()
+                
+                fig.add_trace(go.Bar(
+                    name='High Severity',
+                    x=insights_df['Strategy'],
+                    y=insights_df['High Severity'],
+                    marker_color='#ef4444'
+                ))
+                
+                fig.add_trace(go.Bar(
+                    name='Medium Severity',
+                    x=insights_df['Strategy'],
+                    y=insights_df['Medium Severity'],
+                    marker_color='#f59e0b'
+                ))
+                
+                fig.add_trace(go.Bar(
+                    name='Low Severity',
+                    x=insights_df['Strategy'],
+                    y=insights_df['Low Severity'],
+                    marker_color='#10b981'
+                ))
+                
+                fig.update_layout(
+                    title='Strategy Effectiveness: Severity Distribution',
+                    xaxis_title='Strategy',
+                    yaxis_title='Number of Detections',
+                    barmode='stack',
+                    height=500,
+                    xaxis={'tickangle': -45},
+                    legend=dict(title='Severity Level')
+                )
+                
+                display(fig)
+                print()
+                
+            except Exception as e:
+                print(f"⚠️ Could not generate insights visualization: {e}")
+        
+        print("💡 Strategic Insights:")
+        print("   • Strategies with many high-severity findings need priority attention")
+        print("   • Low detection rates may indicate clean environment or need tuning")
+        print("   • Compare unique IP counts to identify targeted vs. broad attacks")
+        print("   • Use this to prioritize which strategies to run regularly")
+        print()
+    
     def _show_smart_recommendations(self):
         """
         Provide intelligent recommendations for next steps based on current findings.
@@ -2642,6 +2912,22 @@ class WatsonDashboard:
             layout=widgets.Layout(width='100px')
         )
         
+        heatmap_button = widgets.Button(
+            description='🗺️ IP Heatmap',
+            button_style='',
+            tooltip='View IP address threat heatmap',
+            icon='map',
+            layout=widgets.Layout(width='140px')
+        )
+        
+        insights_button = widgets.Button(
+            description='🎓 Strategy Insights',
+            button_style='',
+            tooltip='Compare strategy effectiveness and coverage',
+            icon='line-chart',
+            layout=widgets.Layout(width='170px')
+        )
+        
         action_output = widgets.Output()
         
         def show_tips():
@@ -2744,6 +3030,16 @@ class WatsonDashboard:
         def on_help_click(b):
             show_tips()
         
+        def on_heatmap_click(b):
+            with action_output:
+                clear_output(wait=True)
+                self._show_threat_heatmap()
+        
+        def on_insights_click(b):
+            with action_output:
+                clear_output(wait=True)
+                self._show_strategy_insights()
+        
         triage_button.on_click(on_triage_click)
         correlation_button.on_click(on_correlation_click)
         report_button.on_click(on_report_click)
@@ -2753,8 +3049,10 @@ class WatsonDashboard:
         timeline_button.on_click(on_timeline_click)
         recommend_button.on_click(on_recommend_click)
         help_button.on_click(on_help_click)
+        heatmap_button.on_click(on_heatmap_click)
+        insights_button.on_click(on_insights_click)
         
-        # Split buttons into two rows for better layout
+        # Split buttons into three rows for better layout
         action_row1 = widgets.HBox([
             triage_button,
             correlation_button,
@@ -2766,11 +3064,16 @@ class WatsonDashboard:
         action_row2 = widgets.HBox([
             performance_button,
             timeline_button,
+            heatmap_button,
+            insights_button
+        ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))
+        
+        action_row3 = widgets.HBox([
             recommend_button,
             help_button
         ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))
         
-        action_buttons = widgets.VBox([action_row1, action_row2])
+        action_buttons = widgets.VBox([action_row1, action_row2, action_row3])
         
         # Arrange layout with tabs
         dashboard = widgets.VBox([
