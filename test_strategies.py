@@ -588,17 +588,17 @@ class TestGeoAnomalyStrategy(unittest.TestCase):
     def test_high_risk_country_detection(self):
         """Test that high-risk countries are detected."""
         # Create mock data with high-risk country
-        # Need to add multiple countries to reach threshold (40 + 10 = 50)
+        # CN (high-risk country) provides 40 points + 2 countries provides 10 points = 50 total
         data = []
         for i in range(10):
             data.append({
                 'source_ip': '192.168.1.100',
-                'country_code': 'CN'  # High-risk country
+                'country_code': 'CN'  # High-risk country (40 points)
             })
         for i in range(5):
             data.append({
                 'source_ip': '192.168.1.100',
-                'country_code': 'US'  # Normal country  
+                'country_code': 'US'  # Normal country (enables 2-country bonus: 10 points)
             })
         
         df = pd.DataFrame(data)
@@ -698,17 +698,17 @@ class TestUserAgentAnomalyStrategy(unittest.TestCase):
     def test_suspicious_pattern_detection(self):
         """Test that suspicious patterns are detected."""
         # Create mock data with suspicious user agents
-        # Need empty agents (20 points) + suspicious pattern (30 points) = 50
+        # Suspicious pattern (30 points) + empty agents (20 points) = 50 total
         data = []
         for i in range(10):
             data.append({
                 'source_ip': '192.168.1.100',
-                'user_agent': 'python-requests/2.28.0'  # Suspicious
+                'user_agent': 'python-requests/2.28.0'  # Suspicious pattern (30 points)
             })
         for i in range(5):
             data.append({
                 'source_ip': '192.168.1.100',
-                'user_agent': ''  # Empty - suspicious
+                'user_agent': ''  # Empty user agent (20 points)
             })
         
         df = pd.DataFrame(data)

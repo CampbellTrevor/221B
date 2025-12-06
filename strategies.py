@@ -1857,12 +1857,8 @@ class GeoAnomalyStrategy(HuntStrategy):
     MIN_ANOMALY_SCORE = 50
     # High-risk country codes (simplified list - real implementation would be more comprehensive)
     HIGH_RISK_COUNTRIES = ['CN', 'RU', 'KP', 'IR', 'SY', 'XX']  # XX = Unknown/Anonymous
-    # Suspicious TLDs often used in attacks
-    SUSPICIOUS_TLDS = ['.ru', '.cn', '.tk', '.ml', '.ga', '.cf', '.gq', '.top', '.xyz']
     # Time window for impossible travel detection (hours)
     IMPOSSIBLE_TRAVEL_HOURS = 2
-    # Minimum distance for impossible travel (km)
-    MIN_IMPOSSIBLE_DISTANCE_KM = 500
     
     def _get_name(self) -> str:
         return "Geo-Anomaly Detector (Suspicious Locations)"
