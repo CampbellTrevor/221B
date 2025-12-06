@@ -43,6 +43,23 @@ MEDIUM_SEVERITY_THRESHOLD = 50  # Score threshold for medium-severity threats
 MAX_DISPLAY_ITEMS = 20  # Maximum items to display in correlation/triage views
 STRING_TRUNCATE_LENGTH = 50  # Length to truncate long strings for display
 
+# Common HTML/CSS styles for dashboard cards (consolidated for reusability)
+DASHBOARD_CARD_STYLE = """
+background: linear-gradient(135deg, #1e293b 0%, #334155 100%); 
+color: white; 
+padding: 32px; 
+border-radius: 20px; 
+margin: 20px 0; 
+box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+"""
+
+METRIC_CARD_BASE_STYLE = """
+padding: 24px; 
+border-radius: 16px; 
+box-shadow: 0 4px 6px rgba(0,0,0,0.2); 
+border: 2px solid rgba(255,255,255,0.1);
+"""
+
 
 class WatsonDashboard:
     """
@@ -442,38 +459,66 @@ class WatsonDashboard:
         tab_data['start_date'].disabled = not enabled
         tab_data['end_date'].disabled = not enabled
     
-    def _show_threat_metrics_dashboard(self):
+    def _calculate_severity_metrics(self):
         """
-        Display a comprehensive real-time threat metrics dashboard showing
-        aggregated statistics across all strategies.
+        Calculate severity metrics across all strategy results.
+        Consolidates duplicate calculation logic used in multiple dashboard views.
+        
+        Returns:
+            dict: Dictionary containing severity counts, scores, and totals
         """
+        metrics = {
+            'total_threats': 0,
+            'strategies_run': 0,
+            'high_severity_count': 0,
+            'medium_severity_count': 0,
+            'low_severity_count': 0,
+            'max_threat_score': 0,
+            'all_scores': [],
+            'avg_threat_score': 0
+        }
+        
         if not self.strategy_results:
-            print("⚠️ No analysis results available. Run some strategies first.")
-            return
+            return metrics
         
-        # Calculate aggregate metrics
-        total_threats = sum(len(r['dataframe']) for r in self.strategy_results.values())
-        strategies_run = len(self.strategy_results)
-        
-        # Calculate severity breakdown across all strategies
-        high_severity_count = 0
-        medium_severity_count = 0
-        low_severity_count = 0
-        max_threat_score = 0
-        all_scores = []
+        metrics['total_threats'] = sum(len(r['dataframe']) for r in self.strategy_results.values())
+        metrics['strategies_run'] = len(self.strategy_results)
         
         for result_data in self.strategy_results.values():
             df = result_data['dataframe']
             score_cols = [col for col in df.columns if col.endswith('_score')]
             if score_cols:
                 scores = df[score_cols[0]]
-                all_scores.extend(scores.tolist())
-                high_severity_count += len(df[scores >= HIGH_SEVERITY_THRESHOLD])
-                medium_severity_count += len(df[(scores >= MEDIUM_SEVERITY_THRESHOLD) & (scores < HIGH_SEVERITY_THRESHOLD)])
-                low_severity_count += len(df[scores < MEDIUM_SEVERITY_THRESHOLD])
-                max_threat_score = max(max_threat_score, scores.max())
+                metrics['all_scores'].extend(scores.tolist())
+                metrics['high_severity_count'] += len(df[scores >= HIGH_SEVERITY_THRESHOLD])
+                metrics['medium_severity_count'] += len(df[(scores >= MEDIUM_SEVERITY_THRESHOLD) & (scores < HIGH_SEVERITY_THRESHOLD)])
+                metrics['low_severity_count'] += len(df[scores < MEDIUM_SEVERITY_THRESHOLD])
+                metrics['max_threat_score'] = max(metrics['max_threat_score'], scores.max())
         
-        avg_threat_score = sum(all_scores) / len(all_scores) if all_scores else 0
+        if metrics['all_scores']:
+            metrics['avg_threat_score'] = sum(metrics['all_scores']) / len(metrics['all_scores'])
+        
+        return metrics
+    
+    def _show_threat_metrics_dashboard(self):
+        """
+        Display a comprehensive real-time threat metrics dashboard showing
+        aggregated statistics across all strategies.
+        """
+        if not self.strategy_results:
+            print("⚠️ No analysis results available. Run some strategies first to see metrics.")
+            return
+        
+        # Use consolidated helper method to calculate metrics
+        metrics = self._calculate_severity_metrics()
+        total_threats = metrics['total_threats']
+        strategies_run = metrics['strategies_run']
+        high_severity_count = metrics['high_severity_count']
+        medium_severity_count = metrics['medium_severity_count']
+        low_severity_count = metrics['low_severity_count']
+        max_threat_score = metrics['max_threat_score']
+        avg_threat_score = metrics['avg_threat_score']
+        all_scores = metrics['all_scores']
         
         # Build dashboard HTML
         dashboard_html = f"""
@@ -636,7 +681,7 @@ class WatsonDashboard:
         Display a real-time threat velocity gauge showing threats detected per time period.
         """
         if not self.strategy_results:
-            print("⚠️ No analysis results available. Run some strategies first.")
+            print("⚠️ No analysis results available. Run some strategies first to see velocity metrics.")
             return
         
         print("=" * 80)
@@ -2081,40 +2126,24 @@ class WatsonDashboard:
             """Handle CSV export button click."""
             with export_output:
                 clear_output(wait=True)
-                try:
-                    # Generate filename with timestamp
-                    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-                    # Sanitize strategy name for filename
-                    safe_name = re.sub(r'[^\w\s-]', '', strategy_name).strip().replace(' ', '_')
-                    filename = f"{safe_name}_{timestamp}.csv"
-                    
-                    # Save CSV (use current filtered/sorted df)
-                    sorted_df = cached_sorted_df['df']
-                    sorted_df.to_csv(filename, index=False)
-                    
+                sorted_df = cached_sorted_df['df']
+                success, filename, error = self._export_dataframe(sorted_df, strategy_name, 'csv')
+                if success:
                     print(f"✅ Exported {len(sorted_df)} rows to {filename}")
-                except Exception as e:
-                    print(f"❌ Export failed: {e}")
+                else:
+                    print(f"❌ Export failed: {error}")
         
         def on_export_json_click(b):
             """Handle JSON export button click."""
             with export_output:
                 clear_output(wait=True)
-                try:
-                    # Generate filename with timestamp
-                    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-                    # Sanitize strategy name for filename
-                    safe_name = re.sub(r'[^\w\s-]', '', strategy_name).strip().replace(' ', '_')
-                    filename = f"{safe_name}_{timestamp}.json"
-                    
-                    # Save JSON (use current filtered/sorted df)
-                    sorted_df = cached_sorted_df['df']
-                    sorted_df.to_json(filename, orient='records', date_format='iso', indent=2)
-                    
+                sorted_df = cached_sorted_df['df']
+                success, filename, error = self._export_dataframe(sorted_df, strategy_name, 'json')
+                if success:
                     print(f"✅ Exported {len(sorted_df)} rows to {filename}")
                     print("💡 JSON format is ideal for SIEM integration, API ingestion, or programmatic analysis")
-                except Exception as e:
-                    print(f"❌ Export failed: {e}")
+                else:
+                    print(f"❌ Export failed: {error}")
         
         # Attach observers and handlers
         search_box.observe(on_search_change, names='value')
@@ -2163,6 +2192,34 @@ class WatsonDashboard:
         sortable_table = widgets.VBox(ui_components)
         
         display(sortable_table)
+    
+    def _export_dataframe(self, df: pd.DataFrame, strategy_name: str, export_format: str = 'csv') -> tuple:
+        """
+        Export a DataFrame to file with standardized naming and error handling.
+        Consolidates duplicate export logic used across multiple methods.
+        
+        Args:
+            df: DataFrame to export
+            strategy_name: Name of strategy (used for filename)
+            export_format: 'csv' or 'json'
+        
+        Returns:
+            tuple: (success: bool, filename: str, error_msg: str or None)
+        """
+        try:
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            safe_name = re.sub(r'[^\w\s-]', '', strategy_name).strip().replace(' ', '_')
+            
+            if export_format == 'json':
+                filename = f"{safe_name}_{timestamp}.json"
+                df.to_json(filename, orient='records', date_format='iso', indent=2)
+            else:  # default to CSV
+                filename = f"{safe_name}_{timestamp}.csv"
+                df.to_csv(filename, index=False)
+            
+            return (True, filename, None)
+        except Exception as e:
+            return (False, '', str(e))
     
     def _sanitize_identifier(self, identifier: str) -> str:
         """
@@ -3241,19 +3298,10 @@ class WatsonDashboard:
                 print(f"⚠️ {strategy_name}: No data to export")
                 continue
             
-            try:
-                # Sanitize strategy name for filename
-                safe_name = re.sub(r'[^\w\s-]', '', strategy_name).strip().replace(' ', '_')
-                
-                if export_format == 'json':
-                    filename = f"{safe_name}_{timestamp}.json"
-                    # Export to JSON with date handling
-                    df.to_json(filename, orient='records', date_format='iso', indent=2)
-                else:
-                    filename = f"{safe_name}_{timestamp}.csv"
-                    # Export to CSV
-                    df.to_csv(filename, index=False)
-                
+            # Use consolidated export helper
+            success, filename, error = self._export_dataframe(df, strategy_name, export_format)
+            
+            if success:
                 export_count += 1
                 total_rows += len(df)
                 
@@ -3265,9 +3313,8 @@ class WatsonDashboard:
                     print(f"✅ {strategy_name}: {len(df)} rows exported to {filename} ({high_count} high-severity)")
                 else:
                     print(f"✅ {strategy_name}: {len(df)} rows exported to {filename}")
-                    
-            except Exception as e:
-                print(f"❌ {strategy_name}: Export failed - {e}")
+            else:
+                print(f"❌ {strategy_name}: Export failed - {error}")
         
         print()
         print("=" * 80)
