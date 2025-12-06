@@ -2780,11 +2780,11 @@ class WatsonDashboard:
                     <div style="{CSS_TEXT_SUBTLE}">Correlated IPs</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
-                    <div style="{CSS_HEADING_LARGE} color: #ff6b6b;">{critical_count}</div>
+                    <div style="{CSS_HEADING_LARGE}; color: #ff6b6b;">{critical_count}</div>
                     <div style="{CSS_TEXT_SUBTLE}">Critical Threats</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
-                    <div style="{CSS_HEADING_LARGE} color: #ffd93d;">{high_count}</div>
+                    <div style="{CSS_HEADING_LARGE}; color: #ffd93d;">{high_count}</div>
                     <div style="{CSS_TEXT_SUBTLE}">High Priority</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
