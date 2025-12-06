@@ -1847,7 +1847,8 @@ class WatsonDashboard:
                     return
                 
                 print(f"✅ Analysis complete! Found {len(result_df)} results.")
-                print(f"⏱️  Analysis time: {analysis_duration:.2f} seconds ({len(df)/analysis_duration:.0f} rows/sec)")
+                rows_per_sec = len(df) / analysis_duration if analysis_duration > 0 else 0
+                print(f"⏱️  Analysis time: {analysis_duration:.2f} seconds ({rows_per_sec:.0f} rows/sec)")
                 print()
                 
                 # Store results for correlation analysis

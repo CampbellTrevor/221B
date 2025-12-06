@@ -848,96 +848,50 @@ class TestCryptoMiningStrategy(unittest.TestCase):
 class TestStrategyRequirements(unittest.TestCase):
     """Test that all strategies meet basic requirements."""
     
+    # All strategies to test - defined once to avoid duplication
+    ALL_STRATEGIES = [
+        BeaconStrategy,
+        EntropyStrategy,
+        ExfilStrategy,
+        PortScanStrategy,
+        BruteForceStrategy,
+        TunnelingStrategy,
+        LateralMovementStrategy,
+        DataHoardingStrategy,
+        TimeAnomalyStrategy,
+        GeoAnomalyStrategy,
+        UserAgentAnomalyStrategy,
+        CryptoMiningStrategy,
+        DNSAnomalyStrategy,
+        AccountTakeoverStrategy,
+        DataStagingStrategy,
+        FilelessMalwareStrategy,
+        APIAbuseStrategy,
+        ShadowITStrategy,
+        PrivilegeEscalationStrategy,
+        WebshellDetectionStrategy,
+        CredentialDumpingStrategy,
+        RansomwareIndicatorStrategy
+    ]
+    
     def test_all_strategies_have_names(self):
         """Test that all strategies have names."""
-        strategies = [
-            BeaconStrategy(),
-            EntropyStrategy(),
-            ExfilStrategy(),
-            PortScanStrategy(),
-            BruteForceStrategy(),
-            TunnelingStrategy(),
-            LateralMovementStrategy(),
-            DataHoardingStrategy(),
-            TimeAnomalyStrategy(),
-            GeoAnomalyStrategy(),
-            UserAgentAnomalyStrategy(),
-            CryptoMiningStrategy(),
-            DNSAnomalyStrategy(),
-            AccountTakeoverStrategy(),
-            DataStagingStrategy(),
-            FilelessMalwareStrategy(),
-            APIAbuseStrategy(),
-            ShadowITStrategy(),
-            PrivilegeEscalationStrategy(),
-            WebshellDetectionStrategy(),
-            CredentialDumpingStrategy(),
-            RansomwareIndicatorStrategy()
-        ]
-        
-        for strategy in strategies:
+        for StrategyClass in self.ALL_STRATEGIES:
+            strategy = StrategyClass()
             self.assertIsNotNone(strategy.name)
             self.assertGreater(len(strategy.name), 0)
     
     def test_all_strategies_have_required_inputs(self):
         """Test that all strategies define required inputs."""
-        strategies = [
-            BeaconStrategy(),
-            EntropyStrategy(),
-            ExfilStrategy(),
-            PortScanStrategy(),
-            BruteForceStrategy(),
-            TunnelingStrategy(),
-            LateralMovementStrategy(),
-            DataHoardingStrategy(),
-            TimeAnomalyStrategy(),
-            GeoAnomalyStrategy(),
-            UserAgentAnomalyStrategy(),
-            CryptoMiningStrategy(),
-            DNSAnomalyStrategy(),
-            AccountTakeoverStrategy(),
-            DataStagingStrategy(),
-            FilelessMalwareStrategy(),
-            APIAbuseStrategy(),
-            ShadowITStrategy(),
-            PrivilegeEscalationStrategy(),
-            WebshellDetectionStrategy(),
-            CredentialDumpingStrategy(),
-            RansomwareIndicatorStrategy()
-        ]
-        
-        for strategy in strategies:
+        for StrategyClass in self.ALL_STRATEGIES:
+            strategy = StrategyClass()
             self.assertIsNotNone(strategy.required_inputs)
             self.assertGreater(len(strategy.required_inputs), 0)
     
     def test_all_strategies_have_explanations(self):
         """Test that all strategies provide column explanations."""
-        strategies = [
-            BeaconStrategy(),
-            EntropyStrategy(),
-            ExfilStrategy(),
-            PortScanStrategy(),
-            BruteForceStrategy(),
-            TunnelingStrategy(),
-            LateralMovementStrategy(),
-            DataHoardingStrategy(),
-            TimeAnomalyStrategy(),
-            GeoAnomalyStrategy(),
-            UserAgentAnomalyStrategy(),
-            CryptoMiningStrategy(),
-            DNSAnomalyStrategy(),
-            AccountTakeoverStrategy(),
-            DataStagingStrategy(),
-            FilelessMalwareStrategy(),
-            APIAbuseStrategy(),
-            ShadowITStrategy(),
-            PrivilegeEscalationStrategy(),
-            WebshellDetectionStrategy(),
-            CredentialDumpingStrategy(),
-            RansomwareIndicatorStrategy()
-        ]
-        
-        for strategy in strategies:
+        for StrategyClass in self.ALL_STRATEGIES:
+            strategy = StrategyClass()
             explanations = strategy.get_column_explanations()
             self.assertIsNotNone(explanations)
             self.assertGreater(len(explanations), 0)
