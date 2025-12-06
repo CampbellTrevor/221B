@@ -27,7 +27,11 @@ from strategies import (
     DataStagingStrategy,
     FilelessMalwareStrategy,
     APIAbuseStrategy,
-    ShadowITStrategy
+    ShadowITStrategy,
+    PrivilegeEscalationStrategy,
+    WebshellDetectionStrategy,
+    CredentialDumpingStrategy,
+    RansomwareIndicatorStrategy
 )
 
 
@@ -844,69 +848,50 @@ class TestCryptoMiningStrategy(unittest.TestCase):
 class TestStrategyRequirements(unittest.TestCase):
     """Test that all strategies meet basic requirements."""
     
+    # All strategies to test - defined once to avoid duplication
+    ALL_STRATEGIES = [
+        BeaconStrategy,
+        EntropyStrategy,
+        ExfilStrategy,
+        PortScanStrategy,
+        BruteForceStrategy,
+        TunnelingStrategy,
+        LateralMovementStrategy,
+        DataHoardingStrategy,
+        TimeAnomalyStrategy,
+        GeoAnomalyStrategy,
+        UserAgentAnomalyStrategy,
+        CryptoMiningStrategy,
+        DNSAnomalyStrategy,
+        AccountTakeoverStrategy,
+        DataStagingStrategy,
+        FilelessMalwareStrategy,
+        APIAbuseStrategy,
+        ShadowITStrategy,
+        PrivilegeEscalationStrategy,
+        WebshellDetectionStrategy,
+        CredentialDumpingStrategy,
+        RansomwareIndicatorStrategy
+    ]
+    
     def test_all_strategies_have_names(self):
         """Test that all strategies have names."""
-        strategies = [
-            BeaconStrategy(),
-            EntropyStrategy(),
-            ExfilStrategy(),
-            PortScanStrategy(),
-            BruteForceStrategy(),
-            TunnelingStrategy(),
-            LateralMovementStrategy(),
-            DataHoardingStrategy(),
-            TimeAnomalyStrategy(),
-            GeoAnomalyStrategy(),
-            UserAgentAnomalyStrategy(),
-            CryptoMiningStrategy()
-        ]
-        
-        for strategy in strategies:
+        for StrategyClass in self.ALL_STRATEGIES:
+            strategy = StrategyClass()
             self.assertIsNotNone(strategy.name)
             self.assertGreater(len(strategy.name), 0)
     
     def test_all_strategies_have_required_inputs(self):
         """Test that all strategies define required inputs."""
-        strategies = [
-            BeaconStrategy(),
-            EntropyStrategy(),
-            ExfilStrategy(),
-            PortScanStrategy(),
-            BruteForceStrategy(),
-            TunnelingStrategy(),
-            LateralMovementStrategy(),
-            DataHoardingStrategy(),
-            TimeAnomalyStrategy(),
-            GeoAnomalyStrategy(),
-            UserAgentAnomalyStrategy(),
-            CryptoMiningStrategy()
-        ]
-        
-        for strategy in strategies:
+        for StrategyClass in self.ALL_STRATEGIES:
+            strategy = StrategyClass()
             self.assertIsNotNone(strategy.required_inputs)
             self.assertGreater(len(strategy.required_inputs), 0)
     
     def test_all_strategies_have_explanations(self):
         """Test that all strategies provide column explanations."""
-        strategies = [
-            BeaconStrategy(),
-            EntropyStrategy(),
-            ExfilStrategy(),
-            PortScanStrategy(),
-            BruteForceStrategy(),
-            TunnelingStrategy(),
-            LateralMovementStrategy(),
-            DataHoardingStrategy(),
-            TimeAnomalyStrategy(),
-            GeoAnomalyStrategy(),
-            UserAgentAnomalyStrategy(),
-            CryptoMiningStrategy(),
-            DNSAnomalyStrategy(),
-            AccountTakeoverStrategy(),
-            DataStagingStrategy()
-        ]
-        
-        for strategy in strategies:
+        for StrategyClass in self.ALL_STRATEGIES:
+            strategy = StrategyClass()
             explanations = strategy.get_column_explanations()
             self.assertIsNotNone(explanations)
             self.assertGreater(len(explanations), 0)
@@ -1356,6 +1341,361 @@ class TestShadowITStrategy(unittest.TestCase):
         self.assertIn('shadow_score', explanations)
         self.assertIn('source_ip', explanations)
         self.assertIn('cloud_services', explanations)
+
+
+class TestPrivilegeEscalationStrategy(unittest.TestCase):
+    """Test the Privilege Escalation strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = PrivilegeEscalationStrategy()
+    
+    def test_privilege_escalation_detection(self):
+        """Test that privilege escalation attempts are detected."""
+        # Create mock data with suspicious privilege escalation activity
+        data = []
+        for i in range(15):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'username': 'jdoe',
+                'command': 'sudo -i',
+                'process_name': 'sudo'
+            })
+        
+        # Add mimikatz execution
+        for i in range(5):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'username': 'jdoe',
+                'command': 'mimikatz.exe sekurlsa::logonpasswords',
+                'process_name': 'mimikatz.exe'
+            })
+        
+        # Add net user commands
+        for i in range(8):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'username': 'jdoe',
+                'command': 'net localgroup administrators /add',
+                'process_name': 'net.exe'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'username': 'username',
+            'command': 'command',
+            'process_name': 'process_name'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect privilege escalation
+        self.assertFalse(result.empty, "Should detect privilege escalation attempts")
+        self.assertGreaterEqual(result.iloc[0]['priv_esc_score'], 50)
+        self.assertIn('source_ip', result.columns)
+        self.assertIn('escalation_methods', result.columns)
+    
+    def test_normal_commands_not_flagged(self):
+        """Test that normal user commands are not flagged."""
+        # Create mock data with benign commands
+        data = []
+        for i in range(20):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'username': 'jdoe',
+                'command': f'ls -la /home/user/file{i}.txt',
+                'process_name': 'ls'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'username': 'username',
+            'command': 'command',
+            'process_name': 'process_name'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal activity
+        self.assertTrue(result.empty, "Normal commands should not be flagged")
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('priv_esc_score', explanations)
+        self.assertIn('source_ip', explanations)
+        self.assertIn('escalation_methods', explanations)
+
+
+class TestWebshellDetectionStrategy(unittest.TestCase):
+    """Test the Webshell Detection strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = WebshellDetectionStrategy()
+    
+    def test_webshell_detection(self):
+        """Test that web shell activity is detected."""
+        # Create mock data with web shell indicators
+        data = []
+        
+        # POST requests to suspicious files
+        for i in range(25):
+            data.append({
+                'source_ip': '10.0.0.50',
+                'uri': '/uploads/shell.php?cmd=whoami',
+                'method': 'POST',
+                'status_code': '200',
+                'user_agent': 'python-requests/2.28.0'
+            })
+        
+        # Requests with suspicious parameters
+        for i in range(15):
+            data.append({
+                'source_ip': '10.0.0.50',
+                'uri': f'/admin.php?exec=ls&command=id',
+                'method': 'POST',
+                'status_code': '200',
+                'user_agent': 'curl/7.68.0'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'uri': 'uri',
+            'method': 'method',
+            'status_code': 'status_code',
+            'user_agent': 'user_agent'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect web shell activity
+        self.assertFalse(result.empty, "Should detect web shell patterns")
+        self.assertGreaterEqual(result.iloc[0]['webshell_score'], 50)
+        self.assertIn('source_ip', result.columns)
+        self.assertIn('post_to_scripts', result.columns)
+    
+    def test_normal_web_traffic_not_flagged(self):
+        """Test that normal web traffic is not flagged."""
+        # Create mock data with normal web requests
+        data = []
+        for i in range(20):
+            data.append({
+                'source_ip': '10.0.0.50',
+                'uri': f'/index.html',
+                'method': 'GET',
+                'status_code': '200',
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/95.0'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'uri': 'uri',
+            'method': 'method',
+            'status_code': 'status_code',
+            'user_agent': 'user_agent'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal traffic
+        self.assertTrue(result.empty, "Normal web traffic should not be flagged")
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('webshell_score', explanations)
+        self.assertIn('source_ip', explanations)
+        self.assertIn('suspicious_uris', explanations)
+
+
+class TestCredentialDumpingStrategy(unittest.TestCase):
+    """Test the Credential Dumping strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = CredentialDumpingStrategy()
+    
+    def test_credential_dumping_detection(self):
+        """Test that credential dumping is detected."""
+        # Create mock data with credential dumping activity
+        data = []
+        
+        # Mimikatz usage
+        for i in range(10):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'username': 'admin',
+                'process_name': 'mimikatz.exe',
+                'command': 'mimikatz.exe privilege::debug sekurlsa::logonpasswords'
+            })
+        
+        # LSASS process access
+        for i in range(8):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'username': 'admin',
+                'process_name': 'procdump.exe',
+                'command': 'procdump.exe -ma lsass.exe lsass.dmp'
+            })
+        
+        # Registry hive exports
+        for i in range(5):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'username': 'admin',
+                'process_name': 'reg.exe',
+                'command': 'reg save hklm\\sam sam.hiv'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'username': 'username',
+            'process_name': 'process_name',
+            'command': 'command'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect credential dumping
+        self.assertFalse(result.empty, "Should detect credential dumping")
+        self.assertGreaterEqual(result.iloc[0]['cred_dump_score'], 50)
+        self.assertIn('source_ip', result.columns)
+        self.assertIn('tools_detected', result.columns)
+    
+    def test_normal_processes_not_flagged(self):
+        """Test that normal process activity is not flagged."""
+        # Create mock data with benign processes
+        data = []
+        for i in range(20):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'username': 'jdoe',
+                'process_name': 'notepad.exe',
+                'command': 'notepad.exe document.txt'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'username': 'username',
+            'process_name': 'process_name',
+            'command': 'command'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal processes
+        self.assertTrue(result.empty, "Normal processes should not be flagged")
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('cred_dump_score', explanations)
+        self.assertIn('source_ip', explanations)
+        self.assertIn('tools_detected', explanations)
+
+
+class TestRansomwareIndicatorStrategy(unittest.TestCase):
+    """Test the Ransomware Indicator strategy."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.strategy = RansomwareIndicatorStrategy()
+    
+    def test_ransomware_indicators_detection(self):
+        """Test that ransomware preparation indicators are detected."""
+        # Create mock data with ransomware preparation activity
+        data = []
+        
+        # Shadow copy deletion
+        for i in range(5):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'username': 'admin',
+                'command': 'vssadmin delete shadows /all /quiet',
+                'file_path': 'N/A'
+            })
+        
+        # Backup interference
+        for i in range(5):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'username': 'admin',
+                'command': 'net stop backup',
+                'file_path': 'N/A'
+            })
+        
+        # Boot config tampering
+        for i in range(3):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'username': 'admin',
+                'command': 'bcdedit /set {default} bootstatuspolicy ignoreallfailures',
+                'file_path': 'N/A'
+            })
+        
+        # Add encrypted files
+        for i in range(20):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'username': 'admin',
+                'command': 'N/A',
+                'file_path': f'/home/user/document{i}.txt.locked'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'username': 'username',
+            'command': 'command',
+            'file_path': 'file_path'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should detect ransomware indicators
+        self.assertFalse(result.empty, "Should detect ransomware indicators")
+        self.assertGreaterEqual(result.iloc[0]['ransomware_score'], 50)
+        self.assertIn('source_ip', result.columns)
+        self.assertIn('preparation_commands', result.columns)
+    
+    def test_normal_activity_not_flagged(self):
+        """Test that normal system activity is not flagged."""
+        # Create mock data with benign activity
+        data = []
+        for i in range(15):
+            data.append({
+                'source_ip': '192.168.1.100',
+                'username': 'jdoe',
+                'command': f'copy file{i}.txt backup/',
+                'file_path': f'/home/user/file{i}.txt'
+            })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'username': 'username',
+            'command': 'command',
+            'file_path': 'file_path'
+        }
+        
+        result = self.strategy.analyze(df, col_map)
+        
+        # Should not flag normal activity
+        self.assertTrue(result.empty, "Normal activity should not be flagged")
+    
+    def test_column_explanations(self):
+        """Test that column explanations are provided."""
+        explanations = self.strategy.get_column_explanations()
+        self.assertIn('ransomware_score', explanations)
+        self.assertIn('source_ip', explanations)
+        self.assertIn('preparation_commands', explanations)
 
 
 if __name__ == '__main__':

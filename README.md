@@ -9,9 +9,10 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 ### 🆕 What's New in This Release
 
 **Expanded Detection Coverage:**
-- 3 BRAND NEW advanced threat hunting strategies (Fileless Malware, API Abuse, Shadow IT)
-- Now covering **18 comprehensive threat categories** (up from 15)
-- Enhanced coverage for fileless attacks, LOLBins, API scraping, unauthorized cloud services, and modern attack techniques
+- 7 BRAND NEW advanced threat hunting strategies added in latest release
+- Now covering **22 comprehensive threat categories** (up from 15)
+- Enhanced coverage for privilege escalation, web shells, credential dumping, ransomware indicators
+- Also includes fileless attacks, LOLBins, API scraping, unauthorized cloud services, and modern attack techniques
 - Previous additions included Geo-Anomaly, User-Agent Analysis, Crypto Mining, DNS Anomaly, Account Takeover, and Data Staging
 
 **Visual Display Improvements:**
@@ -25,7 +26,12 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 - One-click severity filtering for rapid threat triage
 - Export respects current filters and sorting
 - Better visual feedback for high-priority threats
-- Cleaner, more intuitive interface
+- Cleaner, more intuitive interface with reorganized quick actions
+- Real-time performance tracking with execution time and throughput metrics
+- Advanced text search across all result columns for instant filtering
+- Interactive timeline analysis with temporal heatmaps
+- Smart recommendations that suggest next investigation steps
+- Context-aware workflow guidance based on detections
 
 **🎯 NEW: Advanced Analyst Workflow Features:**
 - **Quick Triage Dashboard** - View all high-severity threats across all strategies in one place
@@ -38,7 +44,7 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 ### 🎯 Detection Strategies
 
-The dashboard includes **eighteen comprehensive threat hunting strategies**:
+The dashboard includes **twenty-two comprehensive threat hunting strategies**:
 
 **Beacon Hunter (C2 Detection)**
 - Detects command-and-control beaconing behavior by analyzing connection timing patterns
@@ -163,6 +169,38 @@ The dashboard includes **eighteen comprehensive threat hunting strategies**:
 - Monitors data upload volumes to unauthorized services
 - Critical for data loss prevention, compliance, and preventing exfiltration via approved channels
 
+**Privilege Escalation Detector (Unauthorized Elevation)** ⚡ LATEST
+- Identifies suspicious privilege escalation attempts and abuse
+- Detects sudo abuse, runas commands, and token manipulation
+- Flags use of credential dumping tools (mimikatz, gsecdump, etc.)
+- Analyzes administrative tool usage patterns (net.exe, wmic.exe, psexec, etc.)
+- Critical for detecting unauthorized privilege gains and insider threats
+- Essential for catching lateral movement and account compromise
+
+**Webshell Detection (Backdoor Access)** ⚡ LATEST
+- Identifies web shell backdoor patterns in web server traffic
+- Detects suspicious file uploads and POST requests to script files
+- Analyzes command execution parameters in web requests (cmd, exec, shell, etc.)
+- Flags attack tool user agents (curl, wget, sqlmap, metasploit, etc.)
+- Critical for detecting persistent web-based access
+- Essential for catching web application compromise and backdoor deployment
+
+**Credential Dumping Detector (Memory Scraping)** ⚡ LATEST
+- Detects memory scraping and credential theft tool usage
+- Identifies LSASS process access and memory dumps
+- Flags registry hive exports (SAM, SECURITY, SYSTEM databases)
+- Analyzes credential harvesting tools (mimikatz, procdump, pypykatz, etc.)
+- Critical for detecting credential theft operations
+- Essential for catching pass-the-hash and credential replay attacks
+
+**Ransomware Indicator Detector (Early Warning)** ⚡ LATEST
+- Detects early warning signs of ransomware deployment
+- Identifies shadow copy deletion and VSS interference
+- Flags backup service disruption and boot configuration tampering
+- Analyzes mass file operations and encryption patterns
+- Critical for ransomware prevention and early detection
+- Essential for catching attacks before encryption begins
+
 ### 🔧 Interactive Controls
 
 **Dynamic Schema Discovery**
@@ -275,7 +313,11 @@ from strategies import (
     DataStagingStrategy,
     FilelessMalwareStrategy,
     APIAbuseStrategy,
-    ShadowITStrategy
+    ShadowITStrategy,
+    PrivilegeEscalationStrategy,
+    WebshellDetectionStrategy,
+    CredentialDumpingStrategy,
+    RansomwareIndicatorStrategy
 )
 
 # Initialize dashboard with all strategies and custom cache settings
@@ -298,7 +340,11 @@ dashboard = WatsonDashboard(
         DataStagingStrategy(),
         FilelessMalwareStrategy(),
         APIAbuseStrategy(),
-        ShadowITStrategy()
+        ShadowITStrategy(),
+        PrivilegeEscalationStrategy(),
+        WebshellDetectionStrategy(),
+        CredentialDumpingStrategy(),
+        RansomwareIndicatorStrategy()
     ],
     cache_dir='.custom_cache',
     cache_days=3
@@ -329,6 +375,39 @@ dashboard.display()
    - Includes executive summary with key statistics
    - Color-coded findings by severity level
    - Ready for documentation, sharing with team, or management reporting
+
+4. **💾 Export All** - Batch export all strategy results
+   - Exports all analyzed strategy results to separate CSV files
+   - Includes summary statistics with high-severity counts
+   - Timestamped filenames for easy tracking
+   - Perfect for archiving and downstream analysis
+
+5. **📊 Metrics Dashboard** - Comprehensive threat intelligence view
+   - Real-time aggregated statistics across all strategies
+   - Strategy effectiveness comparison charts
+   - Score distribution visualizations
+   - Detection volume analysis
+
+6. **⚡ Performance** - Strategy execution performance statistics ✨ NEW
+   - View execution time for each strategy
+   - Analyze throughput rates (rows/second)
+   - Compare detection efficiency across strategies
+   - Identify fastest strategies for real-time analysis
+   - Visual performance charts with Plotly
+
+7. **📅 Timeline** - Temporal threat activity analysis ✨ NEW
+   - Interactive heatmaps showing when threats occurred
+   - Hourly and daily threat activity patterns
+   - Detection timeline by strategy and severity
+   - Identify time-based attack patterns
+   - Perfect for understanding attack progression
+
+8. **🎯 Recommendations** - Smart next-step suggestions ✨ NEW
+   - AI-powered recommendations based on current findings
+   - Context-aware strategy suggestions
+   - Attack chain analysis and follow-up actions
+   - Priority-based recommendations (CRITICAL, HIGH, MEDIUM, LOW)
+   - Helps analysts stay ahead of attackers
 
 **Filtering Results by Severity:**
 - After running an analysis, use the quick filter buttons at the top of results
