@@ -1314,6 +1314,58 @@ class WatsonDashboard:
         table_html += '  </tbody>\n</table>'
         display(HTML(table_html))
         
+        # Try to create visualization if plotly is available
+        try:
+            import plotly.graph_objects as go
+            
+            # Create bubble chart: strategies vs max score
+            viz_data = []
+            for ip, detections in sorted_ips[:20]:
+                strategies_detected = set(d['strategy'] for d in detections)
+                max_score = max(d['score'] for d in detections)
+                viz_data.append({
+                    'ip': ip,
+                    'strategies': len(strategies_detected),
+                    'score': max_score
+                })
+            
+            viz_df = pd.DataFrame(viz_data)
+            
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=viz_df['strategies'],
+                y=viz_df['score'],
+                mode='markers',
+                marker=dict(
+                    size=15,
+                    color=viz_df['score'],
+                    colorscale='Reds',
+                    showscale=True,
+                    colorbar=dict(title="Max<br>Score"),
+                    line=dict(width=1, color='white')
+                ),
+                text=[f"IP: {viz_df.iloc[i]['ip']}<br>Strategies: {viz_df.iloc[i]['strategies']}<br>Score: {viz_df.iloc[i]['score']:.1f}"
+                      for i in range(len(viz_df))],
+                hovertemplate='%{text}<extra></extra>'
+            ))
+            
+            fig.update_layout(
+                title="Correlation Analysis: Detection Breadth vs Threat Score",
+                xaxis_title="Number of Strategies Detecting This IP",
+                yaxis_title="Maximum Threat Score",
+                hovermode='closest',
+                height=500,
+                showlegend=False
+            )
+            
+            print()
+            print("📊 Interactive Correlation Visualization:")
+            print("-" * 80)
+            display(fig)
+            print()
+        except ImportError:
+            pass  # Plotly not available, skip visualization
+        
         # Export option
         print()
         export_button = widgets.Button(
@@ -1733,7 +1785,65 @@ class WatsonDashboard:
             layout=widgets.Layout(width='180px')
         )
         
+        help_button = widgets.Button(
+            description='❓ Tips',
+            button_style='',
+            tooltip='Show usage tips and best practices',
+            icon='question-circle',
+            layout=widgets.Layout(width='100px')
+        )
+        
         action_output = widgets.Output()
+        
+        def show_tips():
+            """Display usage tips and best practices."""
+            tips_html = """
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
+                <h3 style="margin-top: 0;">💡 Quick Tips & Best Practices</h3>
+                
+                <h4>🚀 Quick Start Workflow:</h4>
+                <ol style="line-height: 1.8;">
+                    <li><strong>Select a Strategy Tab</strong> - Choose from 9 threat hunting strategies</li>
+                    <li><strong>Load Data</strong> - Pick a table and map required columns</li>
+                    <li><strong>Run Analysis</strong> - Click the green "Run Analysis" button</li>
+                    <li><strong>Review Results</strong> - Use filters to focus on high-severity findings</li>
+                </ol>
+                
+                <h4>🎯 Power User Features:</h4>
+                <ul style="line-height: 1.8;">
+                    <li><strong>Quick Triage:</strong> After running multiple analyses, click the 🚨 button to see all critical threats at once</li>
+                    <li><strong>Correlation Analysis:</strong> Click 🔗 to find IPs appearing in multiple strategies - these are your highest-priority targets</li>
+                    <li><strong>HTML Reports:</strong> Generate professional reports with the 📄 button for management briefings</li>
+                    <li><strong>Export Options:</strong> All views support CSV export for further analysis in Excel or other tools</li>
+                </ul>
+                
+                <h4>🔍 Investigation Strategy:</h4>
+                <ul style="line-height: 1.8;">
+                    <li><strong>Start Broad:</strong> Run multiple strategies on your data to get different perspectives</li>
+                    <li><strong>Correlate:</strong> Use correlation analysis to identify systematic attackers</li>
+                    <li><strong>Triage:</strong> Focus on high-severity (≥75 score) findings first</li>
+                    <li><strong>Document:</strong> Export findings and generate reports for your records</li>
+                </ul>
+                
+                <h4>⚡ Performance Tips:</h4>
+                <ul style="line-height: 1.8;">
+                    <li>Use date filters to limit data range and improve speed</li>
+                    <li>Start with smaller row limits (10,000) for initial exploration</li>
+                    <li>Cache is automatically used for table listings (refreshes every 7 days)</li>
+                    <li>Results are stored in memory for correlation - no need to re-run analyses</li>
+                </ul>
+                
+                <h4>📊 Understanding Scores:</h4>
+                <ul style="line-height: 1.8;">
+                    <li><strong>75-100 (Critical):</strong> Strong evidence of malicious activity - investigate immediately</li>
+                    <li><strong>50-74 (High):</strong> Suspicious behavior worth investigating</li>
+                    <li><strong>&lt;50 (Medium/Low):</strong> Anomalies that may be benign but worth noting</li>
+                </ul>
+            </div>
+            """
+            with action_output:
+                clear_output(wait=True)
+                display(HTML(tips_html))
         
         def on_triage_click(b):
             with action_output:
@@ -1750,14 +1860,19 @@ class WatsonDashboard:
                 clear_output(wait=True)
                 self._generate_investigation_report()
         
+        def on_help_click(b):
+            show_tips()
+        
         triage_button.on_click(on_triage_click)
         correlation_button.on_click(on_correlation_click)
         report_button.on_click(on_report_click)
+        help_button.on_click(on_help_click)
         
         action_buttons = widgets.HBox([
             triage_button,
             correlation_button,
-            report_button
+            report_button,
+            help_button
         ], layout=widgets.Layout(justify_content='flex-start', margin='10px 0'))
         
         # Arrange layout with tabs
