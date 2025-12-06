@@ -1220,8 +1220,8 @@ class WatsonDashboard:
         # Top 5 most concerning strategies
         print("🏆 TOP 5 MOST CONCERNING STRATEGIES:")
         top5 = overview_df.nlargest(5, '🔴 Critical')
-        for i, row in enumerate(top5.itertuples(), 1):
-            print(f"   {i}. {row.Strategy}: {row._3} critical + {row._4} high-severity threats")
+        for i, (idx, row) in enumerate(top5.iterrows(), 1):
+            print(f"   {i}. {row['Strategy']}: {row['🔴 Critical']} critical + {row['🟠 High']} high-severity threats")
         print()
         
         # Visualization if available

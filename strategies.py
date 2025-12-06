@@ -5757,7 +5757,6 @@ class ZeroDayExploitStrategy(HuntStrategy):
                         flags.append('large_payload')
                     
                     # Check for multiple identical payload sizes (exploit repeatability)
-                    from collections import Counter
                     size_counts = Counter(payload_lengths)
                     if size_counts.most_common(1)[0][1] > 5:  # Same size 5+ times
                         score += 20
@@ -5790,10 +5789,14 @@ class ZeroDayExploitStrategy(HuntStrategy):
                 high_entropy_count = 0
                 for payload in group[payload_col]:
                     if pd.notna(payload) and len(str(payload)) > 10:
+                        # Convert payload to byte counts for entropy calculation
                         payload_bytes = str(payload).encode('utf-8', errors='ignore')
-                        payload_entropy = entropy(list(payload_bytes))
-                        if payload_entropy > 7.0:  # High entropy
-                            high_entropy_count += 1
+                        byte_counts = [payload_bytes.count(bytes([i])) for i in range(256)]
+                        byte_counts = [c for c in byte_counts if c > 0]  # Remove zeros
+                        if byte_counts:
+                            payload_entropy = entropy(byte_counts)
+                            if payload_entropy > 7.0:  # High entropy
+                                high_entropy_count += 1
                 
                 if high_entropy_count > 3:
                     score += 20
