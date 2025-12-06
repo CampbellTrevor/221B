@@ -8,6 +8,7 @@ for various threat hunting strategies. No UI or database code is included.
 from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
+import re
 from scipy.stats import entropy
 from multiprocessing import Pool
 from concurrent.futures import ThreadPoolExecutor
@@ -3031,6 +3032,9 @@ class FilelessMalwareStrategy(HuntStrategy):
         df[proc_col] = df[proc_col].fillna('').astype(str).str.lower()
         df[cmd_col] = df[cmd_col].fillna('').astype(str).str.lower()
         
+        # Pre-compile regex for better performance
+        encoded_pattern = re.compile(r'encoded|base64|-enc', re.IGNORECASE)
+        
         results = []
         
         # Group by source IP
@@ -3066,7 +3070,7 @@ class FilelessMalwareStrategy(HuntStrategy):
                 flags.append(f"Malicious keywords: {', '.join(keyword_matches[:3])}")
             
             # Factor 3: Encoded/obfuscated commands (20 points)
-            encoded_count = group[group[cmd_col].str.contains('encoded|base64|-enc', regex=True, na=False)].shape[0]
+            encoded_count = group[group[cmd_col].str.contains(encoded_pattern, regex=True, na=False)].shape[0]
             if encoded_count > 0:
                 fileless_score += min(encoded_count * 10, 20)
                 flags.append(f"Encoded commands: {encoded_count}")
@@ -3193,6 +3197,10 @@ class APIAbuseStrategy(HuntStrategy):
             df[ts_col] = pd.to_datetime(df[ts_col], errors='coerce')
             df = df.dropna(subset=[ts_col])
         
+        # Pre-compile regex patterns for better performance
+        rate_limit_pattern = re.compile(r'429|509')
+        auth_failure_pattern = re.compile(r'401|403')
+        
         results = []
         
         # Group by source IP
@@ -3214,7 +3222,7 @@ class APIAbuseStrategy(HuntStrategy):
                 flags.append(f"Elevated volume: {total_requests} requests")
             
             # Factor 2: Rate limit errors (40 points)
-            rate_limit_errors = group[group[status_col].str.contains('429|509', regex=True)].shape[0]
+            rate_limit_errors = group[group[status_col].str.contains(rate_limit_pattern, regex=True)].shape[0]
             if rate_limit_errors > 10:
                 abuse_score += 40
                 flags.append(f"Rate limit hits: {rate_limit_errors}")
@@ -3239,7 +3247,7 @@ class APIAbuseStrategy(HuntStrategy):
                         flags.append(f"High rate: {requests_per_minute:.1f} req/min")
             
             # Factor 5: Authentication failures (20 points)
-            auth_failures = group[group[status_col].str.contains('401|403', regex=True)].shape[0]
+            auth_failures = group[group[status_col].str.contains(auth_failure_pattern, regex=True)].shape[0]
             if auth_failures > total_requests * 0.3:
                 abuse_score += 20
                 flags.append(f"Auth failures: {auth_failures}")

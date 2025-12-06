@@ -851,8 +851,12 @@ class WatsonDashboard:
             # First apply text search if present
             if current_search['text']:
                 search_term = current_search['text'].lower()
-                # Search across all string columns
-                mask = full_df.astype(str).apply(lambda x: x.str.lower().str.contains(search_term, na=False, regex=False)).any(axis=1)
+                # Optimize: only search in columns that are already strings or can be strings
+                # Create mask by checking each column individually
+                mask = pd.Series([False] * len(full_df), index=full_df.index)
+                for col in full_df.columns:
+                    # Convert to string only for this column, then search
+                    mask |= full_df[col].astype(str).str.lower().str.contains(search_term, na=False, regex=False)
                 filtered_df = full_df[mask]
             else:
                 filtered_df = full_df
