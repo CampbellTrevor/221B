@@ -56,6 +56,18 @@ GRADIENT_PURPLE_DEEP = "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)"  # De
 GRADIENT_PURPLE_VIOLET = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"  # Violet blend
 GRADIENT_PINK_MAGENTA = "linear-gradient(135deg, #ec4899 0%, #db2777 100%)"  # Pink/magenta
 
+# Common CSS style patterns - consolidated to improve maintainability
+CSS_METRIC_VALUE = "font-size: 3em; font-weight: bold; margin-bottom: 8px;"
+CSS_METRIC_LABEL = "font-size: 0.95em; opacity: 0.95;"
+CSS_METRIC_SUBLABEL = "font-size: 0.85em; opacity: 0.8; margin-top: 4px;"
+CSS_STAT_BOX = "background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;"
+CSS_CARD_TRANSLUCENT = "background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);"
+CSS_HEADING_LARGE = "font-size: 2em; font-weight: bold;"
+CSS_TEXT_SUBTLE = "font-size: 0.9em; opacity: 0.9;"
+CSS_TEXT_MUTED = "font-size: 0.9em; opacity: 0.95;"
+CSS_CONTENT_BOX = "padding: 8px; border: 1px solid #ddd;"
+CSS_LINE_HEIGHT = "line-height: 1.8;"
+
 
 class WatsonDashboard:
     """
@@ -525,39 +537,39 @@ class WatsonDashboard:
             
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 30px;">
                 <div style="background: {GRADIENT_RED_CRITICAL}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
-                    <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">🔴 {high_severity_count}</div>
-                    <div style="font-size: 0.95em; opacity: 0.95;">Critical Threats</div>
-                    <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Score ≥ 75</div>
+                    <div style="{CSS_METRIC_VALUE}">🔴 {high_severity_count}</div>
+                    <div style="{CSS_METRIC_LABEL}">Critical Threats</div>
+                    <div style="{CSS_METRIC_SUBLABEL}">Score ≥ 75</div>
                 </div>
                 
                 <div style="background: {GRADIENT_AMBER_WARNING}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
-                    <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">🟡 {medium_severity_count}</div>
-                    <div style="font-size: 0.95em; opacity: 0.95;">Medium Threats</div>
-                    <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Score 50-74</div>
+                    <div style="{CSS_METRIC_VALUE}">🟡 {medium_severity_count}</div>
+                    <div style="{CSS_METRIC_LABEL}">Medium Threats</div>
+                    <div style="{CSS_METRIC_SUBLABEL}">Score 50-74</div>
                 </div>
                 
                 <div style="background: {GRADIENT_GREEN_SUCCESS}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
-                    <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">🟢 {low_severity_count}</div>
-                    <div style="font-size: 0.95em; opacity: 0.95;">Low Priority</div>
-                    <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Score < 50</div>
+                    <div style="{CSS_METRIC_VALUE}">🟢 {low_severity_count}</div>
+                    <div style="{CSS_METRIC_LABEL}">Low Priority</div>
+                    <div style="{CSS_METRIC_SUBLABEL}">Score < 50</div>
                 </div>
                 
                 <div style="background: {GRADIENT_BLUE_PRIMARY}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
-                    <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">📊 {total_threats}</div>
-                    <div style="font-size: 0.95em; opacity: 0.95;">Total Detections</div>
-                    <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Across {strategies_run} strategies</div>
+                    <div style="{CSS_METRIC_VALUE}">📊 {total_threats}</div>
+                    <div style="{CSS_METRIC_LABEL}">Total Detections</div>
+                    <div style="{CSS_METRIC_SUBLABEL}">Across {strategies_run} strategies</div>
                 </div>
                 
                 <div style="background: {GRADIENT_PURPLE_DEEP}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
-                    <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">⚡ {avg_threat_score:.1f}</div>
-                    <div style="font-size: 0.95em; opacity: 0.95;">Average Score</div>
-                    <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Threat severity</div>
+                    <div style="{CSS_METRIC_VALUE}">⚡ {avg_threat_score:.1f}</div>
+                    <div style="{CSS_METRIC_LABEL}">Average Score</div>
+                    <div style="{CSS_METRIC_SUBLABEL}">Threat severity</div>
                 </div>
                 
                 <div style="background: {GRADIENT_PINK_MAGENTA}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
-                    <div style="font-size: 3em; font-weight: bold; margin-bottom: 8px;">⚠️ {max_threat_score:.1f}</div>
-                    <div style="font-size: 0.95em; opacity: 0.95;">Peak Threat</div>
-                    <div style="font-size: 0.85em; opacity: 0.8; margin-top: 4px;">Highest score</div>
+                    <div style="{CSS_METRIC_VALUE}">⚠️ {max_threat_score:.1f}</div>
+                    <div style="{CSS_METRIC_LABEL}">Peak Threat</div>
+                    <div style="{CSS_METRIC_SUBLABEL}">Highest score</div>
                 </div>
             </div>
             
@@ -1714,9 +1726,9 @@ class WatsonDashboard:
         <div style="background: {GRADIENT_BLUE_PURPLE}; color: white; padding: 24px; border-radius: 16px; margin: 15px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             <h3 style="margin-top: 0; font-size: 1.5em; display: flex; align-items: center; gap: 8px;">📊 Analysis Summary</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 20px;">
-                <div style="background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
+                <div style="{CSS_CARD_TRANSLUCENT}">
                     <div style="font-size: 2.5em; font-weight: bold; margin-bottom: 4px;">{total_results}</div>
-                    <div style="font-size: 0.9em; opacity: 0.95;">Suspicious Activities</div>
+                    <div style="{CSS_TEXT_MUTED}">Suspicious Activities</div>
                 </div>
         """
         
@@ -1728,21 +1740,21 @@ class WatsonDashboard:
             max_score = df[score_col].max()
             
             summary_html += f"""
-                <div style="background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
+                <div style="{CSS_CARD_TRANSLUCENT}">
                     <div style="font-size: 2.5em; font-weight: bold; color: #fca5a5; margin-bottom: 4px;">🔴 {high_severity}</div>
-                    <div style="font-size: 0.9em; opacity: 0.95;">High Severity (≥75)</div>
+                    <div style="{CSS_TEXT_MUTED}">High Severity (≥75)</div>
                 </div>
-                <div style="background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
+                <div style="{CSS_CARD_TRANSLUCENT}">
                     <div style="font-size: 2.5em; font-weight: bold; color: #fcd34d; margin-bottom: 4px;">🟡 {medium_severity}</div>
-                    <div style="font-size: 0.9em; opacity: 0.95;">Medium Severity (50-74)</div>
+                    <div style="{CSS_TEXT_MUTED}">Medium Severity (50-74)</div>
                 </div>
-                <div style="background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
+                <div style="{CSS_CARD_TRANSLUCENT}">
                     <div style="font-size: 2.5em; font-weight: bold; margin-bottom: 4px;">{df[score_col].mean():.1f}</div>
-                    <div style="font-size: 0.9em; opacity: 0.95;">Average Score</div>
+                    <div style="{CSS_TEXT_MUTED}">Average Score</div>
                 </div>
-                <div style="background: rgba(255,255,255,0.15); padding: 18px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
+                <div style="{CSS_CARD_TRANSLUCENT}">
                     <div style="font-size: 2.5em; font-weight: bold; color: {'#fca5a5' if max_score >= HIGH_SEVERITY_THRESHOLD else '#fcd34d' if max_score >= MEDIUM_SEVERITY_THRESHOLD else '#86efac'}; margin-bottom: 4px;">{max_score:.1f}</div>
-                    <div style="font-size: 0.9em; opacity: 0.95;">Highest Score</div>
+                    <div style="{CSS_TEXT_MUTED}">Highest Score</div>
                 </div>
             """
         
@@ -2763,21 +2775,21 @@ class WatsonDashboard:
         <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
             <h3 style="margin-top: 0;">🚨 Correlated Threats Summary</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
-                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
-                    <div style="font-size: 2em; font-weight: bold;">{len(multi_strategy_ips)}</div>
-                    <div style="font-size: 0.9em; opacity: 0.9;">Correlated IPs</div>
+                <div style="{CSS_STAT_BOX}">
+                    <div style="{CSS_HEADING_LARGE}">{len(multi_strategy_ips)}</div>
+                    <div style="{CSS_TEXT_SUBTLE}">Correlated IPs</div>
                 </div>
-                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
-                    <div style="font-size: 2em; font-weight: bold; color: #ff6b6b;">{critical_count}</div>
-                    <div style="font-size: 0.9em; opacity: 0.9;">Critical Threats</div>
+                <div style="{CSS_STAT_BOX}">
+                    <div style="{CSS_HEADING_LARGE} color: #ff6b6b;">{critical_count}</div>
+                    <div style="{CSS_TEXT_SUBTLE}">Critical Threats</div>
                 </div>
-                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
-                    <div style="font-size: 2em; font-weight: bold; color: #ffd93d;">{high_count}</div>
-                    <div style="font-size: 0.9em; opacity: 0.9;">High Priority</div>
+                <div style="{CSS_STAT_BOX}">
+                    <div style="{CSS_HEADING_LARGE} color: #ffd93d;">{high_count}</div>
+                    <div style="{CSS_TEXT_SUBTLE}">High Priority</div>
                 </div>
-                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
-                    <div style="font-size: 2em; font-weight: bold;">{len(self.strategy_results)}</div>
-                    <div style="font-size: 0.9em; opacity: 0.9;">Strategies Analyzed</div>
+                <div style="{CSS_STAT_BOX}">
+                    <div style="{CSS_HEADING_LARGE}">{len(self.strategy_results)}</div>
+                    <div style="{CSS_TEXT_SUBTLE}">Strategies Analyzed</div>
                 </div>
             </div>
         </div>
@@ -2954,17 +2966,17 @@ class WatsonDashboard:
         <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
             <h3 style="margin-top: 0;">🚨 Quick Triage Summary</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
-                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
-                    <div style="font-size: 2em; font-weight: bold;">{len(high_severity_findings)}</div>
-                    <div style="font-size: 0.9em; opacity: 0.9;">Critical Threats</div>
+                <div style="{CSS_STAT_BOX}">
+                    <div style="{CSS_HEADING_LARGE}">{len(high_severity_findings)}</div>
+                    <div style="{CSS_TEXT_SUBTLE}">Critical Threats</div>
                 </div>
-                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
-                    <div style="font-size: 2em; font-weight: bold;">{len(self.strategy_results)}</div>
-                    <div style="font-size: 0.9em; opacity: 0.9;">Strategies Analyzed</div>
+                <div style="{CSS_STAT_BOX}">
+                    <div style="{CSS_HEADING_LARGE}">{len(self.strategy_results)}</div>
+                    <div style="{CSS_TEXT_SUBTLE}">Strategies Analyzed</div>
                 </div>
-                <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
-                    <div style="font-size: 2em; font-weight: bold;">{len(set(f.get('Source IP', '') for f in high_severity_findings if f.get('Source IP')))}</div>
-                    <div style="font-size: 0.9em; opacity: 0.9;">Unique Source IPs</div>
+                <div style="{CSS_STAT_BOX}">
+                    <div style="{CSS_HEADING_LARGE}">{len(set(f.get('Source IP', '') for f in high_severity_findings if f.get('Source IP')))}</div>
+                    <div style="{CSS_TEXT_SUBTLE}">Unique Source IPs</div>
                 </div>
             </div>
         </div>
