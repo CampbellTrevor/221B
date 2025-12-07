@@ -67,6 +67,14 @@ CSS_TEXT_SUBTLE = "font-size: 0.9em; opacity: 0.9"
 CSS_TEXT_MUTED = "font-size: 0.9em; opacity: 0.95"
 CSS_CONTENT_BOX = "padding: 8px; border: 1px solid #ddd; color: black"
 CSS_LINE_HEIGHT = "line-height: 1.8"
+CSS_HR_DIVIDER = "margin: 8px 0; border: none; border-top: 1px solid #ddd"
+CSS_HR_SECTION = "margin: 12px 0; border: none; border-top: 1px solid #e0e0e0"
+
+# Common color values used throughout the UI
+COLOR_BG_LIGHT_GRAY = '#f8f9fa'
+COLOR_TEXT_DARK = '#212529'
+COLOR_ACCENT_BLUE = '#007bff'
+COLOR_TEXT_GRAY = '#495057'
 
 
 class WatsonDashboard:
@@ -529,7 +537,7 @@ class WatsonDashboard:
         
         recommendation = recommendations.get(strategy.name, '🎯 <b>Use this strategy</b> for specialized threat hunting.')
         
-        return f'<div style="background: #e3f2fd; padding: 12px; border-radius: 8px; margin: 10px 0; border-left: 4px solid #2196f3;"><span style="color: #1565c0;">{recommendation}</span></div>'
+        return f'<div style="background: #e3f2fd; padding: 10px; border-radius: 8px; margin: 8px 0; border-left: 4px solid {COLOR_ACCENT_BLUE};"><span style="color: #1565c0; font-size: 0.95em;">{recommendation}</span></div>'
     
     def _create_strategy_tabs(self):
         """Create tab widget for strategies with all UI elements inside each tab."""
@@ -550,10 +558,10 @@ class WatsonDashboard:
                     style={'description_width': 'initial'}
                 ),
                 'load_table_button': widgets.Button(
-                    description='📊 Load Table Schema',
+                    description='📊 Load Schema',
                     button_style='info',
                     icon='database',
-                    layout=widgets.Layout(width='auto', min_width='180px')
+                    layout=widgets.Layout(width='auto', min_width='150px')
                 ),
                 'column_dropdowns': {},
                 'column_mapping_container': widgets.VBox([]),
@@ -583,19 +591,19 @@ class WatsonDashboard:
                     description='🚀 Run Analysis',
                     button_style='success',
                     icon='search',
-                    layout=widgets.Layout(width='auto', min_width='180px', height='40px')
+                    layout=widgets.Layout(width='auto', min_width='160px', height='38px')
                 ),
                 'save_config_button': widgets.Button(
-                    description='💾 Save Configuration',
+                    description='💾 Save Config',
                     button_style='info',
                     icon='save',
-                    layout=widgets.Layout(width='auto', min_width='180px')
+                    layout=widgets.Layout(width='auto', min_width='140px')
                 ),
                 'load_config_button': widgets.Button(
-                    description='📂 Load Configuration',
+                    description='📂 Load Config',
                     button_style='warning',
                     icon='folder-open',
-                    layout=widgets.Layout(width='auto', min_width='180px')
+                    layout=widgets.Layout(width='auto', min_width='140px')
                 ),
                 'config_name_input': widgets.Text(
                     placeholder='Enter config name...',
@@ -642,9 +650,9 @@ class WatsonDashboard:
             inputs_html = ""
             for inp, (desc, example) in input_descriptions.items():
                 inputs_html += f"""
-                <div style="margin: 10px 0; padding: 8px; background: #f8f9fa; color: #212529; border-left: 3px solid #007bff;">
-                    <b>{inp}:</b> {desc}<br/>
-                    <i style="color: #495057; font-size: 0.9em;">{example}</i>
+                <div style="margin: 6px 0; padding: 6px 8px; background: {COLOR_BG_LIGHT_GRAY}; color: {COLOR_TEXT_DARK}; border-left: 3px solid {COLOR_ACCENT_BLUE}; border-radius: 4px;">
+                    <b style="font-size: 0.95em;">{inp}:</b> <span style="font-size: 0.9em;">{desc}</span><br/>
+                    <i style="color: {COLOR_TEXT_GRAY}; font-size: 0.85em;">{example}</i>
                 </div>
                 """
             
@@ -660,12 +668,12 @@ class WatsonDashboard:
             
             description = widgets.HTML(
                 value=f"""
-                <div style="padding: 10px;">
-                    <h3>{strategy.name}</h3>
-                    <p style="margin: 10px 0;"><i>{strategy_desc}</i></p>
+                <div style="padding: 8px;">
+                    <h3 style="margin: 0 0 8px 0; font-size: 1.3em;">{strategy.name}</h3>
+                    <p style="margin: 6px 0;"><i>{strategy_desc}</i></p>
                     {recommendation_html}
                     {data_sources_html}
-                    <h4>Required Inputs:</h4>
+                    <h4 style="margin: 10px 0 6px 0; font-size: 1.05em;">Required Inputs:</h4>
                     {inputs_html}
                 </div>
                 """
@@ -682,56 +690,56 @@ class WatsonDashboard:
                 widgets.HBox([
                     tab_data['save_config_button'], 
                     tab_data['load_config_button']
-                ], layout=widgets.Layout(margin='5px 0'))
+                ], layout=widgets.Layout(margin='3px 0'))
             ])
             config_accordion = widgets.Accordion(children=[config_section])
-            config_accordion.set_title(0, "💾 Save/Load Configuration")
+            config_accordion.set_title(0, "💾 Configuration Management")
             config_accordion.selected_index = None  # Start collapsed - used less frequently
             
             # Group data source controls compactly
             data_source_section = widgets.VBox([
-                widgets.HTML("<h4 style='margin: 10px 0 5px 0;'>1️⃣ Select Data Source</h4>"),
+                widgets.HTML("<h4 style='margin: 8px 0 4px 0; font-size: 1.1em;'>1️⃣ Select Data Source</h4>"),
                 tab_data['table_search'],
                 tab_data['table_dropdown'],
                 tab_data['load_table_button']
-            ], layout=widgets.Layout(margin='0 0 15px 0'))
+            ], layout=widgets.Layout(margin='0 0 12px 0'))
             
             # Column mapping section
             column_mapping_section = widgets.VBox([
-                widgets.HTML("<h4 style='margin: 10px 0 5px 0;'>2️⃣ Map Columns</h4>"),
+                widgets.HTML("<h4 style='margin: 8px 0 4px 0; font-size: 1.1em;'>2️⃣ Map Columns</h4>"),
                 tab_data['column_mapping_container']
-            ], layout=widgets.Layout(margin='0 0 15px 0'))
+            ], layout=widgets.Layout(margin='0 0 12px 0'))
             
             # Query options section - grouped horizontally for compactness
             query_options_section = widgets.VBox([
-                widgets.HTML("<h4 style='margin: 10px 0 5px 0;'>3️⃣ Configure Query</h4>"),
+                widgets.HTML("<h4 style='margin: 8px 0 4px 0; font-size: 1.1em;'>3️⃣ Configure Query</h4>"),
                 widgets.HBox([
                     tab_data['limit_input'],
                     tab_data['enable_date_filter']
-                ], layout=widgets.Layout(margin='5px 0')),
+                ], layout=widgets.Layout(margin='3px 0')),
                 widgets.HBox([
                     tab_data['start_date'],
                     tab_data['end_date']
-                ], layout=widgets.Layout(margin='5px 0'))
-            ], layout=widgets.Layout(margin='0 0 15px 0'))
+                ], layout=widgets.Layout(margin='3px 0'))
+            ], layout=widgets.Layout(margin='0 0 12px 0'))
             
             # Run analysis section - prominent
             run_section = widgets.VBox([
-                widgets.HTML("<h4 style='margin: 10px 0 5px 0;'>4️⃣ Run Analysis</h4>"),
+                widgets.HTML("<h4 style='margin: 8px 0 4px 0; font-size: 1.1em;'>4️⃣ Run Analysis</h4>"),
                 tab_data['run_button']
-            ], layout=widgets.Layout(margin='0 0 15px 0'))
+            ], layout=widgets.Layout(margin='0 0 12px 0'))
             
             # Assemble tab content with improved workflow organization
             tab_content = widgets.VBox([
                 strategy_accordion,
-                widgets.HTML("<hr style='margin: 15px 0;'>"),
+                widgets.HTML(f"<hr style='{CSS_HR_SECTION}'>"),
                 data_source_section,
                 column_mapping_section,
                 query_options_section,
                 run_section,
                 config_accordion,
-                widgets.HTML("<hr style='margin: 15px 0;'>"),
-                widgets.HTML("<h4 style='margin: 10px 0 5px 0;'>📊 Results</h4>"),
+                widgets.HTML(f"<hr style='{CSS_HR_SECTION}'>"),
+                widgets.HTML("<h4 style='margin: 8px 0 6px 0; font-size: 1.1em;'>📊 Results</h4>"),
                 tab_data['output_widget']
             ])
             
@@ -844,52 +852,52 @@ class WatsonDashboard:
         
         # Build dashboard HTML using consolidated gradient constants
         dashboard_html = f"""
-        <div style="background: {GRADIENT_DARK_CARD}; color: white; padding: 32px; border-radius: 20px; margin: 20px 0; box-shadow: 0 10px 25px rgba(0,0,0,0.3);">
-            <h2 style="margin-top: 0; font-size: 2em; display: flex; align-items: center; gap: 12px; margin-bottom: 30px;">
-                🛡️ Real-Time Threat Intelligence Dashboard
+        <div style="background: {GRADIENT_DARK_CARD}; color: white; padding: 24px; border-radius: 16px; margin: 16px 0; box-shadow: 0 8px 20px rgba(0,0,0,0.25);">
+            <h2 style="margin-top: 0; font-size: 1.8em; display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                🛡️ Threat Intelligence Dashboard
             </h2>
             
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 30px;">
-                <div style="background: {GRADIENT_RED_CRITICAL}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px;">
+                <div style="background: {GRADIENT_RED_CRITICAL}; padding: 20px; border-radius: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="{CSS_METRIC_VALUE}">🔴 {high_severity_count}</div>
-                    <div style="{CSS_METRIC_LABEL}">Critical Threats</div>
+                    <div style="{CSS_METRIC_LABEL}">Critical</div>
                     <div style="{CSS_METRIC_SUBLABEL}">Score ≥ 75</div>
                 </div>
                 
-                <div style="background: {GRADIENT_AMBER_WARNING}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_AMBER_WARNING}; padding: 20px; border-radius: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="{CSS_METRIC_VALUE}">🟡 {medium_severity_count}</div>
-                    <div style="{CSS_METRIC_LABEL}">Medium Threats</div>
+                    <div style="{CSS_METRIC_LABEL}">Medium</div>
                     <div style="{CSS_METRIC_SUBLABEL}">Score 50-74</div>
                 </div>
                 
-                <div style="background: {GRADIENT_GREEN_SUCCESS}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_GREEN_SUCCESS}; padding: 20px; border-radius: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="{CSS_METRIC_VALUE}">🟢 {low_severity_count}</div>
-                    <div style="{CSS_METRIC_LABEL}">Low Priority</div>
+                    <div style="{CSS_METRIC_LABEL}">Low</div>
                     <div style="{CSS_METRIC_SUBLABEL}">Score < 50</div>
                 </div>
                 
-                <div style="background: {GRADIENT_BLUE_PRIMARY}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_BLUE_PRIMARY}; padding: 20px; border-radius: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="{CSS_METRIC_VALUE}">📊 {total_threats}</div>
-                    <div style="{CSS_METRIC_LABEL}">Total Detections</div>
-                    <div style="{CSS_METRIC_SUBLABEL}">Across {strategies_run} strategies</div>
+                    <div style="{CSS_METRIC_LABEL}">Detections</div>
+                    <div style="{CSS_METRIC_SUBLABEL}">{strategies_run} strategies</div>
                 </div>
                 
-                <div style="background: {GRADIENT_PURPLE_DEEP}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_PURPLE_DEEP}; padding: 20px; border-radius: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="{CSS_METRIC_VALUE}">⚡ {avg_threat_score:.1f}</div>
-                    <div style="{CSS_METRIC_LABEL}">Average Score</div>
+                    <div style="{CSS_METRIC_LABEL}">Avg Score</div>
                     <div style="{CSS_METRIC_SUBLABEL}">Threat severity</div>
                 </div>
                 
-                <div style="background: {GRADIENT_PINK_MAGENTA}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_PINK_MAGENTA}; padding: 20px; border-radius: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="{CSS_METRIC_VALUE}">⚠️ {max_threat_score:.1f}</div>
-                    <div style="{CSS_METRIC_LABEL}">Peak Threat</div>
+                    <div style="{CSS_METRIC_LABEL}">Peak</div>
                     <div style="{CSS_METRIC_SUBLABEL}">Highest score</div>
                 </div>
             </div>
             
-            <div style="background: rgba(255,255,255,0.1); padding: 20px; border-radius: 12px; backdrop-filter: blur(10px);">
-                <h3 style="margin-top: 0; margin-bottom: 15px;">📈 Strategy Performance</h3>
-                <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+            <div style="background: rgba(255,255,255,0.1); padding: 16px; border-radius: 10px; backdrop-filter: blur(10px);">
+                <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 1.2em;">📈 Strategy Performance</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
         """
         
         # Add strategy badges
@@ -2033,24 +2041,24 @@ class WatsonDashboard:
         if not recommendations:
             return ""
         
-        # Build HTML for recommendations
+        # Build HTML for recommendations - more compact
         rec_html = f"""
-        <div style="background: {GRADIENT_GREEN_SUCCESS}; color: white; padding: 16px; border-radius: 12px; margin: 10px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <h4 style="margin-top: 0; color: white;">📊 Recommended Data Sources for {html_lib.escape(strategy.name)}</h4>
-            <p style="color: rgba(255,255,255,0.95); margin-bottom: 12px;">Based on strategy analysis, these data sources are most relevant:</p>
-            <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="background: {GRADIENT_GREEN_SUCCESS}; color: white; padding: 12px; border-radius: 10px; margin: 8px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h4 style="margin: 0 0 6px 0; color: white; font-size: 1.05em;">📊 Recommended Data Sources</h4>
+            <p style="color: rgba(255,255,255,0.95); margin-bottom: 8px; font-size: 0.9em;">Top matches for this strategy:</p>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
         """
         
         for i, rec in enumerate(recommendations, 1):
             rec_html += f"""
-                <div style="background: rgba(255,255,255,0.2); padding: 12px; border-radius: 8px;">
-                    <div style="font-weight: bold; color: white; margin-bottom: 4px;">
+                <div style="background: rgba(255,255,255,0.2); padding: 8px; border-radius: 6px;">
+                    <div style="font-weight: bold; color: white; margin-bottom: 2px; font-size: 0.95em;">
                         {i}. {html_lib.escape(rec['source'])}
                     </div>
-                    <div style="font-size: 0.9em; color: rgba(255,255,255,0.9); margin-bottom: 4px;">
+                    <div style="font-size: 0.85em; color: rgba(255,255,255,0.9); margin-bottom: 2px;">
                         {html_lib.escape(rec['description'])}
                     </div>
-                    <div style="font-size: 0.85em; color: rgba(255,255,255,0.8);">
+                    <div style="font-size: 0.8em; color: rgba(255,255,255,0.8);">
                         Tags: {html_lib.escape(rec['tags'])}
                     </div>
                 </div>
@@ -2088,20 +2096,20 @@ class WatsonDashboard:
         if not relevant_explanations:
             return
         
-        # Build explanations HTML
-        explanations_html = "<div style='padding: 10px; background: #f8f9fa; border-radius: 5px; margin: 10px 0;'>"
+        # Build explanations HTML - compact
+        explanations_html = f"<div style='padding: 8px; background: {COLOR_BG_LIGHT_GRAY}; border-radius: 5px; margin: 8px 0;'>"
         for col_name, explanation in relevant_explanations.items():
             explanations_html += f"""
-            <div style="margin: 8px 0; padding: 8px; background: white; border-left: 3px solid #007bff; border-radius: 3px;">
-                <b style="color: #007bff;">{col_name}:</b> 
-                <span style="color: #495057;">{explanation}</span>
+            <div style="margin: 6px 0; padding: 6px 8px; background: white; border-left: 3px solid {COLOR_ACCENT_BLUE}; border-radius: 3px;">
+                <b style="color: {COLOR_ACCENT_BLUE}; font-size: 0.95em;">{col_name}:</b> 
+                <span style="color: {COLOR_TEXT_GRAY}; font-size: 0.9em;">{explanation}</span>
             </div>
             """
         explanations_html += "</div>"
         
         # Create accordion widget
         accordion = widgets.Accordion(children=[widgets.HTML(value=explanations_html)])
-        accordion.set_title(0, '📖 Column Explanations (click to expand)')
+        accordion.set_title(0, '📖 Column Explanations')
         accordion.selected_index = None  # Start collapsed
         
         display(accordion)
@@ -2133,10 +2141,10 @@ class WatsonDashboard:
         
         # Create text search box with regex support
         search_box = widgets.Text(
-            placeholder='Search in results... (supports regex with .* patterns)',
+            placeholder='Search results (enable regex for patterns)',
             description='🔍 Search:',
             style={'description_width': 'initial'},
-            layout=widgets.Layout(width='450px')
+            layout=widgets.Layout(width='400px')
         )
         
         regex_checkbox = widgets.Checkbox(
@@ -2192,36 +2200,37 @@ class WatsonDashboard:
                 style={'description_width': 'initial', 'button_width': 'auto'}
             )
         
-        # Create pagination controls
+        # Create pagination controls - compact
         prev_button = widgets.Button(
-            description='◀ Previous',
+            description='◀ Prev',
             button_style='primary',
             disabled=True,
-            layout=widgets.Layout(width='120px')
+            layout=widgets.Layout(width='100px')
         )
         
         next_button = widgets.Button(
             description='Next ▶',
             button_style='primary',
-            layout=widgets.Layout(width='120px')
+            layout=widgets.Layout(width='100px')
         )
         
         page_info = widgets.HTML(value='')
         
-        # Create export buttons
+        # Create export buttons - compact
         export_csv_button = widgets.Button(
-            description='📥 Export CSV',
+            description='📥 CSV',
             button_style='success',
             icon='download',
-            layout=widgets.Layout(width='150px')
+            tooltip='Export as CSV for analysis',
+            layout=widgets.Layout(width='95px')
         )
         
         export_json_button = widgets.Button(
-            description='📦 Export JSON',
+            description='📦 JSON',
             button_style='info',
             icon='download',
-            tooltip='Export as JSON for SIEM integration',
-            layout=widgets.Layout(width='150px')
+            tooltip='Export as JSON for SIEM',
+            layout=widgets.Layout(width='95px')
         )
         
         export_output = widgets.Output()
@@ -2368,8 +2377,8 @@ class WatsonDashboard:
                     clear_output(wait=True)
                     display(HTML(page_df.to_html(index=False)))
             
-            # Update page info
-            page_info.value = f"<b>Page {current_page['value'] + 1} of {total_pages}</b> (Rows {start_idx + 1}-{end_idx} of {total_rows})"
+            # Update page info - compact
+            page_info.value = f"<b>Page {current_page['value'] + 1}/{total_pages}</b> ({start_idx + 1}-{end_idx} of {total_rows})"
             
             # Update button states
             prev_button.disabled = (current_page['value'] == 0)
@@ -2471,24 +2480,22 @@ class WatsonDashboard:
         pagination_controls = widgets.HBox([prev_button, page_info, next_button], 
                                           layout=widgets.Layout(justify_content='center'))
         
-        # Build the results UI components
-        ui_components = [
-            widgets.HTML("<h4>📊 Results</h4>"),
-        ]
+        # Build the results UI components - compact and organized
+        ui_components = []
         
-        # Add search box with regex support
-        ui_components.append(widgets.HTML("<div style='margin: 10px 0;'><b>🔍 Text Search & Filters:</b></div>"))
-        ui_components.append(widgets.HBox([search_box, regex_checkbox, clear_search_button]))
+        # Add search box with regex support - compact header
+        ui_components.append(widgets.HTML("<div style='margin: 6px 0 4px 0; font-size: 0.95em; font-weight: 600; color: #444;'>🔍 Search & Filters</div>"))
+        ui_components.append(widgets.HBox([search_box, regex_checkbox, clear_search_button], layout=widgets.Layout(margin='0 0 6px 0')))
         
         # Add filter buttons if score column exists
         if filter_buttons:
-            ui_components.append(widgets.HTML("<div style='margin: 10px 0 5px 0;'><b>Severity Filter:</b></div>"))
             ui_components.append(filter_buttons)
         
         ui_components.extend([
-            widgets.HTML("<div style='margin: 10px 0 5px 0;'><b>Sort & Export:</b></div>"),
+            widgets.HTML("<div style='margin: 8px 0 4px 0; font-size: 0.95em; font-weight: 600; color: #444;'>📊 Sort & Export</div>"),
             sort_controls,
             export_output,
+            widgets.HTML("<div style='margin: 6px 0 4px 0;'></div>"),  # Small spacer
             pagination_controls,
             table_output,
             pagination_controls  # Show pagination at bottom too for convenience
@@ -3448,24 +3455,24 @@ class WatsonDashboard:
         high_count = len([d for d in correlation_data if d['Threat Level'] == 'HIGH'])
         
         summary_html = f"""
-        <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
-            <h3 style="margin-top: 0; color: white;">🚨 Correlated Threats Summary</h3>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+        <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 16px; border-radius: 10px; margin: 8px 0;">
+            <h3 style="margin-top: 0; margin-bottom: 12px; color: white; font-size: 1.3em;">🚨 Correlated Threats</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: white;">{len(multi_strategy_ips)}</div>
-                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Correlated IPs</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">IPs</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: #ff6b6b">{critical_count}</div>
-                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Critical Threats</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Critical</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: #ffd93d">{high_count}</div>
-                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">High Priority</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">High</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}">{len(self.strategy_results)}</div>
-                    <div style="{CSS_TEXT_SUBTLE}">Strategies Analyzed</div>
+                    <div style="{CSS_TEXT_SUBTLE}">Strategies</div>
                 </div>
             </div>
         </div>
@@ -3637,22 +3644,22 @@ class WatsonDashboard:
             print("System appears to be in good health.")
             return
         
-        # Create summary
+        # Create summary - compact
         summary_html = f"""
-        <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
-            <h3 style="margin-top: 0; color: white;">🚨 Quick Triage Summary</h3>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+        <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 16px; border-radius: 10px; margin: 8px 0;">
+            <h3 style="margin-top: 0; margin-bottom: 12px; color: white; font-size: 1.3em;">🚨 Quick Triage Summary</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: white;">{len(high_severity_findings)}</div>
-                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Critical Threats</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Critical</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: white;">{len(self.strategy_results)}</div>
-                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Strategies Analyzed</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Strategies</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: white;">{len(set(f.get('Source IP', '') for f in high_severity_findings if f.get('Source IP')))}</div>
-                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Unique Source IPs</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Source IPs</div>
                 </div>
             </div>
         </div>
@@ -4015,12 +4022,12 @@ class WatsonDashboard:
         
         Arranges all widgets in a vertical layout and displays them.
         """
-        # Create header - more compact
+        # Create header - compact and professional
         header = widgets.HTML(
             value="""
-            <div style="margin-bottom: 10px;">
-                <h2 style="margin-bottom: 5px;">🔍 221B: The Analyst's Head-Up Display</h2>
-                <p style="margin: 0; color: #666;">Quick Actions → Select Strategy Tab → Configure & Run Analysis</p>
+            <div style="margin-bottom: 8px;">
+                <h2 style="margin: 0 0 3px 0; font-size: 1.8em;">🔍 221B Threat Hunting Dashboard</h2>
+                <p style="margin: 0; color: #666; font-size: 0.9em;">Quick Actions → Strategy → Configure → Analyze</p>
             </div>
             """
         )
@@ -4030,87 +4037,87 @@ class WatsonDashboard:
         triage_button = widgets.Button(
             description='🚨 Triage',
             button_style='danger',
-            tooltip='View all high-severity threats across all strategies',
-            layout=widgets.Layout(width='auto', min_width='110px')
+            tooltip='View all high-severity threats',
+            layout=widgets.Layout(width='auto', min_width='100px')
         )
         
         correlation_button = widgets.Button(
-            description='🔗 Correlations',
+            description='🔗 Correlate',
             button_style='warning',
-            tooltip='Find IPs appearing in multiple strategies',
-            layout=widgets.Layout(width='auto', min_width='135px')
+            tooltip='Find IPs in multiple strategies',
+            layout=widgets.Layout(width='auto', min_width='115px')
         )
         
         overview_button = widgets.Button(
             description='📊 Overview',
             button_style='info',
-            tooltip='Comprehensive dashboard showing all strategies at a glance',
-            layout=widgets.Layout(width='auto', min_width='125px')
+            tooltip='All strategies dashboard',
+            layout=widgets.Layout(width='auto', min_width='115px')
         )
         
         # Analytics & Insights
         metrics_button = widgets.Button(
             description='📈 Metrics',
             button_style='primary',
-            tooltip='View comprehensive threat intelligence dashboard',
-            layout=widgets.Layout(width='auto', min_width='115px')
+            tooltip='Threat intelligence dashboard',
+            layout=widgets.Layout(width='auto', min_width='105px')
         )
         
         heatmap_button = widgets.Button(
-            description='🗺️ IP Heatmap',
+            description='🗺️ Heatmap',
             button_style='',
-            tooltip='View IP address threat heatmap',
-            layout=widgets.Layout(width='auto', min_width='135px')
+            tooltip='IP threat visualization',
+            layout=widgets.Layout(width='auto', min_width='115px')
         )
         
         insights_button = widgets.Button(
             description='🎓 Insights',
             button_style='',
-            tooltip='Compare strategy effectiveness and coverage',
-            layout=widgets.Layout(width='auto', min_width='115px')
+            tooltip='Strategy effectiveness comparison',
+            layout=widgets.Layout(width='auto', min_width='105px')
         )
         
         timeline_button = widgets.Button(
             description='📅 Timeline',
             button_style='',
-            tooltip='View temporal threat activity heatmap',
-            layout=widgets.Layout(width='auto', min_width='115px')
+            tooltip='Temporal threat activity',
+            layout=widgets.Layout(width='auto', min_width='105px')
         )
         
         performance_button = widgets.Button(
-            description='⚡ Performance',
+            description='⚡ Speed',
             button_style='',
-            tooltip='View strategy execution performance statistics',
-            layout=widgets.Layout(width='auto', min_width='140px')
+            tooltip='Strategy execution performance',
+            layout=widgets.Layout(width='auto', min_width='100px')
         )
         
         # Workflow & Support
         recommend_button = widgets.Button(
-            description='🎯 Next Steps',
+            description='🎯 Suggest',
             button_style='',
-            tooltip='Get smart recommendations for next steps',
-            layout=widgets.Layout(width='auto', min_width='130px')
+            tooltip='Smart recommendations',
+            layout=widgets.Layout(width='auto', min_width='105px')
         )
         
         report_button = widgets.Button(
             description='📄 Report',
             button_style='info',
-            tooltip='Generate comprehensive HTML investigation report',
-            layout=widgets.Layout(width='auto', min_width='110px')
+            tooltip='Generate HTML report',
+            layout=widgets.Layout(width='auto', min_width='100px')
         )
         
         export_all_button = widgets.Button(
             description='💾 Export All',
             button_style='success',
-            tooltip='Export all strategy results to CSV files',
-            layout=widgets.Layout(width='auto', min_width='125px')
+            tooltip='Export all results to CSV',
+            layout=widgets.Layout(width='auto', min_width='115px')
         )
         
         help_button = widgets.Button(
             description='❓ Tips',
             button_style='',
-            tooltip='Show usage tips and best practices',
-            layout=widgets.Layout(width='auto', min_width='95px')
+            tooltip='Usage tips and best practices',
+            layout=widgets.Layout(width='auto', min_width='90px')
         )
         
 
@@ -4123,56 +4130,51 @@ class WatsonDashboard:
             strategy_count = len(self.strategies)
             
             tips_html = f"""
-            <div style="background: {GRADIENT_PURPLE_VIOLET}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
-                <h3 style="margin-top: 0; color: white;">💡 Quick Tips & Best Practices</h3>
+            <div style="background: {GRADIENT_PURPLE_VIOLET}; color: white; padding: 16px; border-radius: 10px; margin: 8px 0;">
+                <h3 style="margin-top: 0; margin-bottom: 12px; color: white; font-size: 1.3em;">💡 Tips & Best Practices</h3>
                 
-                <h4 style="color: white;">🚀 Quick Start Workflow:</h4>
-                <ol style="{CSS_LINE_HEIGHT}; color: white;">
-                    <li><strong>Select a Strategy Tab</strong> - Choose from {strategy_count} comprehensive threat hunting strategies</li>
-                    <li><strong>Read the Recommendation</strong> - Each strategy shows when to use it and what data works best</li>
-                    <li><strong>Load Data</strong> - Pick a table and map required columns</li>
-                    <li><strong>Run Analysis</strong> - Click the green "Run Analysis" button</li>
-                    <li><strong>Review Results</strong> - Use filters to focus on high-severity findings</li>
+                <h4 style="color: white; font-size: 1.05em; margin: 10px 0 6px 0;">🚀 Quick Start:</h4>
+                <ol style="{CSS_LINE_HEIGHT}; color: white; font-size: 0.95em; margin: 6px 0;">
+                    <li><strong>Select Strategy Tab</strong> - Choose from {strategy_count} threat hunting strategies</li>
+                    <li><strong>Read Recommendation</strong> - See when to use it and best data sources</li>
+                    <li><strong>Load Data</strong> - Pick a table and map columns</li>
+                    <li><strong>Run Analysis</strong> - Click green "Run Analysis" button</li>
+                    <li><strong>Review Results</strong> - Use filters for high-severity findings</li>
                 </ol>
                 
-                <h4 style="color: white;">🎯 Power User Features:</h4>
-                <ul style="{CSS_LINE_HEIGHT}; color: white;">
-                    <li><strong>Threat Overview Dashboard:</strong> 🔥 Click 📊 Threat Overview to see ALL strategies at a glance with comprehensive visualizations</li>
-                    <li><strong>Metrics Dashboard:</strong> Click 📊 to view real-time threat intelligence with aggregated statistics and strategy comparisons</li>
-                    <li><strong>Performance Stats:</strong> Click ⚡ to see execution times, throughput rates, and detection efficiency for each strategy</li>
-                    <li><strong>Timeline Analysis:</strong> Click 📅 to visualize when threats occurred with interactive heatmaps and temporal patterns</li>
-                    <li><strong>IP Threat Heatmap:</strong> Click 🗺️ to see which IPs generate the most threats across strategies with bubble chart visualization</li>
-                    <li><strong>Strategy Insights:</strong> Click 🎓 to compare strategy effectiveness with stacked severity distributions and detection rates</li>
-                    <li><strong>Smart Recommendations:</strong> Click 🎯 to get AI-powered suggestions on which strategies to run next based on findings</li>
-                    <li><strong>Text Search:</strong> Use the 🔍 search box to filter results across all columns - find IPs, domains, or any text instantly</li>
-                    <li><strong>Quick Triage:</strong> After running multiple analyses, click the 🚨 button to see all critical threats at once</li>
-                    <li><strong>Correlation Analysis:</strong> Click 🔗 to find IPs appearing in multiple strategies - these are your highest-priority targets</li>
-                    <li><strong>HTML Reports:</strong> Generate professional reports with the 📄 button for management briefings</li>
-                    <li><strong>Export Options:</strong> 🆕 Export as CSV or JSON - JSON format is ideal for SIEM integration and programmatic analysis</li>
-                    <li><strong>Multi-Filter:</strong> Combine text search with severity filters and sorting for precise threat identification</li>
+                <h4 style="color: white; font-size: 1.05em; margin: 10px 0 6px 0;">🎯 Key Features:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white; font-size: 0.95em; margin: 6px 0;">
+                    <li><strong>Overview:</strong> See all strategies at a glance (📊 button)</li>
+                    <li><strong>Metrics:</strong> Real-time threat intelligence dashboard (📈 button)</li>
+                    <li><strong>Triage:</strong> All critical threats in one view (🚨 button)</li>
+                    <li><strong>Correlate:</strong> Find IPs in multiple strategies (🔗 button)</li>
+                    <li><strong>Visualize:</strong> Heatmaps (🗺️), Timeline (📅), Insights (🎓), Speed (⚡)</li>
+                    <li><strong>Search:</strong> Filter results across all columns with regex support</li>
+                    <li><strong>Export:</strong> CSV for analysis, JSON for SIEM integration</li>
+                    <li><strong>Reports:</strong> Generate HTML reports for documentation (📄 button)</li>
                 </ul>
                 
-                <h4 style="color: white;">🔍 Investigation Strategy:</h4>
-                <ul style="{CSS_LINE_HEIGHT}; color: white;">
-                    <li><strong>Start Broad:</strong> Run multiple strategies on your data to get different perspectives</li>
-                    <li><strong>Correlate:</strong> Use correlation analysis to identify systematic attackers</li>
-                    <li><strong>Triage:</strong> Focus on high-severity (≥75 score) findings first</li>
-                    <li><strong>Document:</strong> Export findings and generate reports for your records</li>
+                <h4 style="color: white; font-size: 1.05em; margin: 10px 0 6px 0;">🔍 Investigation:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white; font-size: 0.95em; margin: 6px 0;">
+                    <li><strong>Start Broad:</strong> Run multiple strategies for different perspectives</li>
+                    <li><strong>Correlate:</strong> Identify systematic attackers across strategies</li>
+                    <li><strong>Triage:</strong> Focus on high-severity (≥75) findings first</li>
+                    <li><strong>Document:</strong> Export and generate reports</li>
                 </ul>
                 
-                <h4 style="color: white;">⚡ Performance Tips:</h4>
-                <ul style="{CSS_LINE_HEIGHT}; color: white;">
-                    <li>Use date filters to limit data range and improve speed</li>
-                    <li>Start with smaller row limits (10,000) for initial exploration</li>
-                    <li>Cache is automatically used for table listings (refreshes every 7 days)</li>
-                    <li>Results are stored in memory for correlation - no need to re-run analyses</li>
+                <h4 style="color: white; font-size: 1.05em; margin: 10px 0 6px 0;">⚡ Performance:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white; font-size: 0.95em; margin: 6px 0;">
+                    <li>Use date filters to narrow data range</li>
+                    <li>Start with smaller row limits (10,000)</li>
+                    <li>Table cache refreshes every 7 days automatically</li>
+                    <li>Results stored in memory for correlation</li>
                 </ul>
                 
-                <h4 style="color: white;">📊 Understanding Scores:</h4>
-                <ul style="{CSS_LINE_HEIGHT}; color: white;">
-                    <li><strong>75-100 (Critical):</strong> Strong evidence of malicious activity - investigate immediately</li>
-                    <li><strong>50-74 (High):</strong> Suspicious behavior worth investigating</li>
-                    <li><strong>&lt;50 (Medium/Low):</strong> Anomalies that may be benign but worth noting</li>
+                <h4 style="color: white; font-size: 1.05em; margin: 10px 0 6px 0;">📊 Severity Scores:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white; font-size: 0.95em; margin: 6px 0;">
+                    <li><strong>75-100 (Critical):</strong> Investigate immediately</li>
+                    <li><strong>50-74 (High):</strong> Suspicious, worth investigating</li>
+                    <li><strong>&lt;50 (Medium/Low):</strong> Anomalies, may be benign</li>
                 </ul>
             </div>
             """
@@ -4252,13 +4254,13 @@ class WatsonDashboard:
         insights_button.on_click(on_insights_click)
         overview_button.on_click(on_overview_click)
         
-        # Organize buttons by function with labels for clarity
+        # Organize buttons by function - compact layout
         # Critical Analysis Actions
         critical_actions = widgets.HBox([
             triage_button,
             correlation_button,
             overview_button
-        ], layout=widgets.Layout(justify_content='flex-start', margin='2px 0'))
+        ], layout=widgets.Layout(justify_content='flex-start', margin='1px 0'))
         
         # Analytics & Insights
         analytics_actions = widgets.HBox([
@@ -4267,7 +4269,7 @@ class WatsonDashboard:
             insights_button,
             timeline_button,
             performance_button
-        ], layout=widgets.Layout(justify_content='flex-start', margin='2px 0'))
+        ], layout=widgets.Layout(justify_content='flex-start', margin='1px 0'))
         
         # Workflow & Support
         workflow_actions = widgets.HBox([
@@ -4275,21 +4277,21 @@ class WatsonDashboard:
             report_button,
             export_all_button,
             help_button
-        ], layout=widgets.Layout(justify_content='flex-start', margin='2px 0'))
+        ], layout=widgets.Layout(justify_content='flex-start', margin='1px 0'))
         
         # Compact action buttons with minimal spacing
         action_buttons = widgets.VBox([
             critical_actions,
             analytics_actions, 
             workflow_actions
-        ], layout=widgets.Layout(margin='5px 0 10px 0'))
+        ], layout=widgets.Layout(margin='3px 0 8px 0'))
         
         # Arrange layout with tabs - compact and clean
         dashboard = widgets.VBox([
             header,
             action_buttons,
             action_output,
-            widgets.HTML("<hr style='margin: 10px 0;'>"),
+            widgets.HTML(f"<hr style='{CSS_HR_DIVIDER}'>"),
             self.tab_widget,
         ])
         
