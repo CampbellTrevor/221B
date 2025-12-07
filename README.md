@@ -9,16 +9,21 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 ### 🆕 What's New in This Release
 
 **🎨 UI/UX Overhaul - Workflow-Centric Design:**
+- 🆕 **Polished Header** - Professional design with integrated workflow guidance subtitle
 - 🆕 **Reorganized Strategy Tabs** - Natural analyst workflow with numbered steps (1️⃣ → 4️⃣)
+- 🆕 **Subtle Section Headers** - Uppercase labels replace bulky h4 headers for cleaner look
 - 🆕 **Collapsible Sections** - Strategy descriptions and config management collapse to save space
-- 🆕 **Reduced Visual Clutter** - HR separators reduced from 4 to 2, compact margins throughout
+- 🆕 **Minimal Dividers** - Replaced heavy HR separators with subtle 1px borders
 - 🆕 **Horizontal Grouping** - Related controls (date pickers, query options) grouped for compactness
-- 🆕 **Professional Button Styling** - Consistent sizing, clear labels, organized by function
-- 🆕 **Prominent Run Button** - 40px height with emoji for easy identification
-- 🆕 **Workflow Guidance** - Clear path shown in header: Quick Actions → Strategy → Configure → Run
-- Tab layout now follows: Select Data Source → Map Columns → Configure Query → Run Analysis → Results
+- 🆕 **Consistent Button Sizing** - Fixed widths (95-115px) across all action buttons
+- 🆕 **Concise Labels** - Shortened button text ("Export All" → "Export") with descriptive tooltips
+- 🆕 **Prominent Run Button** - 180px × 42px with success styling for clear call-to-action
+- 🆕 **Enhanced Table Styling** - Left-aligned headers, better padding, subtle shadows
+- 🆕 **Professional Typography** - Consistent font sizes (0.88-0.95em) and weights throughout
+- 🆕 **Refined Tips Section** - Grid layout with 4 scannable sections instead of long lists
+- Tab layout follows: Select Data Source → Map Columns → Configure Query → Run Analysis → Results
 - Configuration management moved to collapsible accordion (used less frequently)
-- Quick action buttons reorganized: Critical Analysis, Analytics & Insights, Workflow & Support
+- Quick action buttons organized: Critical Analysis, Analytics & Insights, Workflow & Support
 
 **Code Quality & Consolidation:**
 - 🔧 **Major code consolidation** - Improved maintainability and reduced duplication
@@ -39,14 +44,17 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 **Visual Display Improvements:**
 - 🆕 **JSON Export** - Export results as JSON for SIEM integration alongside traditional CSV
+- 🆕 **Modern Table Design** - Enhanced headers with gradient backgrounds, better cell padding
+- 🆕 **Refined Search Controls** - Compact layout with "Filter" label and clear button
+- 🆕 **Improved Pagination** - Styled page info with bullet separators and comma formatting
 - Color-coded severity indicators with visual badges (HIGH/MED/LOW)
-- Smart row highlighting based on threat scores
+- Smart row highlighting based on threat scores  
 - Quick-filter buttons for instant severity filtering
-- Professional table styling with clear visual hierarchy
-- Improved summary statistics dashboard
+- Professional styling with subtle shadows and consistent borders
+- Polished summary statistics dashboard
 - **IP Address Threat Heatmap** - Visualize which IPs generate the most threats across strategies
 - **Strategy Effectiveness Insights** - Compare detection rates and severity distributions
-- **Three-Row Quick Action Layout** - Better organized controls with 12 total buttons
+- **Three-Row Quick Action Layout** - Organized controls with 12 total buttons at fixed widths
 
 **Enhanced User Experience:**
 - 🆕 **12 Quick Action Buttons** - Streamlined controls for efficient threat hunting
