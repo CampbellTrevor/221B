@@ -1302,7 +1302,8 @@ class WatsonDashboard:
         
         # Show severity breakdown
         severity_counts = ip_df.groupby('severity').size()
-        severity_msg = " | ".join([f"{('🔴' if s == 'High' else '🟡' if s == 'Medium' else '🟢')} {s}: {severity_counts.get(s, 0):,}" for s in ['High', 'Medium', 'Low']])
+        severity_emojis = {'High': '🔴', 'Medium': '🟡', 'Low': '🟢'}
+        severity_msg = " | ".join([f"{severity_emojis[s]} {s}: {severity_counts.get(s, 0):,}" for s in ['High', 'Medium', 'Low']])
         print(f"🎯 {severity_msg}")
         print()
         
@@ -1425,9 +1426,10 @@ class WatsonDashboard:
         print(f"🎯 {total_findings:,} total | 🔴 {total_high:,} ({total_high/total_findings*100:.1f}%) | 🟡 {total_medium:,} ({total_medium/total_findings*100:.1f}%) | 🟢 {total_low:,} ({total_low/total_findings*100:.1f}%)")
         
         # Identify most effective strategies
-        most_effective = insights_df.nlargest(3, 'High Severity')
-        top_strategies = " | ".join([f"{s} ({h})" for s, h in zip(most_effective['Strategy'], most_effective['High Severity'])])
-        print(f"🏆 Top 3: {top_strategies}")
+        if len(insights_df) > 0:
+            most_effective = insights_df.nlargest(min(3, len(insights_df)), 'High Severity')
+            top_strategies = " | ".join([f"{s} ({h})" for s, h in zip(most_effective['Strategy'], most_effective['High Severity'])])
+            print(f"🏆 Top {len(most_effective)}: {top_strategies}")
         print()
         
         # Visualization if plotly available
@@ -1563,7 +1565,12 @@ class WatsonDashboard:
         
         # Risk assessment
         critical_pct = (total_critical / total_threats * 100) if total_threats > 0 else 0
-        risk_msg = "⚠️ HIGH RISK" if critical_pct > 10 else "⚠️ ELEVATED RISK" if critical_pct > 5 else "✅ MODERATE RISK"
+        if critical_pct > 10:
+            risk_msg = "⚠️ HIGH RISK"
+        elif critical_pct > 5:
+            risk_msg = "⚠️ ELEVATED RISK"
+        else:
+            risk_msg = "✅ MODERATE RISK"
         print(f"   {risk_msg}: {critical_pct:.1f}% critical threats")
         print()
         
