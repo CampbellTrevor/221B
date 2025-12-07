@@ -2674,8 +2674,111 @@ class TimeAnomalyStrategy(HuntStrategy):
         result_df = pd.DataFrame(results)
         if not result_df.empty:
             result_df = result_df.sort_values('anomaly_score', ascending=False)
+            
+            # Apply ML if sufficient data and sklearn available
+            if HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+                result_df = self._apply_ml_anomaly_detection(result_df)
+            else:
+                result_df['ml_anomaly_score'] = 0.0
+                result_df['ml_confidence'] = 'N/A (insufficient data or sklearn not available)'
+                result_df['ml_explanation'] = 'Insufficient data for ML (need 50+ sources) - rule-based detection only'
         
         return result_df
+    
+    def _apply_ml_anomaly_detection(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply Isolation Forest ML to detect anomalous off-hours patterns.
+        
+        Uses machine learning to identify temporal access patterns that deviate
+        from typical off-hours activity, catching sophisticated attacks that 
+        might evade rule-based detection (e.g., attackers who mix normal and 
+        off-hours activity to avoid detection thresholds).
+        
+        Args:
+            result_df: DataFrame with rule-based detections and time features
+            
+        Returns:
+            DataFrame with additional ML columns: ml_anomaly_score, ml_confidence, ml_explanation
+        """
+        from sklearn.ensemble import IsolationForest
+        from sklearn.preprocessing import StandardScaler
+        from scipy.stats import rankdata
+        
+        # Select features for ML
+        ml_features = ['off_hours_percentage', 'late_night_activity', 'weekend_activity', 'total_activity']
+        X = result_df[ml_features].copy()
+        
+        # Handle any NaN values
+        X = X.fillna(0)
+        
+        # Scale features for better anomaly detection
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Train Isolation Forest
+        iso_forest = IsolationForest(
+            contamination=ML_CONTAMINATION,
+            random_state=ML_RANDOM_STATE,
+            n_estimators=100
+        )
+        
+        # Get anomaly scores (more negative = more anomalous)
+        anomaly_scores_raw = iso_forest.fit(X_scaled).decision_function(X_scaled)
+        
+        # Normalize to 0-100 scale (higher = more anomalous)
+        ml_anomaly_score = (rankdata(anomaly_scores_raw) / len(anomaly_scores_raw)) * 100
+        
+        # Add ML results
+        result_df['ml_anomaly_score'] = ml_anomaly_score
+        
+        # Generate confidence levels and explanations
+        result_df['ml_confidence'] = result_df.apply(
+            lambda row: explain_ml_score(row['ml_anomaly_score'], method="anomaly"),
+            axis=1
+        )
+        
+        # Generate detailed explanations with feature contributions
+        result_df['ml_explanation'] = result_df.apply(
+            lambda row: self._generate_ml_explanation(row, ml_features),
+            axis=1
+        )
+        
+        return result_df
+    
+    def _generate_ml_explanation(self, row, features: list) -> str:
+        """Generate plain English explanation for ML decision."""
+        score = row['ml_anomaly_score']
+        
+        # Identify top contributing factors
+        contributions = {
+            'off_hours_percentage': row['off_hours_percentage'],
+            'late_night_activity': row['late_night_activity'],
+            'weekend_activity': row['weekend_activity'],
+            'total_activity': row['total_activity']
+        }
+        
+        explanation_parts = []
+        
+        if score >= 75:
+            explanation_parts.append("ML identified this as HIGHLY UNUSUAL temporal pattern.")
+        elif score >= 50:
+            explanation_parts.append("ML detected MODERATE temporal anomaly.")
+        else:
+            explanation_parts.append("ML sees this as relatively NORMAL off-hours pattern.")
+        
+        # Add top contributing factors
+        if row['off_hours_percentage'] >= 80:
+            explanation_parts.append(f"Extremely high off-hours activity ({row['off_hours_percentage']:.1f}%)")
+        elif row['off_hours_percentage'] >= 60:
+            explanation_parts.append(f"High off-hours activity ({row['off_hours_percentage']:.1f}%)")
+            
+        if row['late_night_activity'] >= 10:
+            explanation_parts.append(f"Significant late-night access ({row['late_night_activity']} events)")
+            
+        if row['weekend_activity'] >= 10:
+            explanation_parts.append(f"Weekend activity detected ({row['weekend_activity']} events)")
+        
+        return " | ".join(explanation_parts)
     
     def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
         """Generate time anomaly visualization."""
@@ -2720,7 +2823,10 @@ class TimeAnomalyStrategy(HuntStrategy):
             'weekend_activity': 'Number of activities on weekends',
             'late_night_activity': 'Number of activities between midnight and 6am. Late night activity is especially suspicious',
             'most_active_hours': 'Top 3 most active hours with activity counts',
-            'anomaly_score': 'Overall time-based anomaly score (0-100). Higher scores indicate suspicious off-hours access patterns typical of unauthorized access, insider threats, or compromised credentials. Scores ≥50 warrant investigation into why this account is active at unusual times'
+            'anomaly_score': 'Overall time-based anomaly score (0-100). Higher scores indicate suspicious off-hours access patterns typical of unauthorized access, insider threats, or compromised credentials. Scores ≥50 warrant investigation into why this account is active at unusual times',
+            'ml_anomaly_score': '🤖 MACHINE LEARNING: How unusual this temporal pattern is compared to all other off-hours activity (0-100). Higher scores mean ML identified this as more anomalous, potentially indicating sophisticated attackers who mix normal/off-hours activity to evade detection thresholds. Requires 50+ sources for ML analysis',
+            'ml_confidence': '🤖 ML CONFIDENCE LEVEL: How confident the machine learning model is in this detection (HIGH/MEDIUM/LOW/NORMAL). HIGH = ML strongly agrees this is suspicious, MEDIUM = ML detects moderate anomaly, LOW = mostly normal but rule-based flagged it',
+            'ml_explanation': '🤖 WHY ML FLAGGED THIS: Plain English explanation of what the machine learning model detected and which temporal features contributed most to the anomaly score. Helps analysts understand the ML decision'
         }
 
 
@@ -2840,8 +2946,109 @@ class GeoAnomalyStrategy(HuntStrategy):
         result_df = pd.DataFrame(results)
         if not result_df.empty:
             result_df = result_df.sort_values('geo_anomaly_score', ascending=False)
+            
+            # Apply ML if sufficient data and sklearn available
+            if HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+                result_df = self._apply_ml_anomaly_detection(result_df)
+            else:
+                result_df['ml_anomaly_score'] = 0.0
+                result_df['ml_confidence'] = 'N/A (insufficient data or sklearn not available)'
+                result_df['ml_explanation'] = 'Insufficient data for ML (need 50+ sources) - rule-based detection only'
         
         return result_df
+    
+    def _apply_ml_anomaly_detection(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply Isolation Forest ML to detect anomalous geographic patterns.
+        
+        Uses machine learning to identify geographic access patterns that deviate
+        from typical behavior, catching sophisticated attacks where adversaries 
+        use VPNs or compromised infrastructure to blend in with legitimate traffic
+        patterns while still exhibiting subtle anomalies.
+        
+        Args:
+            result_df: DataFrame with rule-based detections and geographic features
+            
+        Returns:
+            DataFrame with additional ML columns: ml_anomaly_score, ml_confidence, ml_explanation
+        """
+        from sklearn.ensemble import IsolationForest
+        from sklearn.preprocessing import StandardScaler
+        from scipy.stats import rankdata
+        
+        # Select features for ML
+        ml_features = ['unique_countries', 'total_connections']
+        X = result_df[ml_features].copy()
+        
+        # Add derived feature: high risk country count
+        result_df['high_risk_count'] = result_df['high_risk_countries'].apply(
+            lambda x: 0 if x == 'None' else len(x.split(', '))
+        )
+        X['high_risk_count'] = result_df['high_risk_count']
+        
+        # Handle any NaN values
+        X = X.fillna(0)
+        
+        # Scale features for better anomaly detection
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Train Isolation Forest
+        iso_forest = IsolationForest(
+            contamination=ML_CONTAMINATION,
+            random_state=ML_RANDOM_STATE,
+            n_estimators=100
+        )
+        
+        # Get anomaly scores (more negative = more anomalous)
+        anomaly_scores_raw = iso_forest.fit(X_scaled).decision_function(X_scaled)
+        
+        # Normalize to 0-100 scale (higher = more anomalous)
+        ml_anomaly_score = (rankdata(anomaly_scores_raw) / len(anomaly_scores_raw)) * 100
+        
+        # Add ML results
+        result_df['ml_anomaly_score'] = ml_anomaly_score
+        
+        # Generate confidence levels and explanations
+        result_df['ml_confidence'] = result_df.apply(
+            lambda row: explain_ml_score(row['ml_anomaly_score'], method="anomaly"),
+            axis=1
+        )
+        
+        # Generate detailed explanations with feature contributions
+        result_df['ml_explanation'] = result_df.apply(
+            lambda row: self._generate_ml_explanation(row),
+            axis=1
+        )
+        
+        return result_df
+    
+    def _generate_ml_explanation(self, row) -> str:
+        """Generate plain English explanation for ML decision."""
+        score = row['ml_anomaly_score']
+        
+        explanation_parts = []
+        
+        if score >= 75:
+            explanation_parts.append("ML identified this as HIGHLY UNUSUAL geographic pattern.")
+        elif score >= 50:
+            explanation_parts.append("ML detected MODERATE geographic anomaly.")
+        else:
+            explanation_parts.append("ML sees this as relatively NORMAL geographic behavior.")
+        
+        # Add top contributing factors
+        if row['unique_countries'] >= 5:
+            explanation_parts.append(f"Extremely high country diversity ({row['unique_countries']} countries)")
+        elif row['unique_countries'] >= 3:
+            explanation_parts.append(f"Multiple countries detected ({row['unique_countries']} countries)")
+            
+        if row['high_risk_count'] > 0:
+            explanation_parts.append(f"High-risk countries present ({row['high_risk_count']})")
+            
+        if 'rapid' in row['flags'].lower():
+            explanation_parts.append("Impossible travel pattern detected")
+        
+        return " | ".join(explanation_parts)
     
     def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
         """Generate geo-anomaly visualization."""
@@ -2885,7 +3092,10 @@ class GeoAnomalyStrategy(HuntStrategy):
             'total_connections': 'Total number of connections observed',
             'high_risk_countries': 'Any high-risk countries detected (CN, RU, KP, IR, etc.)',
             'flags': 'Specific anomalies detected (rapid country switching, impossible travel, etc.)',
-            'geo_anomaly_score': 'Overall geographic anomaly score (0-100). Higher scores indicate suspicious location patterns such as connections from high-risk countries, impossible travel scenarios, or compromised accounts being accessed from multiple geographic locations. Scores ≥50 suggest potential account compromise or VPN/proxy abuse'
+            'geo_anomaly_score': 'Overall geographic anomaly score (0-100). Higher scores indicate suspicious location patterns such as connections from high-risk countries, impossible travel scenarios, or compromised accounts being accessed from multiple geographic locations. Scores ≥50 suggest potential account compromise or VPN/proxy abuse',
+            'ml_anomaly_score': '🤖 MACHINE LEARNING: How unusual this geographic pattern is compared to all other sources (0-100). Higher scores mean ML identified this as more anomalous, potentially indicating sophisticated attackers using VPNs or compromised infrastructure to blend in while exhibiting subtle anomalies. Requires 50+ sources for ML analysis',
+            'ml_confidence': '🤖 ML CONFIDENCE LEVEL: How confident the machine learning model is in this detection (HIGH/MEDIUM/LOW/NORMAL). HIGH = ML strongly agrees this is suspicious, MEDIUM = ML detects moderate anomaly, LOW = mostly normal but rule-based flagged it',
+            'ml_explanation': '🤖 WHY ML FLAGGED THIS: Plain English explanation of what the machine learning model detected and which geographic features contributed most to the anomaly score. Helps analysts understand the ML decision'
         }
 
 
@@ -3291,8 +3501,115 @@ class CryptoMiningStrategy(HuntStrategy):
         result_df = pd.DataFrame(results)
         if not result_df.empty:
             result_df = result_df.sort_values('mining_score', ascending=False)
+            
+            # Apply ML if sufficient data and sklearn available
+            if HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+                result_df = self._apply_ml_anomaly_detection(result_df)
+            else:
+                result_df['ml_anomaly_score'] = 0.0
+                result_df['ml_confidence'] = 'N/A (insufficient data or sklearn not available)'
+                result_df['ml_explanation'] = 'Insufficient data for ML (need 50+ sources) - rule-based detection only'
         
         return result_df
+    
+    def _apply_ml_anomaly_detection(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply Isolation Forest ML to detect anomalous crypto mining patterns.
+        
+        Uses machine learning to distinguish sophisticated mining operations from
+        simple port scans or legitimate software update services. ML can detect
+        subtle patterns in connection behavior that indicate cryptojacking vs benign
+        persistent connections.
+        
+        Args:
+            result_df: DataFrame with rule-based detections and mining features
+            
+        Returns:
+            DataFrame with additional ML columns: ml_anomaly_score, ml_confidence, ml_explanation
+        """
+        from sklearn.ensemble import IsolationForest
+        from sklearn.preprocessing import StandardScaler
+        from scipy.stats import rankdata
+        
+        # Select features for ML
+        ml_features = ['total_connections', 'unique_destinations']
+        X = result_df[ml_features].copy()
+        
+        # Add derived features
+        result_df['has_mining_ports'] = result_df['mining_ports_used'].apply(lambda x: 0 if x == 'None' else 1)
+        result_df['has_pool_matches'] = result_df['mining_pool_matches'].apply(lambda x: 0 if x == 'None' else 1)
+        result_df['connection_persistence'] = result_df['total_connections'] / (result_df['unique_destinations'] + 1)
+        
+        X['has_mining_ports'] = result_df['has_mining_ports']
+        X['has_pool_matches'] = result_df['has_pool_matches']
+        X['connection_persistence'] = result_df['connection_persistence']
+        
+        # Handle any NaN values
+        X = X.fillna(0)
+        
+        # Scale features for better anomaly detection
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Train Isolation Forest
+        iso_forest = IsolationForest(
+            contamination=ML_CONTAMINATION,
+            random_state=ML_RANDOM_STATE,
+            n_estimators=100
+        )
+        
+        # Get anomaly scores (more negative = more anomalous)
+        anomaly_scores_raw = iso_forest.fit(X_scaled).decision_function(X_scaled)
+        
+        # Normalize to 0-100 scale (higher = more anomalous)
+        ml_anomaly_score = (rankdata(anomaly_scores_raw) / len(anomaly_scores_raw)) * 100
+        
+        # Add ML results
+        result_df['ml_anomaly_score'] = ml_anomaly_score
+        
+        # Generate confidence levels and explanations
+        result_df['ml_confidence'] = result_df.apply(
+            lambda row: explain_ml_score(row['ml_anomaly_score'], method="anomaly"),
+            axis=1
+        )
+        
+        # Generate detailed explanations with feature contributions
+        result_df['ml_explanation'] = result_df.apply(
+            lambda row: self._generate_ml_explanation(row),
+            axis=1
+        )
+        
+        return result_df
+    
+    def _generate_ml_explanation(self, row) -> str:
+        """Generate plain English explanation for ML decision."""
+        score = row['ml_anomaly_score']
+        
+        explanation_parts = []
+        
+        if score >= 75:
+            explanation_parts.append("ML identified this as HIGHLY UNUSUAL mining pattern.")
+        elif score >= 50:
+            explanation_parts.append("ML detected MODERATE mining anomaly.")
+        else:
+            explanation_parts.append("ML sees this as relatively NORMAL persistent connection pattern.")
+        
+        # Add top contributing factors
+        if row['has_mining_ports'] == 1:
+            explanation_parts.append("Known mining ports detected")
+            
+        if row['has_pool_matches'] == 1:
+            explanation_parts.append("Mining pool domains identified")
+            
+        if row['connection_persistence'] >= 20:
+            explanation_parts.append(f"Very persistent connections ({row['connection_persistence']:.1f} per dest)")
+        elif row['connection_persistence'] >= 10:
+            explanation_parts.append(f"Persistent connections ({row['connection_persistence']:.1f} per dest)")
+            
+        if row['total_connections'] >= 100:
+            explanation_parts.append(f"High volume ({row['total_connections']} connections)")
+        
+        return " | ".join(explanation_parts)
     
     def visualize(self, result_df: pd.DataFrame, col_map: dict = None):
         """Generate crypto mining visualization."""
@@ -3336,7 +3653,10 @@ class CryptoMiningStrategy(HuntStrategy):
             'mining_ports_used': 'Known cryptocurrency mining ports detected (3333, 4444, etc.)',
             'mining_pool_matches': 'Mining pool domains or patterns identified in connection destinations',
             'flags': 'Specific mining indicators detected',
-            'mining_score': 'Overall cryptocurrency mining suspiciousness score (0-100). Higher scores indicate likely cryptojacking or unauthorized mining activity. Scores ≥50 suggest active mining operations that consume resources and may indicate malware infection or policy violations'
+            'mining_score': 'Overall cryptocurrency mining suspiciousness score (0-100). Higher scores indicate likely cryptojacking or unauthorized mining activity. Scores ≥50 suggest active mining operations that consume resources and may indicate malware infection or policy violations',
+            'ml_anomaly_score': '🤖 MACHINE LEARNING: How unusual this mining pattern is compared to all other persistent connections (0-100). Higher scores mean ML identified this as more anomalous, potentially distinguishing sophisticated cryptojacking from legitimate software update services or CDN connections. Requires 50+ sources for ML analysis',
+            'ml_confidence': '🤖 ML CONFIDENCE LEVEL: How confident the machine learning model is in this detection (HIGH/MEDIUM/LOW/NORMAL). HIGH = ML strongly agrees this is mining, MEDIUM = ML detects moderate anomaly, LOW = mostly normal but rule-based flagged it',
+            'ml_explanation': '🤖 WHY ML FLAGGED THIS: Plain English explanation of what the machine learning model detected and which connection characteristics contributed most to the anomaly score. Helps analysts understand the ML decision'
         }
 
 
@@ -4174,6 +4494,122 @@ class FilelessMalwareStrategy(HuntStrategy):
         result_df = pd.DataFrame(results)
         if not result_df.empty:
             result_df = result_df.sort_values('fileless_score', ascending=False)
+            
+            # Apply ML-based clustering if we have enough data and sklearn is available
+            if HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+                result_df = self._apply_ml_clustering(result_df)
+            else:
+                result_df['ml_cluster'] = 'N/A'
+                result_df['ml_cluster_risk'] = 'N/A'
+                result_df['ml_explanation'] = 'Insufficient data for ML (need 50+ sources) - rule-based detection only'
+        
+        return result_df
+    
+    def _apply_ml_clustering(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply KMeans clustering to group similar fileless attack patterns.
+        
+        This helps analysts understand if multiple sources are using the same
+        attack techniques, tools, or LOLBin abuse patterns, indicating coordinated
+        attacks, the same malware campaign, or similar threat actors.
+        
+        Args:
+            result_df: DataFrame with rule-based fileless detection results
+        
+        Returns:
+            DataFrame with additional ML columns: ml_cluster, ml_cluster_risk, ml_explanation
+        """
+        from sklearn.cluster import KMeans
+        from sklearn.preprocessing import StandardScaler
+        
+        # Feature engineering for clustering
+        ml_features = ['total_events', 'lolbins_count', 'encoded_commands']
+        X = result_df[ml_features].copy()
+        
+        # Add derived feature: keyword density
+        result_df['keyword_density'] = result_df.apply(
+            lambda row: 0 if row['suspicious_keywords'] == 'None' else len(row['suspicious_keywords'].split(', ')),
+            axis=1
+        )
+        X['keyword_density'] = result_df['keyword_density']
+        
+        # Handle any NaN values
+        X = X.fillna(0)
+        
+        # Scale features for clustering
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Determine optimal number of clusters (3-5 clusters typical for attack patterns)
+        n_clusters = min(max(len(result_df) // 10, 3), 5)
+        
+        # Train KMeans clustering
+        kmeans = KMeans(
+            n_clusters=n_clusters,
+            random_state=ML_RANDOM_STATE,
+            n_init=10
+        )
+        
+        # Fit and predict cluster assignments
+        cluster_labels = kmeans.fit_predict(X_scaled)
+        result_df['ml_cluster'] = cluster_labels
+        
+        # Analyze each cluster to assign risk levels
+        cluster_risks = {}
+        cluster_explanations = {}
+        
+        for cluster_id in range(n_clusters):
+            cluster_data = result_df[result_df['ml_cluster'] == cluster_id]
+            cluster_size = len(cluster_data)
+            avg_score = cluster_data['fileless_score'].mean()
+            avg_lolbins = cluster_data['lolbins_count'].mean()
+            avg_encoded = cluster_data['encoded_commands'].mean()
+            avg_keywords = cluster_data['keyword_density'].mean()
+            
+            # Find common processes in cluster
+            common_procs = []
+            for _, row in cluster_data.iterrows():
+                if row['suspicious_processes'] != 'None':
+                    procs = row['suspicious_processes'].split(', ')
+                    common_procs.extend(procs)
+            
+            most_common_proc = 'Unknown' if not common_procs else Counter(common_procs).most_common(1)[0][0]
+            
+            # Determine cluster risk level
+            if avg_score >= 80 or avg_encoded >= 5:
+                risk_level = '🔴 CRITICAL'
+            elif avg_score >= 65:
+                risk_level = '🟠 HIGH'
+            elif avg_score >= 50:
+                risk_level = '🟡 MEDIUM'
+            else:
+                risk_level = '🟢 LOW'
+            
+            cluster_risks[cluster_id] = risk_level
+            
+            # Generate detailed cluster explanation
+            pattern_type = 'Mixed fileless attack techniques'
+            if avg_encoded >= 3:
+                pattern_type = f'Heavy obfuscation/encoding patterns (avg {avg_encoded:.1f} encoded commands) - likely advanced malware'
+            elif 'powershell' in most_common_proc:
+                pattern_type = f'PowerShell abuse campaign (primary tool: {most_common_proc})'
+            elif avg_lolbins >= 3:
+                pattern_type = f'Multi-tool LOLBin abuse (avg {avg_lolbins:.1f} different tools) - sophisticated attack'
+            elif avg_keywords >= 3:
+                pattern_type = f'Keyword-heavy command patterns (avg {avg_keywords:.1f} malicious keywords) - scripted attack'
+            else:
+                pattern_type = f'LOLBin abuse pattern centered on {most_common_proc}'
+            
+            cluster_explanations[cluster_id] = (
+                f"🤖 ML CLUSTER {cluster_id}: {risk_level} risk pattern cluster (avg score: {avg_score:.1f}). "
+                f"Contains {cluster_size} similar sources. Pattern: {pattern_type}. "
+                f"Avg LOLBins: {avg_lolbins:.1f}, avg encoded: {avg_encoded:.1f}, avg keywords: {avg_keywords:.1f}. "
+                f"This cluster likely represents {'the same attack campaign or malware family' if cluster_size > 5 else 'similar fileless attack techniques'}."
+            )
+        
+        # Add risk and explanation to each row
+        result_df['ml_cluster_risk'] = result_df['ml_cluster'].map(cluster_risks)
+        result_df['ml_explanation'] = result_df['ml_cluster'].map(cluster_explanations)
         
         return result_df
     
@@ -4220,7 +4656,10 @@ class FilelessMalwareStrategy(HuntStrategy):
             'encoded_commands': 'Number of encoded or obfuscated commands detected, often used to evade detection',
             'lolbins_count': 'Count of different LOLBins used. Multiple tools suggest sophisticated attack',
             'flags': 'Specific fileless attack indicators detected',
-            'fileless_score': 'Overall fileless malware suspiciousness score (0-100). Higher scores indicate likely memory-resident malware or living-off-the-land attack techniques. Scores ≥50 suggest active fileless attack in progress. Immediate memory forensics and incident response recommended'
+            'fileless_score': 'Overall fileless malware suspiciousness score (0-100). Higher scores indicate likely memory-resident malware or living-off-the-land attack techniques. Scores ≥50 suggest active fileless attack in progress. Immediate memory forensics and incident response recommended',
+            'ml_cluster': '🤖 MACHINE LEARNING CLUSTER ID: Which pattern group this source belongs to (0-4). Sources in the same cluster likely use similar LOLBin abuse techniques or are part of the same malware campaign. Requires 50+ sources for ML clustering',
+            'ml_cluster_risk': '🤖 ML CLUSTER RISK: Risk level of this cluster (CRITICAL/HIGH/MEDIUM/LOW). Shows whether other sources in this cluster use heavy obfuscation, multiple LOLBins, or similar attack patterns',
+            'ml_explanation': '🤖 WHY ML GROUPED THIS: Plain English explanation of what the machine learning clustering detected - which LOLBin patterns, encoding techniques, or attack tools are common in this cluster. Helps identify coordinated campaigns'
         }
 
 
