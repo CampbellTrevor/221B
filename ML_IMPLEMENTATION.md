@@ -340,6 +340,129 @@ Local Outlier Factor measures how isolated a data point is from its neighbors:
 
 ---
 
+### 12. Time-Based Anomaly Detector (Off-Hours Activity)
+
+**ML Method**: Isolation Forest (Anomaly Detection)
+
+**What It Does**:
+- Analyzes temporal access patterns to detect off-hours anomalies
+- Identifies sophisticated attackers who mix normal and off-hours activity
+- Distinguishes unauthorized access from legitimate after-hours work
+
+**Features Used**:
+- `off_hours_percentage`: Percentage of activity outside business hours
+- `late_night_activity`: Events between midnight and 6am
+- `weekend_activity`: Events on weekends
+- `total_activity`: Overall activity volume
+
+**When ML Activates**: 50+ sources with off-hours activity
+
+**New Columns**:
+- `ml_anomaly_score` (0-100): How unusual this temporal pattern is
+- `ml_confidence`: HIGH/MEDIUM/LOW/NORMAL confidence level
+- `ml_explanation`: Plain English explanation with feature contributions
+
+**Interpretation for Analysts**:
+- **Score 75-100**: Highly unusual temporal pattern - likely unauthorized access
+- **Score 50-74**: Suspicious off-hours pattern - investigate context
+- **Score <50**: Within normal off-hours range - may be legitimate
+
+---
+
+### 13. Geo-Anomaly Detector (Suspicious Locations)
+
+**ML Method**: Isolation Forest (Anomaly Detection)
+
+**What It Does**:
+- Analyzes geographic access patterns for anomalies
+- Detects VPN abuse and compromised accounts
+- Identifies impossible travel scenarios and multi-country access
+
+**Features Used**:
+- `unique_countries`: Number of different countries accessed from
+- `total_connections`: Connection volume
+- `high_risk_count`: Count of high-risk countries (CN, RU, KP, IR, etc.)
+
+**When ML Activates**: 50+ sources with geographic anomalies
+
+**New Columns**:
+- `ml_anomaly_score` (0-100): How unusual this geographic pattern is
+- `ml_confidence`: HIGH/MEDIUM/LOW/NORMAL confidence level
+- `ml_explanation`: Plain English explanation with feature contributions
+
+**Interpretation for Analysts**:
+- **Score 75-100**: Highly unusual geographic pattern - likely compromise
+- **Score 50-74**: Suspicious location behavior - investigate urgently
+- **Score <50**: Geographic diversity within normal range
+
+---
+
+### 14. Crypto Mining Detector (Cryptojacking)
+
+**ML Method**: Isolation Forest (Anomaly Detection)
+
+**What It Does**:
+- Analyzes persistent connection patterns to detect mining
+- Distinguishes sophisticated cryptojacking from benign services
+- Identifies mining operations vs legitimate software updates
+
+**Features Used**:
+- `total_connections`: Connection volume
+- `unique_destinations`: Number of destinations contacted
+- `has_mining_ports`: Presence of known mining ports (3333, 4444, etc.)
+- `has_pool_matches`: Mining pool domain patterns detected
+- `connection_persistence`: Connections per destination ratio
+
+**When ML Activates**: 50+ sources with persistent connection patterns
+
+**New Columns**:
+- `ml_anomaly_score` (0-100): How unusual this mining pattern is
+- `ml_confidence`: HIGH/MEDIUM/LOW/NORMAL confidence level
+- `ml_explanation`: Plain English explanation with feature contributions
+
+**Interpretation for Analysts**:
+- **Score 75-100**: Highly suspicious mining pattern - likely cryptojacking
+- **Score 50-74**: Suspicious persistent connections - investigate
+- **Score <50**: Persistent but within normal service patterns
+
+---
+
+### 15. Fileless Malware Detector (LOLBin Abuse)
+
+**ML Method**: KMeans Clustering (Pattern Discovery)
+
+**What It Does**:
+- Groups similar LOLBin abuse patterns together
+- Identifies coordinated fileless attack campaigns
+- Distinguishes malware families by their tool usage
+
+**Features Used**:
+- `total_events`: Volume of suspicious process executions
+- `lolbins_count`: Number of different LOLBins used
+- `encoded_commands`: Count of encoded/obfuscated commands
+- `keyword_density`: Malicious keyword usage rate
+
+**When ML Activates**: 50+ sources with fileless malware indicators
+
+**New Columns**:
+- `ml_cluster` (0-4): Which attack pattern group this belongs to
+- `ml_cluster_risk`: CRITICAL/HIGH/MEDIUM/LOW risk level
+- `ml_explanation`: Detailed cluster description with pattern type
+
+**Cluster Interpretation**:
+- **Heavy obfuscation**: Critical - advanced malware with encoding
+- **PowerShell abuse**: High - PowerShell-based attack campaign
+- **Multi-tool LOLBin**: High - sophisticated attack using multiple tools
+- **Keyword-heavy**: Medium - scripted attack with common patterns
+
+**Pattern Types Identified**:
+1. Obfuscation-heavy patterns → Advanced malware with evasion techniques
+2. PowerShell-centric campaigns → PowerShell-based attack tools
+3. Multi-tool patterns → Sophisticated APT using multiple LOLBins
+4. Keyword-heavy patterns → Scripted attacks with predictable commands
+
+---
+
 ## 📊 ML Architecture
 
 ### Minimum Sample Requirements
@@ -358,6 +481,10 @@ All ML features require **50+ samples** to activate:
 | InsiderThreatStrategy | Users with suspicious behavior | Compare user behavior across peers |
 | DataHoardingStrategy | Hosts hoarding data | LOF needs neighbors to identify outliers |
 | UserAgentAnomalyStrategy | Sources with suspicious user agents | Clustering requires multiple bot/tool sources |
+| TimeAnomalyStrategy | Sources with off-hours activity | Compare temporal patterns across sources |
+| GeoAnomalyStrategy | Sources with geographic anomalies | Identify unusual location patterns vs baseline |
+| CryptoMiningStrategy | Sources with persistent connections | Distinguish mining from legitimate services |
+| FilelessMalwareStrategy | Sources with LOLBin indicators | Clustering requires multiple attack pattern sources |
 
 **Below 50 samples**: Graceful fallback to rule-based detection with explanation message.
 
@@ -637,7 +764,10 @@ print(results[['source_ip', 'beacon_score', 'ml_anomaly_score', 'ml_confidence']
 
 ## 🚀 Future Enhancements
 
-### ✅ Completed (11 Strategies Enhanced)
+### ✅ Completed (15 Strategies Enhanced - 42% Coverage)
+- [x] Add ML to BeaconStrategy (Isolation Forest for C2 beaconing)
+- [x] Add ML to EntropyStrategy (KMeans for DGA domain clustering)
+- [x] Add ML to ExfilStrategy (LOF for traffic pattern outliers)
 - [x] Add ML to PortScanStrategy (Isolation Forest for scan patterns)
 - [x] Add ML to BruteForceStrategy (Isolation Forest for attack patterns)
 - [x] Add ML to LateralMovementStrategy (Isolation Forest for APT detection)
@@ -645,17 +775,20 @@ print(results[['source_ip', 'beacon_score', 'ml_anomaly_score', 'ml_confidence']
 - [x] Add ML to InsiderThreatStrategy (LOF for behavioral anomalies)
 - [x] Add ML to DataHoardingStrategy (LOF for data theft detection)
 - [x] Add ML to UserAgentAnomalyStrategy (KMeans for bot families)
+- [x] Add ML to TimeAnomalyStrategy (Isolation Forest for off-hours patterns)
+- [x] Add ML to GeoAnomalyStrategy (Isolation Forest for geographic outliers)
+- [x] Add ML to CryptoMiningStrategy (Isolation Forest for mining patterns)
+- [x] Add ML to FilelessMalwareStrategy (KMeans for LOLBin pattern grouping)
 - [x] Plain English explanations for all ML decisions
 - [x] Feature importance explanations
 - [x] Graceful fallback with clear messaging
+- [x] Comprehensive test suite (9 ML tests, all passing)
 
 ### Short Term (Optional Enhancements)
-- [ ] Add ML to TimeAnomalyStrategy (Isolation Forest for off-hours patterns)
-- [ ] Add ML to GeoAnomalyStrategy (Isolation Forest for geographic outliers)
-- [ ] Add ML to CryptoMiningStrategy (Isolation Forest for mining patterns)
-- [ ] Add ML to FilelessMalwareStrategy (KMeans for LOLBin pattern grouping)
 - [ ] UI enhancements to visualize ML confidence scores
 - [ ] Interactive feature importance visualization
+- [ ] Add ML to remaining strategies (21 strategies without ML)
+- [ ] Advanced metrics dashboard for ML performance
 
 ### Medium Term
 - [ ] Model persistence (save/load trained models for reuse)
