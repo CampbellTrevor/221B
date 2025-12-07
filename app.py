@@ -1012,9 +1012,7 @@ class WatsonDashboard:
             print("⚠️ No performance data available yet. Run some strategies first.")
             return
         
-        print("=" * 80)
-        print("📊 STRATEGY PERFORMANCE STATISTICS")
-        print("=" * 80)
+        print("⚡ Strategy Performance Statistics")
         print()
         
         # Build performance table
@@ -1037,13 +1035,6 @@ class WatsonDashboard:
         
         # Display as formatted table
         display(HTML(perf_df.to_html(index=False, escape=False, classes='table')))
-        
-        print()
-        print("💡 Performance Tips:")
-        print("   • Faster strategies are better for real-time analysis")
-        print("   • High detection rates may indicate noisy data or loose thresholds")
-        print("   • Low detection rates may indicate clean data or tight thresholds")
-        print()
         
         # Add visualization if plotly is available
         if HAS_PLOTLY and len(perf_data) > 1:
@@ -1111,9 +1102,7 @@ class WatsonDashboard:
             print("⚠️ No threat data available yet. Run some strategies first.")
             return
         
-        print("=" * 80)
-        print("📅 TEMPORAL THREAT ACTIVITY ANALYSIS")
-        print("=" * 80)
+        print("📅 Temporal Threat Activity Analysis")
         print()
         
         # Collect all timestamps from results
@@ -1158,10 +1147,7 @@ class WatsonDashboard:
         timeline_df = pd.DataFrame(timeline_data)
         
         # Display summary statistics
-        print("📊 Timeline Summary:")
-        print(f"   • Total threat events: {len(timeline_df):,}")
-        print(f"   • Date range: {timeline_df['timestamp'].min()} to {timeline_df['timestamp'].max()}")
-        print(f"   • Strategies with timeline data: {timeline_df['strategy'].nunique()}")
+        print(f"📊 {len(timeline_df):,} events from {timeline_df['timestamp'].min()} to {timeline_df['timestamp'].max()} ({timeline_df['strategy'].nunique()} strategies)")
         print()
         
         # Group by date and severity
@@ -1170,9 +1156,6 @@ class WatsonDashboard:
         
         # Daily severity breakdown
         daily_summary = timeline_df.groupby(['date', 'severity']).size().unstack(fill_value=0)
-        
-        print("📅 Daily Threat Activity:")
-        print("-" * 80)
         display(HTML(daily_summary.to_html(classes='table')))
         print()
         
@@ -1310,24 +1293,17 @@ class WatsonDashboard:
         ip_summary = ip_summary.sort_values('Max Score', ascending=False)
         
         # Display top threatening IPs
-        print("📊 Top 20 Most Threatening IP Addresses:")
-        print("-" * 80)
-        
         top_ips = ip_summary.head(20).copy()
         top_ips['Max Score'] = top_ips['Max Score'].apply(lambda x: f"{x:.1f}")
         top_ips['Avg Score'] = top_ips['Avg Score'].apply(lambda x: f"{x:.1f}")
         top_ips['Strategies'] = top_ips['Strategies'].apply(lambda x: x[:50] + '...' if len(x) > 50 else x)
         
         display(HTML(top_ips.to_html(index=False, escape=True, classes='table')))
-        print()
         
         # Show severity breakdown
         severity_counts = ip_df.groupby('severity').size()
-        print("🎯 Threat Severity Distribution:")
-        for severity in ['High', 'Medium', 'Low']:
-            count = severity_counts.get(severity, 0)
-            emoji = '🔴' if severity == 'High' else '🟡' if severity == 'Medium' else '🟢'
-            print(f"   {emoji} {severity}: {count:,} detections")
+        severity_msg = " | ".join([f"{('🔴' if s == 'High' else '🟡' if s == 'Medium' else '🟢')} {s}: {severity_counts.get(s, 0):,}" for s in ['High', 'Medium', 'Low']])
+        print(f"🎯 {severity_msg}")
         print()
         
         # Visualization if plotly available
@@ -1439,30 +1415,18 @@ class WatsonDashboard:
         
         insights_df = pd.DataFrame(insights)
         insights_df = insights_df.sort_values('High Severity', ascending=False)
-        
-        print("📊 Strategy Performance Comparison:")
-        print("-" * 80)
         display(HTML(insights_df.to_html(index=False, escape=True, classes='table')))
-        print()
         
-        # Calculate overall statistics
+        # Calculate overall statistics and display compactly
         total_findings = insights_df['Total Findings'].sum()
         total_high = insights_df['High Severity'].sum()
         total_medium = insights_df['Medium Severity'].sum()
         total_low = insights_df['Low Severity'].sum()
-        
-        print("🎯 Overall Threat Landscape:")
-        print(f"   • Total detections: {total_findings:,}")
-        print(f"   • 🔴 High severity: {total_high:,} ({total_high/total_findings*100:.1f}%)")
-        print(f"   • 🟡 Medium severity: {total_medium:,} ({total_medium/total_findings*100:.1f}%)")
-        print(f"   • 🟢 Low severity: {total_low:,} ({total_low/total_findings*100:.1f}%)")
-        print()
+        print(f"🎯 {total_findings:,} total | 🔴 {total_high:,} ({total_high/total_findings*100:.1f}%) | 🟡 {total_medium:,} ({total_medium/total_findings*100:.1f}%) | 🟢 {total_low:,} ({total_low/total_findings*100:.1f}%)")
         
         # Identify most effective strategies
         most_effective = insights_df.nlargest(3, 'High Severity')
-        print("🏆 Most Effective Strategies (by high-severity detections):")
-        for i, row in enumerate(most_effective.itertuples(), 1):
-            print(f"   {i}. {row.Strategy}: {row._2} high-severity threats")
+        print(f"🏆 Top 3: " + " | ".join([f"{row.Strategy} ({row._2})" for row in most_effective.itertuples()]))
         print()
         
         # Visualization if plotly available
@@ -3943,18 +3907,7 @@ class WatsonDashboard:
                 print(f"❌ {strategy_name}: Export failed - {error}")
         
         print()
-        print("=" * 80)
-        print("📊 Export Summary:")
-        print(f"   • Format: {export_format.upper()}")
-        print(f"   • Files created: {export_count}")
-        print(f"   • Total rows: {total_rows}")
-        print(f"   • Timestamp: {timestamp}")
-        print()
-        
-        if export_format == 'json':
-            print("💡 JSON files are ready for API ingestion, SIEM integration, or custom analysis")
-        else:
-            print("💡 CSV files are ready for analysis in Excel, Splunk, or other tools")
+        print(f"📊 Export complete: {export_count} {export_format.upper()} files created | {total_rows:,} total rows | {timestamp}")
     
     def display(self):
         """
