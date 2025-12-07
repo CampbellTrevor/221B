@@ -67,6 +67,14 @@ CSS_TEXT_SUBTLE = "font-size: 0.9em; opacity: 0.9"
 CSS_TEXT_MUTED = "font-size: 0.9em; opacity: 0.95"
 CSS_CONTENT_BOX = "padding: 8px; border: 1px solid #ddd; color: black"
 CSS_LINE_HEIGHT = "line-height: 1.8"
+CSS_HR_DIVIDER = "margin: 8px 0; border: none; border-top: 1px solid #ddd"
+CSS_HR_SECTION = "margin: 12px 0; border: none; border-top: 1px solid #e0e0e0"
+
+# Common color values used throughout the UI
+COLOR_BG_LIGHT_GRAY = '#f8f9fa'
+COLOR_TEXT_DARK = '#212529'
+COLOR_ACCENT_BLUE = '#007bff'
+COLOR_TEXT_GRAY = '#495057'
 
 
 class WatsonDashboard:
@@ -529,7 +537,7 @@ class WatsonDashboard:
         
         recommendation = recommendations.get(strategy.name, '🎯 <b>Use this strategy</b> for specialized threat hunting.')
         
-        return f'<div style="background: #e3f2fd; padding: 10px; border-radius: 8px; margin: 8px 0; border-left: 4px solid #2196f3;"><span style="color: #1565c0; font-size: 0.95em;">{recommendation}</span></div>'
+        return f'<div style="background: #e3f2fd; padding: 10px; border-radius: 8px; margin: 8px 0; border-left: 4px solid {COLOR_ACCENT_BLUE};"><span style="color: #1565c0; font-size: 0.95em;">{recommendation}</span></div>'
     
     def _create_strategy_tabs(self):
         """Create tab widget for strategies with all UI elements inside each tab."""
@@ -642,9 +650,9 @@ class WatsonDashboard:
             inputs_html = ""
             for inp, (desc, example) in input_descriptions.items():
                 inputs_html += f"""
-                <div style="margin: 6px 0; padding: 6px 8px; background: #f8f9fa; color: #212529; border-left: 3px solid #007bff; border-radius: 4px;">
+                <div style="margin: 6px 0; padding: 6px 8px; background: {COLOR_BG_LIGHT_GRAY}; color: {COLOR_TEXT_DARK}; border-left: 3px solid {COLOR_ACCENT_BLUE}; border-radius: 4px;">
                     <b style="font-size: 0.95em;">{inp}:</b> <span style="font-size: 0.9em;">{desc}</span><br/>
-                    <i style="color: #495057; font-size: 0.85em;">{example}</i>
+                    <i style="color: {COLOR_TEXT_GRAY}; font-size: 0.85em;">{example}</i>
                 </div>
                 """
             
@@ -724,13 +732,13 @@ class WatsonDashboard:
             # Assemble tab content with improved workflow organization
             tab_content = widgets.VBox([
                 strategy_accordion,
-                widgets.HTML("<hr style='margin: 12px 0; border: none; border-top: 1px solid #e0e0e0;'>"),
+                widgets.HTML(f"<hr style='{CSS_HR_SECTION}'>"),
                 data_source_section,
                 column_mapping_section,
                 query_options_section,
                 run_section,
                 config_accordion,
-                widgets.HTML("<hr style='margin: 12px 0; border: none; border-top: 1px solid #e0e0e0;'>"),
+                widgets.HTML(f"<hr style='{CSS_HR_SECTION}'>"),
                 widgets.HTML("<h4 style='margin: 8px 0 6px 0; font-size: 1.1em;'>📊 Results</h4>"),
                 tab_data['output_widget']
             ])
@@ -2089,12 +2097,12 @@ class WatsonDashboard:
             return
         
         # Build explanations HTML - compact
-        explanations_html = "<div style='padding: 8px; background: #f8f9fa; border-radius: 5px; margin: 8px 0;'>"
+        explanations_html = f"<div style='padding: 8px; background: {COLOR_BG_LIGHT_GRAY}; border-radius: 5px; margin: 8px 0;'>"
         for col_name, explanation in relevant_explanations.items():
             explanations_html += f"""
-            <div style="margin: 6px 0; padding: 6px 8px; background: white; border-left: 3px solid #007bff; border-radius: 3px;">
-                <b style="color: #007bff; font-size: 0.95em;">{col_name}:</b> 
-                <span style="color: #495057; font-size: 0.9em;">{explanation}</span>
+            <div style="margin: 6px 0; padding: 6px 8px; background: white; border-left: 3px solid {COLOR_ACCENT_BLUE}; border-radius: 3px;">
+                <b style="color: {COLOR_ACCENT_BLUE}; font-size: 0.95em;">{col_name}:</b> 
+                <span style="color: {COLOR_TEXT_GRAY}; font-size: 0.9em;">{explanation}</span>
             </div>
             """
         explanations_html += "</div>"
@@ -4283,7 +4291,7 @@ class WatsonDashboard:
             header,
             action_buttons,
             action_output,
-            widgets.HTML("<hr style='margin: 8px 0; border: none; border-top: 1px solid #ddd;'>"),
+            widgets.HTML(f"<hr style='{CSS_HR_DIVIDER}'>"),
             self.tab_widget,
         ])
         
