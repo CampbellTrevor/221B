@@ -2088,20 +2088,20 @@ class WatsonDashboard:
         if not relevant_explanations:
             return
         
-        # Build explanations HTML
-        explanations_html = "<div style='padding: 10px; background: #f8f9fa; border-radius: 5px; margin: 10px 0;'>"
+        # Build explanations HTML - compact
+        explanations_html = "<div style='padding: 8px; background: #f8f9fa; border-radius: 5px; margin: 8px 0;'>"
         for col_name, explanation in relevant_explanations.items():
             explanations_html += f"""
-            <div style="margin: 8px 0; padding: 8px; background: white; border-left: 3px solid #007bff; border-radius: 3px;">
-                <b style="color: #007bff;">{col_name}:</b> 
-                <span style="color: #495057;">{explanation}</span>
+            <div style="margin: 6px 0; padding: 6px 8px; background: white; border-left: 3px solid #007bff; border-radius: 3px;">
+                <b style="color: #007bff; font-size: 0.95em;">{col_name}:</b> 
+                <span style="color: #495057; font-size: 0.9em;">{explanation}</span>
             </div>
             """
         explanations_html += "</div>"
         
         # Create accordion widget
         accordion = widgets.Accordion(children=[widgets.HTML(value=explanations_html)])
-        accordion.set_title(0, '📖 Column Explanations (click to expand)')
+        accordion.set_title(0, '📖 Column Explanations')
         accordion.selected_index = None  # Start collapsed
         
         display(accordion)
@@ -2133,10 +2133,10 @@ class WatsonDashboard:
         
         # Create text search box with regex support
         search_box = widgets.Text(
-            placeholder='Search in results... (supports regex with .* patterns)',
+            placeholder='Search results (enable regex for patterns)',
             description='🔍 Search:',
             style={'description_width': 'initial'},
-            layout=widgets.Layout(width='450px')
+            layout=widgets.Layout(width='400px')
         )
         
         regex_checkbox = widgets.Checkbox(
@@ -2192,36 +2192,37 @@ class WatsonDashboard:
                 style={'description_width': 'initial', 'button_width': 'auto'}
             )
         
-        # Create pagination controls
+        # Create pagination controls - compact
         prev_button = widgets.Button(
-            description='◀ Previous',
+            description='◀ Prev',
             button_style='primary',
             disabled=True,
-            layout=widgets.Layout(width='120px')
+            layout=widgets.Layout(width='100px')
         )
         
         next_button = widgets.Button(
             description='Next ▶',
             button_style='primary',
-            layout=widgets.Layout(width='120px')
+            layout=widgets.Layout(width='100px')
         )
         
         page_info = widgets.HTML(value='')
         
-        # Create export buttons
+        # Create export buttons - compact
         export_csv_button = widgets.Button(
-            description='📥 Export CSV',
+            description='📥 CSV',
             button_style='success',
             icon='download',
-            layout=widgets.Layout(width='150px')
+            tooltip='Export as CSV',
+            layout=widgets.Layout(width='95px')
         )
         
         export_json_button = widgets.Button(
-            description='📦 Export JSON',
+            description='📦 JSON',
             button_style='info',
             icon='download',
             tooltip='Export as JSON for SIEM integration',
-            layout=widgets.Layout(width='150px')
+            layout=widgets.Layout(width='95px')
         )
         
         export_output = widgets.Output()
@@ -4028,87 +4029,87 @@ class WatsonDashboard:
         triage_button = widgets.Button(
             description='🚨 Triage',
             button_style='danger',
-            tooltip='View all high-severity threats across all strategies',
-            layout=widgets.Layout(width='auto', min_width='110px')
+            tooltip='View all high-severity threats',
+            layout=widgets.Layout(width='auto', min_width='100px')
         )
         
         correlation_button = widgets.Button(
-            description='🔗 Correlations',
+            description='🔗 Correlate',
             button_style='warning',
-            tooltip='Find IPs appearing in multiple strategies',
-            layout=widgets.Layout(width='auto', min_width='135px')
+            tooltip='Find IPs in multiple strategies',
+            layout=widgets.Layout(width='auto', min_width='115px')
         )
         
         overview_button = widgets.Button(
             description='📊 Overview',
             button_style='info',
-            tooltip='Comprehensive dashboard showing all strategies at a glance',
-            layout=widgets.Layout(width='auto', min_width='125px')
+            tooltip='All strategies dashboard',
+            layout=widgets.Layout(width='auto', min_width='115px')
         )
         
         # Analytics & Insights
         metrics_button = widgets.Button(
             description='📈 Metrics',
             button_style='primary',
-            tooltip='View comprehensive threat intelligence dashboard',
-            layout=widgets.Layout(width='auto', min_width='115px')
+            tooltip='Threat intelligence dashboard',
+            layout=widgets.Layout(width='auto', min_width='105px')
         )
         
         heatmap_button = widgets.Button(
-            description='🗺️ IP Heatmap',
+            description='🗺️ Heatmap',
             button_style='',
-            tooltip='View IP address threat heatmap',
-            layout=widgets.Layout(width='auto', min_width='135px')
+            tooltip='IP threat visualization',
+            layout=widgets.Layout(width='auto', min_width='115px')
         )
         
         insights_button = widgets.Button(
             description='🎓 Insights',
             button_style='',
-            tooltip='Compare strategy effectiveness and coverage',
-            layout=widgets.Layout(width='auto', min_width='115px')
+            tooltip='Strategy effectiveness comparison',
+            layout=widgets.Layout(width='auto', min_width='105px')
         )
         
         timeline_button = widgets.Button(
             description='📅 Timeline',
             button_style='',
-            tooltip='View temporal threat activity heatmap',
-            layout=widgets.Layout(width='auto', min_width='115px')
+            tooltip='Temporal threat activity',
+            layout=widgets.Layout(width='auto', min_width='105px')
         )
         
         performance_button = widgets.Button(
-            description='⚡ Performance',
+            description='⚡ Speed',
             button_style='',
-            tooltip='View strategy execution performance statistics',
-            layout=widgets.Layout(width='auto', min_width='140px')
+            tooltip='Strategy execution performance',
+            layout=widgets.Layout(width='auto', min_width='100px')
         )
         
         # Workflow & Support
         recommend_button = widgets.Button(
-            description='🎯 Next Steps',
+            description='🎯 Suggest',
             button_style='',
-            tooltip='Get smart recommendations for next steps',
-            layout=widgets.Layout(width='auto', min_width='130px')
+            tooltip='Smart recommendations',
+            layout=widgets.Layout(width='auto', min_width='105px')
         )
         
         report_button = widgets.Button(
             description='📄 Report',
             button_style='info',
-            tooltip='Generate comprehensive HTML investigation report',
-            layout=widgets.Layout(width='auto', min_width='110px')
+            tooltip='Generate HTML report',
+            layout=widgets.Layout(width='auto', min_width='100px')
         )
         
         export_all_button = widgets.Button(
             description='💾 Export All',
             button_style='success',
-            tooltip='Export all strategy results to CSV files',
-            layout=widgets.Layout(width='auto', min_width='125px')
+            tooltip='Export all results to CSV',
+            layout=widgets.Layout(width='auto', min_width='115px')
         )
         
         help_button = widgets.Button(
             description='❓ Tips',
             button_style='',
-            tooltip='Show usage tips and best practices',
-            layout=widgets.Layout(width='auto', min_width='95px')
+            tooltip='Usage tips and best practices',
+            layout=widgets.Layout(width='auto', min_width='90px')
         )
         
 
