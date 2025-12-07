@@ -37,6 +37,15 @@ except ImportError:
 ML_MIN_SAMPLES = 50  # Minimum samples required to apply ML
 ML_CONTAMINATION = 0.1  # Expected proportion of outliers (10%)
 ML_RANDOM_STATE = 42  # For reproducible results
+ML_MIN_SAMPLES_PER_CLUSTER = 15  # Minimum samples per cluster for statistical significance
+
+# Feature normalization thresholds for explainability
+# These provide reasonable defaults but can be overridden if needed
+ML_NORM_BYTES_HIGH = 100_000_000  # 100MB threshold for high data volume
+ML_NORM_CONNECTIONS_HIGH = 100  # 100 connections threshold for high frequency
+ML_NORM_BYTES_PER_CONN = 10000  # 10KB threshold for transfer consistency
+ML_NORM_IPS_HIGH = 10  # 10 IPs threshold for high diversity
+ML_NORM_RAPID_SWITCHES = 5  # 5 switches threshold for rapid IP switching
 
 
 def explain_ml_score(score: float, method: str = "anomaly") -> str:
@@ -2041,6 +2050,11 @@ class TunnelingStrategy(HuntStrategy):
         # Focus on patterns that distinguish covert channels from normal traffic
         ml_features = ['total_bytes', 'connection_count', 'avg_bytes_per_conn', 'dest_port']
         
+        # Validate all features exist in DataFrame
+        missing_features = [f for f in ml_features if f not in result_df.columns]
+        if missing_features:
+            raise ValueError(f"Missing required features for ML: {missing_features}")
+        
         # Prepare feature matrix
         X = result_df[ml_features].copy()
         
@@ -2094,9 +2108,9 @@ class TunnelingStrategy(HuntStrategy):
             
             # Add feature contribution explanation
             feature_vals = {
-                'data_volume': min(row['total_bytes'] / 100_000_000, 1.0),  # Normalize to 0-1
-                'connection_frequency': min(row['connection_count'] / 100.0, 1.0),
-                'transfer_consistency': 1.0 if row['avg_bytes_per_conn'] > 10000 else 0.5
+                'data_volume': min(row['total_bytes'] / ML_NORM_BYTES_HIGH, 1.0),  # Normalize to 0-1
+                'connection_frequency': min(row['connection_count'] / ML_NORM_CONNECTIONS_HIGH, 1.0),
+                'transfer_consistency': 1.0 if row['avg_bytes_per_conn'] > ML_NORM_BYTES_PER_CONN else 0.5
             }
             
             feature_explanation = get_feature_importance_explanation(feature_vals)
@@ -4295,9 +4309,9 @@ class AccountTakeoverStrategy(HuntStrategy):
             
             # Add feature contribution explanation
             feature_vals = {
-                'ip_diversity': min(row['unique_ips'] / 10.0, 1.0),  # Normalize
+                'ip_diversity': min(row['unique_ips'] / ML_NORM_IPS_HIGH, 1.0),  # Normalize
                 'auth_failures': row['failure_rate'],
-                'rapid_switching': min(row['rapid_ip_switches'] / 5.0, 1.0),
+                'rapid_switching': min(row['rapid_ip_switches'] / ML_NORM_RAPID_SWITCHES, 1.0),
                 'off_hours_activity': row['off_hours_ratio']
             }
             
@@ -4577,8 +4591,10 @@ class DataStagingStrategy(HuntStrategy):
         
         # Train Local Outlier Factor model
         # LOF is ideal for finding sources that behave very differently from peers
+        # Adjust n_neighbors based on dataset size (at least 3 samples per neighbor, max 20)
+        n_neighbors = min(20, max(5, len(X) // 3))
         lof = LocalOutlierFactor(
-            n_neighbors=20,
+            n_neighbors=n_neighbors,
             contamination=ML_CONTAMINATION,
             n_jobs=-1
         )
@@ -5890,7 +5906,8 @@ class WebshellDetectionStrategy(HuntStrategy):
         X_scaled = scaler.fit_transform(X)
         
         # Determine optimal number of clusters (3-5 based on data size)
-        n_clusters = min(5, max(3, len(result_df) // 15))
+        # Ensure at least ML_MIN_SAMPLES_PER_CLUSTER samples per cluster for statistical significance
+        n_clusters = min(5, max(3, len(result_df) // ML_MIN_SAMPLES_PER_CLUSTER))
         
         # Train KMeans clustering model
         kmeans = KMeans(
