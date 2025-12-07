@@ -537,7 +537,7 @@ class WatsonDashboard:
         
         recommendation = recommendations.get(strategy.name, '🎯 <b>Use this strategy</b> for specialized threat hunting.')
         
-        return f'<div style="background: #e3f2fd; padding: 10px; border-radius: 8px; margin: 8px 0; border-left: 4px solid {COLOR_ACCENT_BLUE};"><span style="color: #1565c0; font-size: 0.95em;">{recommendation}</span></div>'
+        return f'<div style="background: #e3f2fd; padding: 10px 12px; border-radius: 6px; margin: 8px 0; border-left: 3px solid {COLOR_ACCENT_BLUE}; box-shadow: 0 1px 3px rgba(0,0,0,0.05);"><span style="color: #1565c0; font-size: 0.92em;">{recommendation}</span></div>'
     
     def _create_strategy_tabs(self):
         """Create tab widget for strategies with all UI elements inside each tab."""
@@ -650,9 +650,9 @@ class WatsonDashboard:
             inputs_html = ""
             for inp, (desc, example) in input_descriptions.items():
                 inputs_html += f"""
-                <div style="margin: 6px 0; padding: 6px 8px; background: {COLOR_BG_LIGHT_GRAY}; color: {COLOR_TEXT_DARK}; border-left: 3px solid {COLOR_ACCENT_BLUE}; border-radius: 4px;">
-                    <b style="font-size: 0.95em;">{inp}:</b> <span style="font-size: 0.9em;">{desc}</span><br/>
-                    <i style="color: {COLOR_TEXT_GRAY}; font-size: 0.85em;">{example}</i>
+                <div style="margin: 5px 0; padding: 8px 10px; background: {COLOR_BG_LIGHT_GRAY}; color: {COLOR_TEXT_DARK}; border-left: 3px solid {COLOR_ACCENT_BLUE}; border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                    <span style="font-size: 0.9em; font-weight: 600; color: #333;">{inp}:</span> <span style="font-size: 0.88em; color: #555;">{desc}</span><br/>
+                    <i style="color: {COLOR_TEXT_GRAY}; font-size: 0.83em;">{example}</i>
                 </div>
                 """
             
@@ -690,8 +690,8 @@ class WatsonDashboard:
                 widgets.HBox([
                     tab_data['save_config_button'], 
                     tab_data['load_config_button']
-                ], layout=widgets.Layout(margin='3px 0'))
-            ])
+                ], layout=widgets.Layout(margin='4px 0 0 0'))
+            ], layout=widgets.Layout(padding='4px 0'))
             config_accordion = widgets.Accordion(children=[config_section])
             config_accordion.set_title(0, "💾 Configuration Management")
             config_accordion.selected_index = None  # Start collapsed - used less frequently
@@ -2332,8 +2332,8 @@ class WatsonDashboard:
                     clear_output(wait=True)
                     display(HTML(page_df.to_html(index=False)))
             
-            # Update page info - compact
-            page_info.value = f"<b>Page {current_page['value'] + 1}/{total_pages}</b> ({start_idx + 1}-{end_idx} of {total_rows})"
+            # Update page info - clean styling
+            page_info.value = f"<span style='font-size: 0.95em; color: #555;'><b>Page {current_page['value'] + 1}/{total_pages}</b> • {start_idx + 1}-{end_idx} of {total_rows:,} results</span>"
             
             # Update button states
             prev_button.disabled = (current_page['value'] == 0)
