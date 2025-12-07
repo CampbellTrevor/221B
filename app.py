@@ -550,9 +550,9 @@ class WatsonDashboard:
                     style={'description_width': 'initial'}
                 ),
                 'load_table_button': widgets.Button(
-                    description='Load Table Schema',
+                    description='📊 Load Schema',
                     button_style='info',
-                    icon='database'
+                    layout=widgets.Layout(width='auto', min_width='150px')
                 ),
                 'column_dropdowns': {},
                 'column_mapping_container': widgets.VBox([]),
@@ -579,21 +579,20 @@ class WatsonDashboard:
                     style={'description_width': 'initial'}
                 ),
                 'run_button': widgets.Button(
-                    description='Run Analysis',
+                    description='🚀 Run Analysis',
                     button_style='success',
-                    icon='search'
+                    icon='search',
+                    layout=widgets.Layout(width='auto', min_width='180px', height='40px')
                 ),
                 'save_config_button': widgets.Button(
-                    description='💾 Save Configuration',
+                    description='💾 Save Config',
                     button_style='info',
-                    icon='save',
-                    layout=widgets.Layout(width='200px')
+                    layout=widgets.Layout(width='auto', min_width='140px')
                 ),
                 'load_config_button': widgets.Button(
-                    description='📂 Load Configuration',
+                    description='📂 Load Config',
                     button_style='warning',
-                    icon='folder-open',
-                    layout=widgets.Layout(width='200px')
+                    layout=widgets.Layout(width='auto', min_width='140px')
                 ),
                 'config_name_input': widgets.Text(
                     placeholder='Enter config name...',
@@ -4023,101 +4022,92 @@ class WatsonDashboard:
             """
         )
         
-        # Create quick action buttons
+        # Create quick action buttons with consistent styling
+        # Critical Analysis Actions
         triage_button = widgets.Button(
-            description='🚨 Quick Triage',
+            description='🚨 Triage',
             button_style='danger',
             tooltip='View all high-severity threats across all strategies',
-            icon='exclamation-triangle',
-            layout=widgets.Layout(width='150px')
+            layout=widgets.Layout(width='auto', min_width='110px')
         )
         
         correlation_button = widgets.Button(
             description='🔗 Correlations',
             button_style='warning',
             tooltip='Find IPs appearing in multiple strategies',
-            icon='link',
-            layout=widgets.Layout(width='150px')
+            layout=widgets.Layout(width='auto', min_width='135px')
         )
         
-        report_button = widgets.Button(
-            description='📄 Generate Report',
+        overview_button = widgets.Button(
+            description='📊 Overview',
             button_style='info',
-            tooltip='Generate comprehensive HTML investigation report',
-            icon='file-text',
-            layout=widgets.Layout(width='180px')
+            tooltip='Comprehensive dashboard showing all strategies at a glance',
+            layout=widgets.Layout(width='auto', min_width='125px')
         )
         
-        export_all_button = widgets.Button(
-            description='💾 Export All',
-            button_style='success',
-            tooltip='Export all strategy results to CSV files',
-            icon='download',
-            layout=widgets.Layout(width='150px')
-        )
-        
+        # Analytics & Insights
         metrics_button = widgets.Button(
-            description='📊 Metrics Dashboard',
+            description='📈 Metrics',
             button_style='primary',
             tooltip='View comprehensive threat intelligence dashboard',
-            icon='dashboard',
-            layout=widgets.Layout(width='180px')
-        )
-        
-        performance_button = widgets.Button(
-            description='⚡ Performance',
-            button_style='',
-            tooltip='View strategy execution performance statistics',
-            icon='clock-o',
-            layout=widgets.Layout(width='140px')
-        )
-        
-        timeline_button = widgets.Button(
-            description='📅 Timeline',
-            button_style='',
-            tooltip='View temporal threat activity heatmap',
-            icon='calendar',
-            layout=widgets.Layout(width='120px')
-        )
-        
-        recommend_button = widgets.Button(
-            description='🎯 Recommendations',
-            button_style='',
-            tooltip='Get smart recommendations for next steps',
-            icon='lightbulb-o',
-            layout=widgets.Layout(width='170px')
-        )
-        
-        help_button = widgets.Button(
-            description='❓ Tips',
-            button_style='',
-            tooltip='Show usage tips and best practices',
-            icon='question-circle',
-            layout=widgets.Layout(width='100px')
+            layout=widgets.Layout(width='auto', min_width='115px')
         )
         
         heatmap_button = widgets.Button(
             description='🗺️ IP Heatmap',
             button_style='',
             tooltip='View IP address threat heatmap',
-            icon='map',
-            layout=widgets.Layout(width='140px')
+            layout=widgets.Layout(width='auto', min_width='135px')
         )
         
         insights_button = widgets.Button(
-            description='🎓 Strategy Insights',
+            description='🎓 Insights',
             button_style='',
             tooltip='Compare strategy effectiveness and coverage',
-            icon='line-chart',
-            layout=widgets.Layout(width='170px')
+            layout=widgets.Layout(width='auto', min_width='115px')
         )
         
-        overview_button = widgets.Button(
-            description='📊 Threat Overview',
+        timeline_button = widgets.Button(
+            description='📅 Timeline',
+            button_style='',
+            tooltip='View temporal threat activity heatmap',
+            layout=widgets.Layout(width='auto', min_width='115px')
+        )
+        
+        performance_button = widgets.Button(
+            description='⚡ Performance',
+            button_style='',
+            tooltip='View strategy execution performance statistics',
+            layout=widgets.Layout(width='auto', min_width='140px')
+        )
+        
+        # Workflow & Support
+        recommend_button = widgets.Button(
+            description='🎯 Next Steps',
+            button_style='',
+            tooltip='Get smart recommendations for next steps',
+            layout=widgets.Layout(width='auto', min_width='130px')
+        )
+        
+        report_button = widgets.Button(
+            description='📄 Report',
             button_style='info',
-            tooltip='Comprehensive dashboard showing all strategies at a glance',
-            icon='dashboard',
-            layout=widgets.Layout(width='170px')
+            tooltip='Generate comprehensive HTML investigation report',
+            layout=widgets.Layout(width='auto', min_width='110px')
+        )
+        
+        export_all_button = widgets.Button(
+            description='💾 Export All',
+            button_style='success',
+            tooltip='Export all strategy results to CSV files',
+            layout=widgets.Layout(width='auto', min_width='125px')
+        )
+        
+        help_button = widgets.Button(
+            description='❓ Tips',
+            button_style='',
+            tooltip='Show usage tips and best practices',
+            layout=widgets.Layout(width='auto', min_width='95px')
         )
         
 
