@@ -732,14 +732,12 @@ class WatsonDashboard:
             # Assemble tab content with improved workflow organization
             tab_content = widgets.VBox([
                 strategy_accordion,
-                widgets.HTML(f"<hr style='{CSS_HR_SECTION}'>"),
                 data_source_section,
                 column_mapping_section,
                 query_options_section,
                 run_section,
                 config_accordion,
-                widgets.HTML(f"<hr style='{CSS_HR_SECTION}'>"),
-                widgets.HTML("<h4 style='margin: 8px 0 6px 0; font-size: 1.1em;'>📊 Results</h4>"),
+                widgets.HTML(f"<hr style='{CSS_HR_DIVIDER}'>"),
                 tab_data['output_widget']
             ])
             
@@ -1525,9 +1523,7 @@ class WatsonDashboard:
             print("⚠️ No threat data available yet. Run some strategies first.")
             return
         
-        print("=" * 80)
-        print("🎯 COMPREHENSIVE THREAT OVERVIEW DASHBOARD")
-        print("=" * 80)
+        print("🎯 Comprehensive Threat Overview Dashboard")
         print()
         
         # Collect comprehensive statistics
@@ -1597,27 +1593,13 @@ class WatsonDashboard:
         overview_df = overview_df.sort_values('Total', ascending=False)
         
         # Display summary statistics
-        print("📊 OVERALL THREAT LANDSCAPE:")
-        print(f"   • Total detections across all strategies: {total_threats:,}")
-        print(f"   • 🔴 Critical threats (≥90): {total_critical:,}")
-        print(f"   • 🟠 High severity (75-89): {total_high:,}")
-        print(f"   • 🟡 Medium severity (50-74): {total_medium:,}")
-        print(f"   • 🟢 Low severity (<50): {total_low:,}")
-        print(f"   • Unique source IPs flagged: {len(all_ips):,}")
-        print()
+        print(f"📊 Total: {total_threats:,} detections | 🔴 {total_critical:,} Critical | 🟠 {total_high:,} High | 🟡 {total_medium:,} Medium | 🟢 {total_low:,} Low")
+        print(f"   {len(all_ips):,} unique source IPs flagged")
         
         # Risk assessment
         critical_pct = (total_critical / total_threats * 100) if total_threats > 0 else 0
-        if critical_pct > 10:
-            print("⚠️  HIGH RISK: >10% of threats are critical. Immediate action required!")
-        elif critical_pct > 5:
-            print("⚠️  ELEVATED RISK: 5-10% critical threats. Prioritize investigation.")
-        else:
-            print("✅ MODERATE RISK: <5% critical threats. Continue monitoring.")
-        print()
-        
-        # Display strategy breakdown
-        print("📋 STRATEGY-BY-STRATEGY BREAKDOWN:")
+        risk_msg = "⚠️ HIGH RISK" if critical_pct > 10 else "⚠️ ELEVATED RISK" if critical_pct > 5 else "✅ MODERATE RISK"
+        print(f"   {risk_msg}: {critical_pct:.1f}% critical threats")
         print()
         
         # Format and display the table
@@ -1977,9 +1959,6 @@ class WatsonDashboard:
         """
         
         display(HTML(summary_html))
-        
-        # Add recommended data sources for this strategy
-        self._display_recommended_data_sources(strategy)
         
         # Add score distribution visualization if plotly is available and we have scores
         if score_cols and HAS_PLOTLY:
@@ -2475,27 +2454,23 @@ class WatsonDashboard:
         # Initial display
         update_table()
         
-        # Create the UI layout
-        sort_controls = widgets.HBox([sort_column, sort_order, export_csv_button, export_json_button])
+        # Create the UI layout - more compact
+        controls_row1 = widgets.HBox([search_box, regex_checkbox, clear_search_button], 
+                                     layout=widgets.Layout(margin='0 0 4px 0'))
+        controls_row2 = widgets.HBox([sort_column, sort_order, export_csv_button, export_json_button])
         pagination_controls = widgets.HBox([prev_button, page_info, next_button], 
-                                          layout=widgets.Layout(justify_content='center'))
+                                          layout=widgets.Layout(justify_content='center', margin='4px 0'))
         
         # Build the results UI components - compact and organized
-        ui_components = []
-        
-        # Add search box with regex support - compact header
-        ui_components.append(widgets.HTML("<div style='margin: 6px 0 4px 0; font-size: 0.95em; font-weight: 600; color: #444;'>🔍 Search & Filters</div>"))
-        ui_components.append(widgets.HBox([search_box, regex_checkbox, clear_search_button], layout=widgets.Layout(margin='0 0 6px 0')))
+        ui_components = [controls_row1]
         
         # Add filter buttons if score column exists
         if filter_buttons:
             ui_components.append(filter_buttons)
         
         ui_components.extend([
-            widgets.HTML("<div style='margin: 8px 0 4px 0; font-size: 0.95em; font-weight: 600; color: #444;'>📊 Sort & Export</div>"),
-            sort_controls,
+            controls_row2,
             export_output,
-            widgets.HTML("<div style='margin: 6px 0 4px 0;'></div>"),  # Small spacer
             pagination_controls,
             table_output,
             pagination_controls  # Show pagination at bottom too for convenience
@@ -3235,9 +3210,7 @@ class WatsonDashboard:
             return
         
         with tab_data['output_widget']:
-            print(f"🔍 Running {strategy.name}...")
-            print(f"📊 Query: {query}")
-            print()
+            print(f"🔍 Running {strategy.name} on {current_table} (limit: {limit})...")
             
             # Create progress indicator
             progress_bar = widgets.IntProgress(
@@ -3264,12 +3237,7 @@ class WatsonDashboard:
                     return
                 
                 progress_bar.value = 40
-                progress_label.value = f"<b>Retrieved {len(df)} rows, analyzing...</b>"
-                print(f"✅ Retrieved {len(df)} rows from {current_table}")
-                print()
-                
-                # Run strategy analysis with multiprocessing support and time tracking
-                print(f"🔬 Analyzing data with {strategy.name}...")
+                progress_label.value = f"<b>Analyzing {len(df)} rows...</b>"
                 progress_bar.value = 60
                 
                 # Track execution time
@@ -3289,18 +3257,14 @@ class WatsonDashboard:
                     print("⚠️ Analysis returned no results.")
                     return
                 
-                print(f"✅ Analysis complete! Found {len(result_df)} results.")
-                rows_per_sec = len(df) / analysis_duration if analysis_duration > 0 else 0
-                print(f"⏱️  Analysis time: {analysis_duration:.2f} seconds ({rows_per_sec:.0f} rows/sec)")
-                print()
+                print(f"✅ Found {len(result_df)} results in {analysis_duration:.2f}s ({len(df) / analysis_duration if analysis_duration > 0 else 0:.0f} rows/sec)")
                 
                 # Detect potential security scanners in results
                 result_df = self._detect_scanners(result_df)
                 scanner_count = len(result_df[result_df.get('is_likely_scanner', False)]) if 'is_likely_scanner' in result_df.columns else 0
                 if scanner_count > 0:
-                    print(f"🔍 Scanner Detection: {scanner_count} results flagged as potential security scanners (Nessus, ACAS, etc.)")
-                    print("   These are highlighted in yellow and can be filtered out as false positives.")
-                    print()
+                    print(f"🔍 {scanner_count} potential security scanners detected (highlighted in yellow)")
+                print()
                 
                 # Store results for correlation analysis
                 self.strategy_results[strategy.name] = {
@@ -3331,20 +3295,7 @@ class WatsonDashboard:
                 # Generate and display visualization if available
                 viz = strategy.visualize(result_df, col_map)
                 if viz is not None:
-                    print("📊 Interactive Visualization:")
-                    print("-" * 80)
                     display(viz)
-                    print()
-                
-                print("📈 Results (sortable and exportable):")
-                print("-" * 80)
-                
-                # Show scanner detection legend if scanners were detected
-                if scanner_count > 0:
-                    print()
-                    print("🔍 Legend: Rows with yellow background = Likely scanner (Nessus, ACAS, etc.)")
-                    print("   Use 'Hide Scanners' filter to focus on real threats")
-                    print()
                 
                 # Display results in sortable table with export option
                 self._display_sortable_results(result_df, strategy.name)
@@ -3479,10 +3430,6 @@ class WatsonDashboard:
         """
         display(HTML(summary_html))
         print()
-        
-        # Display correlation table with color coding
-        print("📊 Top Correlated Threats:")
-        print("-" * 80)
         
         # Create styled HTML table
         table_html = '<table border="1" class="dataframe" style="border-collapse: collapse; width: 100%;">\n'
@@ -3669,13 +3616,8 @@ class WatsonDashboard:
         
         # Display findings table
         triage_df = pd.DataFrame(high_severity_findings)
-        
-        # Sort by score descending
         triage_df = triage_df.sort_values('Score', ascending=False)
         
-        print(f"📊 All High-Severity Findings (Score ≥ {HIGH_SEVERITY_THRESHOLD}):")
-        print("-" * 80)
-        # Use escape=True (default) to prevent XSS
         display(HTML(triage_df.to_html(index=False)))
         
         # Export option
@@ -3700,8 +3642,6 @@ class WatsonDashboard:
         
         export_button.on_click(on_export_triage)
         display(widgets.VBox([export_button, export_output]))
-        print()
-        print(f"💡 Tip: Prioritize investigation of threats with scores ≥ {CRITICAL_SEVERITY_THRESHOLD}!")
     
     def _generate_investigation_report(self):
         """
@@ -4025,9 +3965,8 @@ class WatsonDashboard:
         # Create header - compact and professional
         header = widgets.HTML(
             value="""
-            <div style="margin-bottom: 8px;">
-                <h2 style="margin: 0 0 3px 0; font-size: 1.8em;">🔍 221B Threat Hunting Dashboard</h2>
-                <p style="margin: 0; color: #666; font-size: 0.9em;">Quick Actions → Strategy → Configure → Analyze</p>
+            <div style="margin-bottom: 6px;">
+                <h2 style="margin: 0; font-size: 1.8em;">🔍 221B Threat Hunting Dashboard</h2>
             </div>
             """
         )
@@ -4254,37 +4193,22 @@ class WatsonDashboard:
         insights_button.on_click(on_insights_click)
         overview_button.on_click(on_overview_click)
         
-        # Organize buttons by function - compact layout
-        # Critical Analysis Actions
+        # Organize buttons by function - compact 3-row layout
         critical_actions = widgets.HBox([
-            triage_button,
-            correlation_button,
-            overview_button
-        ], layout=widgets.Layout(justify_content='flex-start', margin='1px 0'))
+            triage_button, correlation_button, overview_button
+        ], layout=widgets.Layout(justify_content='flex-start'))
         
-        # Analytics & Insights
         analytics_actions = widgets.HBox([
-            metrics_button,
-            heatmap_button,
-            insights_button,
-            timeline_button,
-            performance_button
-        ], layout=widgets.Layout(justify_content='flex-start', margin='1px 0'))
+            metrics_button, heatmap_button, insights_button, timeline_button, performance_button
+        ], layout=widgets.Layout(justify_content='flex-start'))
         
-        # Workflow & Support
         workflow_actions = widgets.HBox([
-            recommend_button,
-            report_button,
-            export_all_button,
-            help_button
-        ], layout=widgets.Layout(justify_content='flex-start', margin='1px 0'))
+            recommend_button, report_button, export_all_button, help_button
+        ], layout=widgets.Layout(justify_content='flex-start'))
         
-        # Compact action buttons with minimal spacing
         action_buttons = widgets.VBox([
-            critical_actions,
-            analytics_actions, 
-            workflow_actions
-        ], layout=widgets.Layout(margin='3px 0 8px 0'))
+            critical_actions, analytics_actions, workflow_actions
+        ], layout=widgets.Layout(margin='2px 0 6px 0'))
         
         # Arrange layout with tabs - compact and clean
         dashboard = widgets.VBox([
