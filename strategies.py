@@ -2008,8 +2008,108 @@ class TunnelingStrategy(HuntStrategy):
                 })
         
         result_df = pd.DataFrame(results)
+        
+        # Apply ML-based anomaly detection if we have enough data and sklearn is available
+        if not result_df.empty and HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+            result_df = self._apply_ml_anomaly_detection(result_df)
+        else:
+            # Add placeholder ML columns when ML is not applied
+            result_df['ml_anomaly_score'] = 0.0
+            result_df['ml_confidence'] = 'N/A (insufficient data or sklearn not available)'
+            result_df['ml_explanation'] = 'Rule-based detection only - need 50+ connections for ML analysis'
+        
         if not result_df.empty:
             result_df = result_df.sort_values('tunnel_score', ascending=False)
+        
+        return result_df
+    
+    def _apply_ml_anomaly_detection(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply Isolation Forest ML model to detect anomalous tunneling patterns.
+        
+        Identifies covert channels and protocol encapsulation that differ from
+        normal network traffic patterns, helping distinguish legitimate high-volume
+        transfers from malicious tunneling and command-and-control channels.
+        
+        Args:
+            result_df: DataFrame with rule-based tunneling analysis results
+        
+        Returns:
+            DataFrame with additional ML columns: ml_anomaly_score, ml_confidence, ml_explanation
+        """
+        # Feature engineering: Select features for ML model
+        # Focus on patterns that distinguish covert channels from normal traffic
+        ml_features = ['total_bytes', 'connection_count', 'avg_bytes_per_conn', 'dest_port']
+        
+        # Prepare feature matrix
+        X = result_df[ml_features].copy()
+        
+        # Handle any missing values
+        X = X.fillna(0)
+        
+        # Scale features (important for distance-based algorithms)
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Train Isolation Forest model
+        # Expects ~10% of traffic patterns to be anomalous tunneling
+        iso_forest = IsolationForest(
+            contamination=ML_CONTAMINATION,
+            n_estimators=100,
+            random_state=ML_RANDOM_STATE,
+            n_jobs=-1
+        )
+        
+        # Fit and predict
+        iso_forest.fit(X_scaled)
+        predictions = iso_forest.predict(X_scaled)
+        anomaly_scores_raw = iso_forest.decision_function(X_scaled)
+        
+        # Convert to 0-100 scale where higher = more anomalous
+        ml_anomaly_score = (rankdata(anomaly_scores_raw) / len(anomaly_scores_raw)) * 100
+        
+        # Add ML results
+        result_df['ml_anomaly_score'] = ml_anomaly_score
+        result_df['ml_prediction'] = predictions
+        
+        # Generate confidence and explanation
+        ml_confidence_list = []
+        ml_explanation_list = []
+        
+        for idx, row in result_df.iterrows():
+            score = row['ml_anomaly_score']
+            is_anomaly = row['ml_prediction'] == -1
+            
+            # Confidence level based on score
+            confidence = explain_ml_score(score, "anomaly").split(' -')[0].strip()
+            
+            if is_anomaly and score >= 75:
+                explanation = "🔴 ML HIGH CONFIDENCE: Traffic pattern is highly unusual. Data volume, connection patterns, and port usage deviate significantly from normal network behavior, suggesting covert channel or tunneling activity."
+            elif is_anomaly and score >= 50:
+                explanation = "🟡 ML MEDIUM CONFIDENCE: Moderate anomaly in traffic patterns. Some characteristics differ from typical network flows."
+            elif is_anomaly:
+                explanation = "🟢 ML LOW CONFIDENCE: Slight anomaly detected. Rule-based logic flagged it, but ML sees some similarity to normal traffic."
+            else:
+                explanation = f"ℹ️ ML sees traffic within normal range (score: {score:.1f}/100), but rule-based logic flagged suspicious indicators."
+            
+            # Add feature contribution explanation
+            feature_vals = {
+                'data_volume': min(row['total_bytes'] / 100_000_000, 1.0),  # Normalize to 0-1
+                'connection_frequency': min(row['connection_count'] / 100.0, 1.0),
+                'transfer_consistency': 1.0 if row['avg_bytes_per_conn'] > 10000 else 0.5
+            }
+            
+            feature_explanation = get_feature_importance_explanation(feature_vals)
+            explanation += f" {feature_explanation}"
+            
+            ml_confidence_list.append(confidence)
+            ml_explanation_list.append(explanation)
+        
+        result_df['ml_confidence'] = ml_confidence_list
+        result_df['ml_explanation'] = ml_explanation_list
+        
+        # Drop internal prediction column
+        result_df = result_df.drop('ml_prediction', axis=1)
         
         return result_df
     
@@ -2059,7 +2159,10 @@ class TunnelingStrategy(HuntStrategy):
             'connection_count': 'Number of connections established on this port',
             'avg_bytes_per_conn': 'Average bytes per connection. Consistent sizes across many connections suggest automated tunneling',
             'is_standard_port': 'Whether this is a commonly-used port. False (non-standard) ports are more suspicious, but high-volume standard ports can also indicate tunneling',
-            'tunnel_score': 'Overall protocol tunneling suspiciousness score (0-100). Higher scores indicate covert channel activity like DNS tunneling, SSH tunneling, or other protocol encapsulation. Scores ≥50 suggest unusual traffic patterns worth investigating for data hiding or command-and-control'
+            'tunnel_score': 'Overall protocol tunneling suspiciousness score (0-100). Higher scores indicate covert channel activity like DNS tunneling, SSH tunneling, or other protocol encapsulation. Scores ≥50 suggest unusual traffic patterns worth investigating for data hiding or command-and-control',
+            'ml_anomaly_score': '🤖 MACHINE LEARNING: How unusual this traffic pattern is compared to all others (0-100). Higher scores mean ML identified this as more anomalous. Requires 50+ connections for ML analysis',
+            'ml_confidence': '🤖 ML CONFIDENCE LEVEL: How confident the machine learning model is about this detection (HIGH/MEDIUM/LOW/NORMAL). Shows whether ML agrees with rule-based detection',
+            'ml_explanation': '🤖 ML REASONING: Plain English explanation of why machine learning flagged this, including which features (data volume, connection frequency, transfer consistency) contributed most to the detection'
         }
 
 
@@ -4106,8 +4209,109 @@ class AccountTakeoverStrategy(HuntStrategy):
                 })
         
         result_df = pd.DataFrame(results)
+        
+        # Apply ML-based anomaly detection if we have enough data and sklearn is available
+        if not result_df.empty and HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+            result_df = self._apply_ml_anomaly_detection(result_df)
+        else:
+            # Add placeholder ML columns when ML is not applied
+            result_df['ml_anomaly_score'] = 0.0
+            result_df['ml_confidence'] = 'N/A (insufficient data or sklearn not available)'
+            result_df['ml_explanation'] = 'Rule-based detection only - need 50+ accounts for ML analysis'
+        
         if not result_df.empty:
             result_df = result_df.sort_values('takeover_score', ascending=False)
+        
+        return result_df
+    
+    def _apply_ml_anomaly_detection(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply Isolation Forest ML model to detect anomalous account takeover patterns.
+        
+        This method identifies unusual authentication patterns that differ from normal
+        user behavior, helping distinguish legitimate multi-location access from
+        compromised accounts and credential stuffing attacks.
+        
+        Args:
+            result_df: DataFrame with rule-based account takeover analysis results
+        
+        Returns:
+            DataFrame with additional ML columns: ml_anomaly_score, ml_confidence, ml_explanation
+        """
+        # Feature engineering: Select features for ML model
+        # Focus on patterns that distinguish credential theft from normal behavior
+        ml_features = ['unique_ips', 'failure_rate', 'rapid_ip_switches', 'off_hours_ratio']
+        
+        # Prepare feature matrix
+        X = result_df[ml_features].copy()
+        
+        # Handle any missing values
+        X = X.fillna(0)
+        
+        # Scale features (important for distance-based algorithms)
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Train Isolation Forest model
+        # Expects ~10% of accounts to show anomalous authentication patterns
+        iso_forest = IsolationForest(
+            contamination=ML_CONTAMINATION,
+            n_estimators=100,
+            random_state=ML_RANDOM_STATE,
+            n_jobs=-1
+        )
+        
+        # Fit and predict
+        iso_forest.fit(X_scaled)
+        predictions = iso_forest.predict(X_scaled)
+        anomaly_scores_raw = iso_forest.decision_function(X_scaled)
+        
+        # Convert to 0-100 scale where higher = more anomalous
+        ml_anomaly_score = (rankdata(anomaly_scores_raw) / len(anomaly_scores_raw)) * 100
+        
+        # Add ML results
+        result_df['ml_anomaly_score'] = ml_anomaly_score
+        result_df['ml_prediction'] = predictions
+        
+        # Generate confidence and explanation
+        ml_confidence_list = []
+        ml_explanation_list = []
+        
+        for idx, row in result_df.iterrows():
+            score = row['ml_anomaly_score']
+            is_anomaly = row['ml_prediction'] == -1
+            
+            # Confidence level based on score
+            confidence = explain_ml_score(score, "anomaly").split(' -')[0].strip()
+            
+            if is_anomaly and score >= 75:
+                explanation = "🔴 ML HIGH CONFIDENCE: Authentication patterns are highly unusual. Multiple risk factors (IP switching, failures, off-hours) deviate significantly from normal user behavior."
+            elif is_anomaly and score >= 50:
+                explanation = "🟡 ML MEDIUM CONFIDENCE: Moderate anomalies in authentication patterns detected. Some behaviors differ from typical user access."
+            elif is_anomaly:
+                explanation = "🟢 ML LOW CONFIDENCE: Minor anomaly detected. Rule-based logic flagged it, but ML sees some similarity to normal patterns."
+            else:
+                explanation = f"ℹ️ ML sees patterns within normal range (score: {score:.1f}/100), but rule-based logic flagged suspicious indicators."
+            
+            # Add feature contribution explanation
+            feature_vals = {
+                'ip_diversity': min(row['unique_ips'] / 10.0, 1.0),  # Normalize
+                'auth_failures': row['failure_rate'],
+                'rapid_switching': min(row['rapid_ip_switches'] / 5.0, 1.0),
+                'off_hours_activity': row['off_hours_ratio']
+            }
+            
+            feature_explanation = get_feature_importance_explanation(feature_vals)
+            explanation += f" {feature_explanation}"
+            
+            ml_confidence_list.append(confidence)
+            ml_explanation_list.append(explanation)
+        
+        result_df['ml_confidence'] = ml_confidence_list
+        result_df['ml_explanation'] = ml_explanation_list
+        
+        # Drop internal prediction column
+        result_df = result_df.drop('ml_prediction', axis=1)
         
         return result_df
     
@@ -4157,7 +4361,10 @@ class AccountTakeoverStrategy(HuntStrategy):
             'off_hours_ratio': 'Percentage of events occurring off-hours. High ratios suggest unauthorized access',
             'compromised_pattern': 'Whether failed login followed by success from different IP was detected (strong indicator of compromise)',
             'flags': 'Specific account takeover indicators detected',
-            'takeover_score': 'Overall account takeover suspiciousness score (0-100). Higher scores indicate likely credential theft, account compromise, or credential stuffing attacks. Scores ≥50 warrant immediate investigation and potentially disabling the account'
+            'takeover_score': 'Overall account takeover suspiciousness score (0-100). Higher scores indicate likely credential theft, account compromise, or credential stuffing attacks. Scores ≥50 warrant immediate investigation and potentially disabling the account',
+            'ml_anomaly_score': '🤖 MACHINE LEARNING: How unusual this authentication pattern is compared to all others (0-100). Higher scores mean ML identified this as more anomalous. Requires 50+ accounts for ML analysis',
+            'ml_confidence': '🤖 ML CONFIDENCE LEVEL: How confident the machine learning model is about this detection (HIGH/MEDIUM/LOW/NORMAL). Shows whether ML agrees with rule-based detection',
+            'ml_explanation': '🤖 ML REASONING: Plain English explanation of why machine learning flagged this, including which features (IP diversity, auth failures, rapid switching, off-hours activity) contributed most to the detection'
         }
 
 
@@ -4325,8 +4532,110 @@ class DataStagingStrategy(HuntStrategy):
                 })
         
         result_df = pd.DataFrame(results)
+        
+        # Apply ML-based outlier detection if we have enough data and sklearn is available
+        if not result_df.empty and HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+            result_df = self._apply_ml_outlier_detection(result_df)
+        else:
+            # Add placeholder ML columns when ML is not applied
+            result_df['ml_outlier_score'] = 0.0
+            result_df['ml_confidence'] = 'N/A (insufficient data or sklearn not available)'
+            result_df['ml_explanation'] = 'Rule-based detection only - need 50+ sources for ML analysis'
+        
         if not result_df.empty:
             result_df = result_df.sort_values('staging_score', ascending=False)
+        
+        return result_df
+    
+    def _apply_ml_outlier_detection(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply Local Outlier Factor ML model to detect anomalous data staging patterns.
+        
+        Uses density-based outlier detection to identify sources whose file operations
+        differ dramatically from typical behavior, helping distinguish insider threats
+        and data theft preparation from legitimate backup or archival operations.
+        
+        Args:
+            result_df: DataFrame with rule-based data staging analysis results
+        
+        Returns:
+            DataFrame with additional ML columns: ml_outlier_score, ml_confidence, ml_explanation
+        """
+        # Feature engineering: Select features for ML model
+        # Focus on patterns that distinguish data theft from normal file operations
+        ml_features = ['total_operations', 'total_size_mb', 'sensitive_access', 'rapid_operations']
+        
+        # Prepare feature matrix
+        X = result_df[ml_features].copy()
+        
+        # Handle any missing values
+        X = X.fillna(0)
+        
+        # Scale features (important for distance-based algorithms like LOF)
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Train Local Outlier Factor model
+        # LOF is ideal for finding sources that behave very differently from peers
+        lof = LocalOutlierFactor(
+            n_neighbors=20,
+            contamination=ML_CONTAMINATION,
+            n_jobs=-1
+        )
+        
+        # Fit and predict (-1 = outlier, 1 = inlier)
+        predictions = lof.fit_predict(X_scaled)
+        
+        # Get negative outlier factor scores (more negative = more outlying)
+        outlier_scores_raw = lof.negative_outlier_factor_
+        
+        # Convert to 0-100 scale where higher = more outlying
+        # Invert the negative scores and rank them
+        ml_outlier_score = (rankdata(-outlier_scores_raw) / len(outlier_scores_raw)) * 100
+        
+        # Add ML results
+        result_df['ml_outlier_score'] = ml_outlier_score
+        result_df['ml_prediction'] = predictions
+        
+        # Generate confidence and explanation
+        ml_confidence_list = []
+        ml_explanation_list = []
+        
+        for idx, row in result_df.iterrows():
+            score = row['ml_outlier_score']
+            is_outlier = row['ml_prediction'] == -1
+            
+            # Confidence level based on score
+            confidence = explain_ml_score(score, "outlier").split(' -')[0].strip()
+            
+            if is_outlier and score >= 75:
+                explanation = "🔴 ML EXTREME OUTLIER: File operation patterns are dramatically different from all other sources. Volume, sensitive access, and speed suggest data theft preparation rather than normal file activity."
+            elif is_outlier and score >= 50:
+                explanation = "🟡 ML MODERATE OUTLIER: File operations noticeably differ from typical behavior. Some characteristics suggest unusual data collection."
+            elif is_outlier:
+                explanation = "🟢 ML SLIGHT OUTLIER: Minor deviations detected. Rule-based logic flagged it, but ML sees some similarity to normal patterns."
+            else:
+                explanation = f"ℹ️ ML sees behavior within normal range (score: {score:.1f}/100) compared to other file operations, but rule-based logic flagged suspicious indicators."
+            
+            # Add feature contribution explanation
+            feature_vals = {
+                'operation_volume': min(row['total_operations'] / 100.0, 1.0),  # Normalize
+                'data_size': min(row['total_size_mb'] / 500.0, 1.0),
+                'sensitive_targeting': min(row['sensitive_access'] / 20.0, 1.0),
+                'bulk_speed': min(row['rapid_operations'] / 50.0, 1.0)
+            }
+            
+            feature_explanation = get_feature_importance_explanation(feature_vals)
+            explanation += f" {feature_explanation}"
+            
+            ml_confidence_list.append(confidence)
+            ml_explanation_list.append(explanation)
+        
+        result_df['ml_confidence'] = ml_confidence_list
+        result_df['ml_explanation'] = ml_explanation_list
+        
+        # Drop internal prediction column
+        result_df = result_df.drop('ml_prediction', axis=1)
         
         return result_df
     
@@ -4377,7 +4686,10 @@ class DataStagingStrategy(HuntStrategy):
             'rapid_operations': 'Count of operations within 5-second windows, indicating automated bulk collection',
             'write_operations': 'Number of write/create/copy operations, indicating data is being staged rather than just read',
             'flags': 'Specific data staging indicators detected',
-            'staging_score': 'Overall data staging suspiciousness score (0-100). Higher scores indicate likely preparation for data exfiltration. Scores ≥50 suggest an insider threat or compromised account collecting data before exfiltration. Immediate investigation recommended'
+            'staging_score': 'Overall data staging suspiciousness score (0-100). Higher scores indicate likely preparation for data exfiltration. Scores ≥50 suggest an insider threat or compromised account collecting data before exfiltration. Immediate investigation recommended',
+            'ml_outlier_score': '🤖 MACHINE LEARNING: How much this file operation pattern differs from all others (0-100). Higher scores mean ML identified this source as dramatically different from peers. Requires 50+ sources for ML analysis',
+            'ml_confidence': '🤖 ML CONFIDENCE LEVEL: How confident the machine learning model is about this outlier detection (EXTREME OUTLIER/MODERATE OUTLIER/SLIGHT OUTLIER/NORMAL). Shows whether behavior is dramatically different',
+            'ml_explanation': '🤖 ML REASONING: Plain English explanation of why machine learning flagged this as an outlier, including which features (operation volume, data size, sensitive targeting, bulk speed) contributed most to the detection'
         }
 
 
@@ -4794,8 +5106,109 @@ class APIAbuseStrategy(HuntStrategy):
                 results.append(result_data)
         
         result_df = pd.DataFrame(results)
+        
+        # Apply ML-based anomaly detection if we have enough data and sklearn is available
+        if not result_df.empty and HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+            result_df = self._apply_ml_anomaly_detection(result_df)
+        else:
+            # Add placeholder ML columns when ML is not applied
+            result_df['ml_anomaly_score'] = 0.0
+            result_df['ml_confidence'] = 'N/A (insufficient data or sklearn not available)'
+            result_df['ml_explanation'] = 'Rule-based detection only - need 50+ sources for ML analysis'
+        
         if not result_df.empty:
             result_df = result_df.sort_values('abuse_score', ascending=False)
+        
+        return result_df
+    
+    def _apply_ml_anomaly_detection(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply Isolation Forest ML model to detect anomalous API abuse patterns.
+        
+        Identifies unusual API usage patterns that differ from normal application
+        behavior, helping distinguish malicious automation and scraping from
+        legitimate high-volume API consumers.
+        
+        Args:
+            result_df: DataFrame with rule-based API abuse analysis results
+        
+        Returns:
+            DataFrame with additional ML columns: ml_anomaly_score, ml_confidence, ml_explanation
+        """
+        # Feature engineering: Select features for ML model
+        # Focus on patterns that distinguish malicious API abuse from legitimate use
+        ml_features = ['total_requests', 'unique_endpoints', 'rate_limit_errors', 'auth_failures']
+        
+        # Prepare feature matrix
+        X = result_df[ml_features].copy()
+        
+        # Handle any missing values
+        X = X.fillna(0)
+        
+        # Scale features (important for distance-based algorithms)
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Train Isolation Forest model
+        # Expects ~10% of API consumers to show malicious patterns
+        iso_forest = IsolationForest(
+            contamination=ML_CONTAMINATION,
+            n_estimators=100,
+            random_state=ML_RANDOM_STATE,
+            n_jobs=-1
+        )
+        
+        # Fit and predict
+        iso_forest.fit(X_scaled)
+        predictions = iso_forest.predict(X_scaled)
+        anomaly_scores_raw = iso_forest.decision_function(X_scaled)
+        
+        # Convert to 0-100 scale where higher = more anomalous
+        ml_anomaly_score = (rankdata(anomaly_scores_raw) / len(anomaly_scores_raw)) * 100
+        
+        # Add ML results
+        result_df['ml_anomaly_score'] = ml_anomaly_score
+        result_df['ml_prediction'] = predictions
+        
+        # Generate confidence and explanation
+        ml_confidence_list = []
+        ml_explanation_list = []
+        
+        for idx, row in result_df.iterrows():
+            score = row['ml_anomaly_score']
+            is_anomaly = row['ml_prediction'] == -1
+            
+            # Confidence level based on score
+            confidence = explain_ml_score(score, "anomaly").split(' -')[0].strip()
+            
+            if is_anomaly and score >= 75:
+                explanation = "🔴 ML HIGH CONFIDENCE: API usage pattern is highly unusual. Request volume, rate limiting, and failure patterns deviate significantly from normal API consumers, suggesting automated scraping or abuse."
+            elif is_anomaly and score >= 50:
+                explanation = "🟡 ML MEDIUM CONFIDENCE: Moderate anomaly in API usage detected. Some characteristics differ from typical application behavior."
+            elif is_anomaly:
+                explanation = "🟢 ML LOW CONFIDENCE: Slight anomaly detected. Rule-based logic flagged it, but ML sees some similarity to normal high-volume consumers."
+            else:
+                explanation = f"ℹ️ ML sees usage within normal range (score: {score:.1f}/100), but rule-based logic flagged suspicious indicators."
+            
+            # Add feature contribution explanation
+            feature_vals = {
+                'request_volume': min(row['total_requests'] / 1000.0, 1.0),  # Normalize
+                'rate_violations': min(row['rate_limit_errors'] / 20.0, 1.0),
+                'auth_failures': min(row['auth_failures'] / 50.0, 1.0),
+                'endpoint_focus': 1.0 - min(row['unique_endpoints'] / 50.0, 1.0)  # Low diversity = high focus
+            }
+            
+            feature_explanation = get_feature_importance_explanation(feature_vals)
+            explanation += f" {feature_explanation}"
+            
+            ml_confidence_list.append(confidence)
+            ml_explanation_list.append(explanation)
+        
+        result_df['ml_confidence'] = ml_confidence_list
+        result_df['ml_explanation'] = ml_explanation_list
+        
+        # Drop internal prediction column
+        result_df = result_df.drop('ml_prediction', axis=1)
         
         return result_df
     
@@ -4843,7 +5256,10 @@ class APIAbuseStrategy(HuntStrategy):
             'endpoint_diversity': 'Percentage of unique endpoints vs total requests. Low values indicate repetitive scraping',
             'requests_per_minute': 'Average API request rate. Very high rates indicate bot activity',
             'flags': 'Specific API abuse indicators detected',
-            'abuse_score': 'Overall API abuse suspiciousness score (0-100). Higher scores indicate likely automated scraping, credential stuffing, or API token abuse. Scores ≥50 suggest active API abuse that may impact service availability or indicate data theft attempt'
+            'abuse_score': 'Overall API abuse suspiciousness score (0-100). Higher scores indicate likely automated scraping, credential stuffing, or API token abuse. Scores ≥50 suggest active API abuse that may impact service availability or indicate data theft attempt',
+            'ml_anomaly_score': '🤖 MACHINE LEARNING: How unusual this API usage pattern is compared to all others (0-100). Higher scores mean ML identified this as more anomalous. Requires 50+ sources for ML analysis',
+            'ml_confidence': '🤖 ML CONFIDENCE LEVEL: How confident the machine learning model is about this detection (HIGH/MEDIUM/LOW/NORMAL). Shows whether ML agrees with rule-based detection',
+            'ml_explanation': '🤖 ML REASONING: Plain English explanation of why machine learning flagged this, including which features (request volume, rate violations, auth failures, endpoint focus) contributed most to the detection'
         }
 
 
@@ -5142,8 +5558,107 @@ class PrivilegeEscalationStrategy(HuntStrategy):
         
         result_df = pd.DataFrame(results)
         
+        # Apply ML-based anomaly detection if we have enough data and sklearn is available
+        if not result_df.empty and HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+            result_df = self._apply_ml_anomaly_detection(result_df)
+        else:
+            # Add placeholder ML columns when ML is not applied
+            result_df['ml_anomaly_score'] = 0.0
+            result_df['ml_confidence'] = 'N/A (insufficient data or sklearn not available)'
+            result_df['ml_explanation'] = 'Rule-based detection only - need 50+ sources for ML analysis'
+        
         if not result_df.empty:
             result_df = result_df.sort_values('priv_esc_score', ascending=False)
+        
+        return result_df
+    
+    def _apply_ml_anomaly_detection(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply Isolation Forest ML model to detect anomalous privilege escalation patterns.
+        
+        Identifies unusual combinations of privilege escalation techniques that differ
+        from typical admin activity, helping distinguish sophisticated attacks from
+        routine administrative work.
+        
+        Args:
+            result_df: DataFrame with rule-based privilege escalation analysis results
+        
+        Returns:
+            DataFrame with additional ML columns: ml_anomaly_score, ml_confidence, ml_explanation
+        """
+        # Feature engineering: Select features for ML model
+        # Focus on patterns that distinguish malicious escalation from normal admin work
+        ml_features = ['total_commands', 'admin_tool_count', 'method_diversity']
+        
+        # Prepare feature matrix
+        X = result_df[ml_features].copy()
+        
+        # Handle any missing values
+        X = X.fillna(0)
+        
+        # Scale features (important for distance-based algorithms)
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Train Isolation Forest model
+        # Expects ~10% of activity to be malicious privilege escalation
+        iso_forest = IsolationForest(
+            contamination=ML_CONTAMINATION,
+            n_estimators=100,
+            random_state=ML_RANDOM_STATE,
+            n_jobs=-1
+        )
+        
+        # Fit and predict
+        iso_forest.fit(X_scaled)
+        predictions = iso_forest.predict(X_scaled)
+        anomaly_scores_raw = iso_forest.decision_function(X_scaled)
+        
+        # Convert to 0-100 scale where higher = more anomalous
+        ml_anomaly_score = (rankdata(anomaly_scores_raw) / len(anomaly_scores_raw)) * 100
+        
+        # Add ML results
+        result_df['ml_anomaly_score'] = ml_anomaly_score
+        result_df['ml_prediction'] = predictions
+        
+        # Generate confidence and explanation
+        ml_confidence_list = []
+        ml_explanation_list = []
+        
+        for idx, row in result_df.iterrows():
+            score = row['ml_anomaly_score']
+            is_anomaly = row['ml_prediction'] == -1
+            
+            # Confidence level based on score
+            confidence = explain_ml_score(score, "anomaly").split(' -')[0].strip()
+            
+            if is_anomaly and score >= 75:
+                explanation = "🔴 ML HIGH CONFIDENCE: Privilege escalation pattern is highly unusual. Combination of techniques, tool usage, and command volume deviate significantly from normal administrative activity, suggesting malicious intent."
+            elif is_anomaly and score >= 50:
+                explanation = "🟡 ML MEDIUM CONFIDENCE: Moderate anomaly in escalation patterns. Some characteristics differ from typical admin work."
+            elif is_anomaly:
+                explanation = "🟢 ML LOW CONFIDENCE: Slight anomaly detected. Rule-based logic flagged it, but ML sees some similarity to normal administrative patterns."
+            else:
+                explanation = f"ℹ️ ML sees activity within normal range (score: {score:.1f}/100) compared to other admin activity, but rule-based logic flagged suspicious indicators."
+            
+            # Add feature contribution explanation
+            feature_vals = {
+                'command_volume': min(row['total_commands'] / 50.0, 1.0),  # Normalize
+                'tool_usage': min(row['admin_tool_count'] / 20.0, 1.0),
+                'technique_diversity': min(row['method_diversity'] / 5.0, 1.0)
+            }
+            
+            feature_explanation = get_feature_importance_explanation(feature_vals)
+            explanation += f" {feature_explanation}"
+            
+            ml_confidence_list.append(confidence)
+            ml_explanation_list.append(explanation)
+        
+        result_df['ml_confidence'] = ml_confidence_list
+        result_df['ml_explanation'] = ml_explanation_list
+        
+        # Drop internal prediction column
+        result_df = result_df.drop('ml_prediction', axis=1)
         
         return result_df
     
@@ -5191,7 +5706,10 @@ class PrivilegeEscalationStrategy(HuntStrategy):
             'admin_tool_count': 'Number of administrative tool invocations detected',
             'method_diversity': 'Count of different escalation techniques used',
             'flags': 'Specific indicators detected (multiple_escalation_techniques, credential_dumping_tool, etc.)',
-            'priv_esc_score': 'Overall privilege escalation risk score (0-100). Higher scores indicate aggressive attempts to gain elevated privileges. Scores ≥75 suggest active privilege escalation attacks. Scores ≥50 warrant immediate investigation'
+            'priv_esc_score': 'Overall privilege escalation risk score (0-100). Higher scores indicate aggressive attempts to gain elevated privileges. Scores ≥75 suggest active privilege escalation attacks. Scores ≥50 warrant immediate investigation',
+            'ml_anomaly_score': '🤖 MACHINE LEARNING: How unusual this privilege escalation pattern is compared to all others (0-100). Higher scores mean ML identified this as more anomalous. Requires 50+ sources for ML analysis',
+            'ml_confidence': '🤖 ML CONFIDENCE LEVEL: How confident the machine learning model is about this detection (HIGH/MEDIUM/LOW/NORMAL). Shows whether ML agrees with rule-based detection',
+            'ml_explanation': '🤖 ML REASONING: Plain English explanation of why machine learning flagged this, including which features (command volume, tool usage, technique diversity) contributed most to the detection'
         }
 
 
@@ -5329,8 +5847,107 @@ class WebshellDetectionStrategy(HuntStrategy):
         
         result_df = pd.DataFrame(results)
         
+        # Apply ML-based clustering if we have enough data and sklearn is available
+        if not result_df.empty and HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+            result_df = self._apply_ml_clustering(result_df)
+        else:
+            # Add placeholder ML columns when ML is not applied
+            result_df['ml_cluster'] = 0
+            result_df['ml_cluster_risk'] = 'N/A (insufficient data or sklearn not available)'
+            result_df['ml_explanation'] = 'Rule-based detection only - need 50+ sources for ML analysis'
+        
         if not result_df.empty:
             result_df = result_df.sort_values('webshell_score', ascending=False)
+        
+        return result_df
+    
+    def _apply_ml_clustering(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply KMeans clustering to group similar webshell attack patterns.
+        
+        Groups sources by attack characteristics (URI patterns, POST behavior, tool usage)
+        to help analysts understand if threats are related (same attacker/campaign)
+        or distinct incidents.
+        
+        Args:
+            result_df: DataFrame with rule-based webshell detection results
+        
+        Returns:
+            DataFrame with additional ML columns: ml_cluster, ml_cluster_risk, ml_explanation
+        """
+        # Feature engineering: Select features for ML model
+        # Focus on patterns that distinguish different attack campaigns
+        ml_features = ['total_requests', 'post_to_scripts', 'suspicious_params', 'tool_agent_requests']
+        
+        # Prepare feature matrix
+        X = result_df[ml_features].copy()
+        
+        # Handle any missing values
+        X = X.fillna(0)
+        
+        # Scale features (important for distance-based algorithms like KMeans)
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Determine optimal number of clusters (3-5 based on data size)
+        n_clusters = min(5, max(3, len(result_df) // 15))
+        
+        # Train KMeans clustering model
+        kmeans = KMeans(
+            n_clusters=n_clusters,
+            random_state=ML_RANDOM_STATE,
+            n_init=10
+        )
+        
+        # Fit and predict cluster assignments
+        cluster_labels = kmeans.fit_predict(X_scaled)
+        result_df['ml_cluster'] = cluster_labels
+        
+        # Analyze each cluster to assign risk levels
+        cluster_risks = {}
+        cluster_explanations = {}
+        
+        for cluster_id in range(n_clusters):
+            cluster_data = result_df[result_df['ml_cluster'] == cluster_id]
+            cluster_size = len(cluster_data)
+            avg_score = cluster_data['webshell_score'].mean()
+            avg_posts = cluster_data['post_to_scripts'].mean()
+            avg_params = cluster_data['suspicious_params'].mean()
+            avg_tools = cluster_data['tool_agent_requests'].mean()
+            
+            # Determine cluster risk level
+            if avg_score >= 80 or avg_posts >= 20:
+                risk_level = '🔴 CRITICAL'
+            elif avg_score >= 65:
+                risk_level = '🟠 HIGH'
+            elif avg_score >= 50:
+                risk_level = '🟡 MEDIUM'
+            else:
+                risk_level = '🟢 LOW'
+            
+            cluster_risks[cluster_id] = risk_level
+            
+            # Generate detailed cluster explanation
+            pattern_type = 'Mixed webshell activity patterns'
+            if avg_posts >= 15:
+                pattern_type = f'Heavy POST activity to scripts (avg {avg_posts:.1f}) - active webshell usage or deployment'
+            elif avg_params >= 5:
+                pattern_type = f'Command execution focused (avg {avg_params:.1f} suspicious params) - webshell command execution'
+            elif avg_tools >= 3:
+                pattern_type = f'Attack tool driven (avg {avg_tools:.1f} tool requests) - automated scanning or exploitation'
+            else:
+                pattern_type = 'Manual webshell access or reconnaissance'
+            
+            cluster_explanations[cluster_id] = (
+                f"🤖 ML CLUSTER {cluster_id}: {risk_level} risk webshell pattern cluster (avg score: {avg_score:.1f}). "
+                f"Contains {cluster_size} similar sources. Pattern: {pattern_type}. "
+                f"Avg POSTs: {avg_posts:.1f}, avg params: {avg_params:.1f}, avg tools: {avg_tools:.1f}. "
+                f"This cluster likely represents {'the same attack campaign or attacker' if cluster_size > 5 else 'similar webshell exploitation techniques'}."
+            )
+        
+        # Add risk and explanation to each row
+        result_df['ml_cluster_risk'] = result_df['ml_cluster'].map(cluster_risks)
+        result_df['ml_explanation'] = result_df['ml_cluster'].map(cluster_explanations)
         
         return result_df
     
@@ -5378,7 +5995,10 @@ class WebshellDetectionStrategy(HuntStrategy):
             'suspicious_params': 'Command execution parameters found (cmd, exec, shell, eval, etc.)',
             'tool_agent_requests': 'Requests from attack tools or scanners',
             'flags': 'Specific web shell indicators (webshell_filename, encoded_command, etc.)',
-            'webshell_score': 'Overall web shell risk score (0-100). Higher scores indicate probable web shell access or deployment. Scores ≥75 suggest active web shell usage. Scores ≥50 require immediate investigation'
+            'webshell_score': 'Overall web shell risk score (0-100). Higher scores indicate probable web shell access or deployment. Scores ≥75 suggest active web shell usage. Scores ≥50 require immediate investigation',
+            'ml_cluster': '🤖 MACHINE LEARNING: Which attack pattern cluster this belongs to (0-4). Sources in same cluster likely use similar webshell techniques or are part of the same campaign. Requires 50+ sources for ML analysis',
+            'ml_cluster_risk': '🤖 ML CLUSTER RISK: Risk level of this cluster (CRITICAL/HIGH/MEDIUM/LOW). Shows whether this cluster contains aggressive webshell activity patterns',
+            'ml_explanation': '🤖 ML REASONING: Plain English explanation of this cluster pattern, including attack characteristics (POST activity, command execution, tool usage) and whether sources are likely from the same campaign'
         }
 
 
