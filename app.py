@@ -2369,8 +2369,8 @@ class WatsonDashboard:
                     clear_output(wait=True)
                     display(HTML(page_df.to_html(index=False)))
             
-            # Update page info
-            page_info.value = f"<b>Page {current_page['value'] + 1} of {total_pages}</b> (Rows {start_idx + 1}-{end_idx} of {total_rows})"
+            # Update page info - compact
+            page_info.value = f"<b>Page {current_page['value'] + 1}/{total_pages}</b> ({start_idx + 1}-{end_idx} of {total_rows})"
             
             # Update button states
             prev_button.disabled = (current_page['value'] == 0)
@@ -4122,56 +4122,51 @@ class WatsonDashboard:
             strategy_count = len(self.strategies)
             
             tips_html = f"""
-            <div style="background: {GRADIENT_PURPLE_VIOLET}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
-                <h3 style="margin-top: 0; color: white;">💡 Quick Tips & Best Practices</h3>
+            <div style="background: {GRADIENT_PURPLE_VIOLET}; color: white; padding: 16px; border-radius: 10px; margin: 8px 0;">
+                <h3 style="margin-top: 0; margin-bottom: 12px; color: white; font-size: 1.3em;">💡 Tips & Best Practices</h3>
                 
-                <h4 style="color: white;">🚀 Quick Start Workflow:</h4>
-                <ol style="{CSS_LINE_HEIGHT}; color: white;">
-                    <li><strong>Select a Strategy Tab</strong> - Choose from {strategy_count} comprehensive threat hunting strategies</li>
-                    <li><strong>Read the Recommendation</strong> - Each strategy shows when to use it and what data works best</li>
-                    <li><strong>Load Data</strong> - Pick a table and map required columns</li>
-                    <li><strong>Run Analysis</strong> - Click the green "Run Analysis" button</li>
-                    <li><strong>Review Results</strong> - Use filters to focus on high-severity findings</li>
+                <h4 style="color: white; font-size: 1.05em; margin: 10px 0 6px 0;">🚀 Quick Start:</h4>
+                <ol style="{CSS_LINE_HEIGHT}; color: white; font-size: 0.95em; margin: 6px 0;">
+                    <li><strong>Select Strategy Tab</strong> - Choose from {strategy_count} threat hunting strategies</li>
+                    <li><strong>Read Recommendation</strong> - See when to use it and best data sources</li>
+                    <li><strong>Load Data</strong> - Pick a table and map columns</li>
+                    <li><strong>Run Analysis</strong> - Click green "Run Analysis" button</li>
+                    <li><strong>Review Results</strong> - Use filters for high-severity findings</li>
                 </ol>
                 
-                <h4 style="color: white;">🎯 Power User Features:</h4>
-                <ul style="{CSS_LINE_HEIGHT}; color: white;">
-                    <li><strong>Threat Overview Dashboard:</strong> 🔥 Click 📊 Threat Overview to see ALL strategies at a glance with comprehensive visualizations</li>
-                    <li><strong>Metrics Dashboard:</strong> Click 📊 to view real-time threat intelligence with aggregated statistics and strategy comparisons</li>
-                    <li><strong>Performance Stats:</strong> Click ⚡ to see execution times, throughput rates, and detection efficiency for each strategy</li>
-                    <li><strong>Timeline Analysis:</strong> Click 📅 to visualize when threats occurred with interactive heatmaps and temporal patterns</li>
-                    <li><strong>IP Threat Heatmap:</strong> Click 🗺️ to see which IPs generate the most threats across strategies with bubble chart visualization</li>
-                    <li><strong>Strategy Insights:</strong> Click 🎓 to compare strategy effectiveness with stacked severity distributions and detection rates</li>
-                    <li><strong>Smart Recommendations:</strong> Click 🎯 to get AI-powered suggestions on which strategies to run next based on findings</li>
-                    <li><strong>Text Search:</strong> Use the 🔍 search box to filter results across all columns - find IPs, domains, or any text instantly</li>
-                    <li><strong>Quick Triage:</strong> After running multiple analyses, click the 🚨 button to see all critical threats at once</li>
-                    <li><strong>Correlation Analysis:</strong> Click 🔗 to find IPs appearing in multiple strategies - these are your highest-priority targets</li>
-                    <li><strong>HTML Reports:</strong> Generate professional reports with the 📄 button for management briefings</li>
-                    <li><strong>Export Options:</strong> 🆕 Export as CSV or JSON - JSON format is ideal for SIEM integration and programmatic analysis</li>
-                    <li><strong>Multi-Filter:</strong> Combine text search with severity filters and sorting for precise threat identification</li>
+                <h4 style="color: white; font-size: 1.05em; margin: 10px 0 6px 0;">🎯 Key Features:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white; font-size: 0.95em; margin: 6px 0;">
+                    <li><strong>Overview:</strong> See all strategies at a glance (📊 button)</li>
+                    <li><strong>Metrics:</strong> Real-time threat intelligence dashboard (📈 button)</li>
+                    <li><strong>Triage:</strong> All critical threats in one view (🚨 button)</li>
+                    <li><strong>Correlate:</strong> Find IPs in multiple strategies (🔗 button)</li>
+                    <li><strong>Visualize:</strong> Heatmaps (🗺️), Timeline (📅), Insights (🎓), Speed (⚡)</li>
+                    <li><strong>Search:</strong> Filter results across all columns with regex support</li>
+                    <li><strong>Export:</strong> CSV for analysis, JSON for SIEM integration</li>
+                    <li><strong>Reports:</strong> Generate HTML reports for documentation (📄 button)</li>
                 </ul>
                 
-                <h4 style="color: white;">🔍 Investigation Strategy:</h4>
-                <ul style="{CSS_LINE_HEIGHT}; color: white;">
-                    <li><strong>Start Broad:</strong> Run multiple strategies on your data to get different perspectives</li>
-                    <li><strong>Correlate:</strong> Use correlation analysis to identify systematic attackers</li>
-                    <li><strong>Triage:</strong> Focus on high-severity (≥75 score) findings first</li>
-                    <li><strong>Document:</strong> Export findings and generate reports for your records</li>
+                <h4 style="color: white; font-size: 1.05em; margin: 10px 0 6px 0;">🔍 Investigation:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white; font-size: 0.95em; margin: 6px 0;">
+                    <li><strong>Start Broad:</strong> Run multiple strategies for different perspectives</li>
+                    <li><strong>Correlate:</strong> Identify systematic attackers across strategies</li>
+                    <li><strong>Triage:</strong> Focus on high-severity (≥75) findings first</li>
+                    <li><strong>Document:</strong> Export and generate reports</li>
                 </ul>
                 
-                <h4 style="color: white;">⚡ Performance Tips:</h4>
-                <ul style="{CSS_LINE_HEIGHT}; color: white;">
-                    <li>Use date filters to limit data range and improve speed</li>
-                    <li>Start with smaller row limits (10,000) for initial exploration</li>
-                    <li>Cache is automatically used for table listings (refreshes every 7 days)</li>
-                    <li>Results are stored in memory for correlation - no need to re-run analyses</li>
+                <h4 style="color: white; font-size: 1.05em; margin: 10px 0 6px 0;">⚡ Performance:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white; font-size: 0.95em; margin: 6px 0;">
+                    <li>Use date filters to narrow data range</li>
+                    <li>Start with smaller row limits (10,000)</li>
+                    <li>Table cache refreshes every 7 days automatically</li>
+                    <li>Results stored in memory for correlation</li>
                 </ul>
                 
-                <h4 style="color: white;">📊 Understanding Scores:</h4>
-                <ul style="{CSS_LINE_HEIGHT}; color: white;">
-                    <li><strong>75-100 (Critical):</strong> Strong evidence of malicious activity - investigate immediately</li>
-                    <li><strong>50-74 (High):</strong> Suspicious behavior worth investigating</li>
-                    <li><strong>&lt;50 (Medium/Low):</strong> Anomalies that may be benign but worth noting</li>
+                <h4 style="color: white; font-size: 1.05em; margin: 10px 0 6px 0;">📊 Severity Scores:</h4>
+                <ul style="{CSS_LINE_HEIGHT}; color: white; font-size: 0.95em; margin: 6px 0;">
+                    <li><strong>75-100 (Critical):</strong> Investigate immediately</li>
+                    <li><strong>50-74 (High):</strong> Suspicious, worth investigating</li>
+                    <li><strong>&lt;50 (Medium/Low):</strong> Anomalies, may be benign</li>
                 </ul>
             </div>
             """
