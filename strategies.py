@@ -5855,7 +5855,8 @@ class WebshellDetectionStrategy(HuntStrategy):
                     'total_requests': len(group),
                     'suspicious_uris': ', '.join(sorted(suspicious_uris)[:5]) if suspicious_uris else 'N/A',
                     'post_to_scripts': post_to_scripts,
-                    'suspicious_params': ', '.join(sorted(suspicious_params_found)[:5]),
+                    'suspicious_params': len(suspicious_params_found),  # Store count for ML
+                    'suspicious_params_list': ', '.join(sorted(suspicious_params_found)[:5]),  # Store string for display
                     'tool_agent_requests': tool_agents,
                     'flags': ', '.join(set(flags)),
                     'webshell_score': webshell_score
@@ -6009,7 +6010,8 @@ class WebshellDetectionStrategy(HuntStrategy):
             'total_requests': 'Total number of web requests from this IP',
             'suspicious_uris': 'Known web shell file names detected in URIs (c99.php, r57.php, etc.)',
             'post_to_scripts': 'Count of POST requests to script files (.php, .asp, .jsp)',
-            'suspicious_params': 'Command execution parameters found (cmd, exec, shell, eval, etc.)',
+            'suspicious_params': 'Count of unique command execution parameters found (used for ML analysis)',
+            'suspicious_params_list': 'Command execution parameters found (cmd, exec, shell, eval, etc.)',
             'tool_agent_requests': 'Requests from attack tools or scanners',
             'flags': 'Specific web shell indicators (webshell_filename, encoded_command, etc.)',
             'webshell_score': 'Overall web shell risk score (0-100). Higher scores indicate probable web shell access or deployment. Scores ≥75 suggest active web shell usage. Scores ≥50 require immediate investigation',
