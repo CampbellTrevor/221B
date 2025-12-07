@@ -8,6 +8,18 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 ### 🆕 What's New in This Release
 
+**🎨 UI/UX Overhaul - Workflow-Centric Design:**
+- 🆕 **Reorganized Strategy Tabs** - Natural analyst workflow with numbered steps (1️⃣ → 4️⃣)
+- 🆕 **Collapsible Sections** - Strategy descriptions and config management collapse to save space
+- 🆕 **Reduced Visual Clutter** - HR separators reduced from 4 to 2, compact margins throughout
+- 🆕 **Horizontal Grouping** - Related controls (date pickers, query options) grouped for compactness
+- 🆕 **Professional Button Styling** - Consistent sizing, clear labels, organized by function
+- 🆕 **Prominent Run Button** - 40px height with emoji for easy identification
+- 🆕 **Workflow Guidance** - Clear path shown in header: Quick Actions → Strategy → Configure → Run
+- Tab layout now follows: Select Data Source → Map Columns → Configure Query → Run Analysis → Results
+- Configuration management moved to collapsible accordion (used less frequently)
+- Quick action buttons reorganized: Critical Analysis, Analytics & Insights, Workflow & Support
+
 **Code Quality & Consolidation:**
 - 🔧 **Major code consolidation** - Improved maintainability and reduced duplication
 - **CSS style consolidation** - 10 new CSS constants consolidate 20+ duplicate inline styles

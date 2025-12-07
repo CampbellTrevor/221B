@@ -550,9 +550,10 @@ class WatsonDashboard:
                     style={'description_width': 'initial'}
                 ),
                 'load_table_button': widgets.Button(
-                    description='Load Table Schema',
+                    description='📊 Load Table Schema',
                     button_style='info',
-                    icon='database'
+                    icon='database',
+                    layout=widgets.Layout(width='auto', min_width='180px')
                 ),
                 'column_dropdowns': {},
                 'column_mapping_container': widgets.VBox([]),
@@ -579,21 +580,22 @@ class WatsonDashboard:
                     style={'description_width': 'initial'}
                 ),
                 'run_button': widgets.Button(
-                    description='Run Analysis',
+                    description='🚀 Run Analysis',
                     button_style='success',
-                    icon='search'
+                    icon='search',
+                    layout=widgets.Layout(width='auto', min_width='180px', height='40px')
                 ),
                 'save_config_button': widgets.Button(
                     description='💾 Save Configuration',
                     button_style='info',
                     icon='save',
-                    layout=widgets.Layout(width='200px')
+                    layout=widgets.Layout(width='auto', min_width='180px')
                 ),
                 'load_config_button': widgets.Button(
                     description='📂 Load Configuration',
                     button_style='warning',
                     icon='folder-open',
-                    layout=widgets.Layout(width='200px')
+                    layout=widgets.Layout(width='auto', min_width='180px')
                 ),
                 'config_name_input': widgets.Text(
                     placeholder='Enter config name...',
@@ -669,29 +671,67 @@ class WatsonDashboard:
                 """
             )
             
-            # Assemble tab content
-            tab_content = widgets.VBox([
-                description,
-                widgets.HTML("<hr>"),
-                widgets.HTML("<h4>Data Source</h4>"),
+            # Create collapsible strategy description using Accordion
+            strategy_accordion = widgets.Accordion(children=[description])
+            strategy_accordion.set_title(0, f"📋 About {strategy.name}")
+            strategy_accordion.selected_index = None  # Start collapsed to save space
+            
+            # Create collapsible configuration management using Accordion
+            config_section = widgets.VBox([
+                tab_data['config_name_input'],
+                widgets.HBox([
+                    tab_data['save_config_button'], 
+                    tab_data['load_config_button']
+                ], layout=widgets.Layout(margin='5px 0'))
+            ])
+            config_accordion = widgets.Accordion(children=[config_section])
+            config_accordion.set_title(0, "💾 Save/Load Configuration")
+            config_accordion.selected_index = None  # Start collapsed - used less frequently
+            
+            # Group data source controls compactly
+            data_source_section = widgets.VBox([
+                widgets.HTML("<h4 style='margin: 10px 0 5px 0;'>1️⃣ Select Data Source</h4>"),
                 tab_data['table_search'],
                 tab_data['table_dropdown'],
-                tab_data['load_table_button'],
-                widgets.HTML("<hr>"),
-                widgets.HTML("<h4>Column Mapping</h4>"),
-                tab_data['column_mapping_container'],
-                widgets.HTML("<hr>"),
-                widgets.HTML("<h4>Configuration Management</h4>"),
-                tab_data['config_name_input'],
-                widgets.HBox([tab_data['save_config_button'], tab_data['load_config_button']]),
-                widgets.HTML("<hr>"),
-                widgets.HTML("<h4>Query Options</h4>"),
-                tab_data['limit_input'],
-                tab_data['enable_date_filter'],
-                tab_data['start_date'],
-                tab_data['end_date'],
-                tab_data['run_button'],
-                widgets.HTML("<hr>"),
+                tab_data['load_table_button']
+            ], layout=widgets.Layout(margin='0 0 15px 0'))
+            
+            # Column mapping section
+            column_mapping_section = widgets.VBox([
+                widgets.HTML("<h4 style='margin: 10px 0 5px 0;'>2️⃣ Map Columns</h4>"),
+                tab_data['column_mapping_container']
+            ], layout=widgets.Layout(margin='0 0 15px 0'))
+            
+            # Query options section - grouped horizontally for compactness
+            query_options_section = widgets.VBox([
+                widgets.HTML("<h4 style='margin: 10px 0 5px 0;'>3️⃣ Configure Query</h4>"),
+                widgets.HBox([
+                    tab_data['limit_input'],
+                    tab_data['enable_date_filter']
+                ], layout=widgets.Layout(margin='5px 0')),
+                widgets.HBox([
+                    tab_data['start_date'],
+                    tab_data['end_date']
+                ], layout=widgets.Layout(margin='5px 0'))
+            ], layout=widgets.Layout(margin='0 0 15px 0'))
+            
+            # Run analysis section - prominent
+            run_section = widgets.VBox([
+                widgets.HTML("<h4 style='margin: 10px 0 5px 0;'>4️⃣ Run Analysis</h4>"),
+                tab_data['run_button']
+            ], layout=widgets.Layout(margin='0 0 15px 0'))
+            
+            # Assemble tab content with improved workflow organization
+            tab_content = widgets.VBox([
+                strategy_accordion,
+                widgets.HTML("<hr style='margin: 15px 0;'>"),
+                data_source_section,
+                column_mapping_section,
+                query_options_section,
+                run_section,
+                config_accordion,
+                widgets.HTML("<hr style='margin: 15px 0;'>"),
+                widgets.HTML("<h4 style='margin: 10px 0 5px 0;'>📊 Results</h4>"),
                 tab_data['output_widget']
             ])
             
@@ -2915,7 +2955,7 @@ class WatsonDashboard:
                 print(f"✅ Configuration loaded: {config_name}")
                 print(f"📅 Saved: {saved_at.strftime('%Y-%m-%d %H:%M:%S')}")
                 print(f"📊 Table: {config['table']}")
-                print(f"🎯 Ready to run analysis!")
+                print("🎯 Ready to run analysis!")
             else:
                 print(f"❌ Table '{config['table']}' not found in available tables.")
         except Exception as e:
@@ -3252,7 +3292,7 @@ class WatsonDashboard:
                 scanner_count = len(result_df[result_df.get('is_likely_scanner', False)]) if 'is_likely_scanner' in result_df.columns else 0
                 if scanner_count > 0:
                     print(f"🔍 Scanner Detection: {scanner_count} results flagged as potential security scanners (Nessus, ACAS, etc.)")
-                    print(f"   These are highlighted in yellow and can be filtered out as false positives.")
+                    print("   These are highlighted in yellow and can be filtered out as false positives.")
                     print()
                 
                 # Store results for correlation analysis
@@ -3975,109 +4015,102 @@ class WatsonDashboard:
         
         Arranges all widgets in a vertical layout and displays them.
         """
-        # Create header
+        # Create header - more compact
         header = widgets.HTML(
             value="""
-            <h2>🔍 221B: The Analyst's Head-Up Display</h2>
-            <p>Select a hunt strategy tab below to begin your analysis.</p>
+            <div style="margin-bottom: 10px;">
+                <h2 style="margin-bottom: 5px;">🔍 221B: The Analyst's Head-Up Display</h2>
+                <p style="margin: 0; color: #666;">Quick Actions → Select Strategy Tab → Configure & Run Analysis</p>
+            </div>
             """
         )
         
-        # Create quick action buttons
+        # Create quick action buttons with consistent styling
+        # Critical Analysis Actions
         triage_button = widgets.Button(
-            description='🚨 Quick Triage',
+            description='🚨 Triage',
             button_style='danger',
             tooltip='View all high-severity threats across all strategies',
-            icon='exclamation-triangle',
-            layout=widgets.Layout(width='150px')
+            layout=widgets.Layout(width='auto', min_width='110px')
         )
         
         correlation_button = widgets.Button(
             description='🔗 Correlations',
             button_style='warning',
             tooltip='Find IPs appearing in multiple strategies',
-            icon='link',
-            layout=widgets.Layout(width='150px')
+            layout=widgets.Layout(width='auto', min_width='135px')
         )
         
-        report_button = widgets.Button(
-            description='📄 Generate Report',
+        overview_button = widgets.Button(
+            description='📊 Overview',
             button_style='info',
-            tooltip='Generate comprehensive HTML investigation report',
-            icon='file-text',
-            layout=widgets.Layout(width='180px')
+            tooltip='Comprehensive dashboard showing all strategies at a glance',
+            layout=widgets.Layout(width='auto', min_width='125px')
         )
         
-        export_all_button = widgets.Button(
-            description='💾 Export All',
-            button_style='success',
-            tooltip='Export all strategy results to CSV files',
-            icon='download',
-            layout=widgets.Layout(width='150px')
-        )
-        
+        # Analytics & Insights
         metrics_button = widgets.Button(
-            description='📊 Metrics Dashboard',
+            description='📈 Metrics',
             button_style='primary',
             tooltip='View comprehensive threat intelligence dashboard',
-            icon='dashboard',
-            layout=widgets.Layout(width='180px')
-        )
-        
-        performance_button = widgets.Button(
-            description='⚡ Performance',
-            button_style='',
-            tooltip='View strategy execution performance statistics',
-            icon='clock-o',
-            layout=widgets.Layout(width='140px')
-        )
-        
-        timeline_button = widgets.Button(
-            description='📅 Timeline',
-            button_style='',
-            tooltip='View temporal threat activity heatmap',
-            icon='calendar',
-            layout=widgets.Layout(width='120px')
-        )
-        
-        recommend_button = widgets.Button(
-            description='🎯 Recommendations',
-            button_style='',
-            tooltip='Get smart recommendations for next steps',
-            icon='lightbulb-o',
-            layout=widgets.Layout(width='170px')
-        )
-        
-        help_button = widgets.Button(
-            description='❓ Tips',
-            button_style='',
-            tooltip='Show usage tips and best practices',
-            icon='question-circle',
-            layout=widgets.Layout(width='100px')
+            layout=widgets.Layout(width='auto', min_width='115px')
         )
         
         heatmap_button = widgets.Button(
             description='🗺️ IP Heatmap',
             button_style='',
             tooltip='View IP address threat heatmap',
-            icon='map',
-            layout=widgets.Layout(width='140px')
+            layout=widgets.Layout(width='auto', min_width='135px')
         )
         
         insights_button = widgets.Button(
-            description='🎓 Strategy Insights',
+            description='🎓 Insights',
             button_style='',
             tooltip='Compare strategy effectiveness and coverage',
-            icon='line-chart',
-            layout=widgets.Layout(width='170px')
+            layout=widgets.Layout(width='auto', min_width='115px')
         )
         
-        overview_button = widgets.Button(
-            description='📊 Threat Overview',
+        timeline_button = widgets.Button(
+            description='📅 Timeline',
+            button_style='',
+            tooltip='View temporal threat activity heatmap',
+            layout=widgets.Layout(width='auto', min_width='115px')
+        )
+        
+        performance_button = widgets.Button(
+            description='⚡ Performance',
+            button_style='',
+            tooltip='View strategy execution performance statistics',
+            layout=widgets.Layout(width='auto', min_width='140px')
+        )
+        
+        # Workflow & Support
+        recommend_button = widgets.Button(
+            description='🎯 Next Steps',
+            button_style='',
+            tooltip='Get smart recommendations for next steps',
+            layout=widgets.Layout(width='auto', min_width='130px')
+        )
+        
+        report_button = widgets.Button(
+            description='📄 Report',
             button_style='info',
-            tooltip='Comprehensive dashboard showing all strategies at a glance',
-            icon='dashboard',
-            layout=widgets.Layout(width='170px')
+            tooltip='Generate comprehensive HTML investigation report',
+            layout=widgets.Layout(width='auto', min_width='110px')
+        )
+        
+        export_all_button = widgets.Button(
+            description='💾 Export All',
+            button_style='success',
+            tooltip='Export all strategy results to CSV files',
+            layout=widgets.Layout(width='auto', min_width='125px')
+        )
+        
+        help_button = widgets.Button(
+            description='❓ Tips',
+            button_style='',
+            tooltip='Show usage tips and best practices',
+            layout=widgets.Layout(width='auto', min_width='95px')
         )
         
 
@@ -4219,36 +4252,44 @@ class WatsonDashboard:
         insights_button.on_click(on_insights_click)
         overview_button.on_click(on_overview_click)
         
-        # Split buttons into three rows for better layout
-        action_row1 = widgets.HBox([
+        # Organize buttons by function with labels for clarity
+        # Critical Analysis Actions
+        critical_actions = widgets.HBox([
             triage_button,
             correlation_button,
-            report_button,
-            export_all_button,
-            metrics_button
-        ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))
+            overview_button
+        ], layout=widgets.Layout(justify_content='flex-start', margin='2px 0'))
         
-        action_row2 = widgets.HBox([
-            performance_button,
-            timeline_button,
+        # Analytics & Insights
+        analytics_actions = widgets.HBox([
+            metrics_button,
             heatmap_button,
             insights_button,
-            overview_button
-        ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))
+            timeline_button,
+            performance_button
+        ], layout=widgets.Layout(justify_content='flex-start', margin='2px 0'))
         
-        action_row3 = widgets.HBox([
+        # Workflow & Support
+        workflow_actions = widgets.HBox([
             recommend_button,
+            report_button,
+            export_all_button,
             help_button
-        ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))
+        ], layout=widgets.Layout(justify_content='flex-start', margin='2px 0'))
         
-        action_buttons = widgets.VBox([action_row1, action_row2, action_row3])
+        # Compact action buttons with minimal spacing
+        action_buttons = widgets.VBox([
+            critical_actions,
+            analytics_actions, 
+            workflow_actions
+        ], layout=widgets.Layout(margin='5px 0 10px 0'))
         
-        # Arrange layout with tabs
+        # Arrange layout with tabs - compact and clean
         dashboard = widgets.VBox([
             header,
             action_buttons,
             action_output,
-            widgets.HTML("<hr>"),
+            widgets.HTML("<hr style='margin: 10px 0;'>"),
             self.tab_widget,
         ])
         
