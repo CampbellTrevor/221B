@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
 import re
-from scipy.stats import entropy
+from scipy.stats import entropy, rankdata
 from multiprocessing import Pool
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -352,7 +352,6 @@ class BeaconStrategy(HuntStrategy):
         
         # Convert to 0-100 scale where higher = more anomalous
         # Normalize using percentile ranking
-        from scipy.stats import rankdata
         ml_anomaly_score = (rankdata(anomaly_scores_raw) / len(anomaly_scores_raw)) * 100
         
         # Add ML results to dataframe
@@ -1093,7 +1092,6 @@ class ExfilStrategy(HuntStrategy):
         # Convert to 0-100 scale where higher = more outlier-like
         # LOF scores are negative, closer to -1 is inlier, more negative is outlier
         # We'll normalize using percentile ranking
-        from scipy.stats import rankdata
         # Invert so more negative scores get higher ranks
         ml_outlier_score = (rankdata(-outlier_scores_raw) / len(outlier_scores_raw)) * 100
         
