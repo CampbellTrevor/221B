@@ -1426,7 +1426,7 @@ class WatsonDashboard:
         
         # Identify most effective strategies
         most_effective = insights_df.nlargest(3, 'High Severity')
-        print(f"🏆 Top 3: " + " | ".join([f"{row.Strategy} ({row._2})" for row in most_effective.itertuples()]))
+        print(f"🏆 Top 3: " + " | ".join([f"{row['Strategy']} ({row['High Severity']})" for _, row in most_effective.iterrows()]))
         print()
         
         # Visualization if plotly available
@@ -3219,13 +3219,13 @@ class WatsonDashboard:
                     print("⚠️ Analysis returned no results.")
                     return
                 
-                print(f"✅ Found {len(result_df)} results in {analysis_duration:.2f}s ({len(df) / analysis_duration if analysis_duration > 0 else 0:.0f} rows/sec)")
-                
                 # Detect potential security scanners in results
                 result_df = self._detect_scanners(result_df)
                 scanner_count = len(result_df[result_df.get('is_likely_scanner', False)]) if 'is_likely_scanner' in result_df.columns else 0
-                if scanner_count > 0:
-                    print(f"🔍 {scanner_count} potential security scanners detected (highlighted in yellow)")
+                
+                # Show results summary
+                scanner_msg = f" | 🔍 {scanner_count} scanners" if scanner_count > 0 else ""
+                print(f"✅ Found {len(result_df)} results in {analysis_duration:.2f}s ({len(df) / analysis_duration if analysis_duration > 0 else 0:.0f} rows/sec){scanner_msg}")
                 print()
                 
                 # Store results for correlation analysis
