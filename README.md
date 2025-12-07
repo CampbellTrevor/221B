@@ -8,6 +8,19 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 ### 🆕 What's New in This Release
 
+**🤖 MACHINE LEARNING ENHANCEMENTS - Intelligent Threat Detection:**
+- 🆕 **3 ML-Enhanced Strategies** - BeaconStrategy, EntropyStrategy, ExfilStrategy now use machine learning
+- 🆕 **Automatic Anomaly Detection** - Isolation Forest finds unusual beaconing patterns
+- 🆕 **Pattern Discovery** - KMeans clustering groups similar DGA domains/malware families
+- 🆕 **Outlier Detection** - Local Outlier Factor identifies unusual traffic patterns
+- 🆕 **Plain English Explanations** - Every ML decision explained for junior analysts
+- 🆕 **Confidence Levels** - HIGH/MEDIUM/LOW confidence scores with every detection
+- 🆕 **Feature Importance** - Shows which factors drove each ML decision
+- 🆕 **Graceful Fallback** - Uses rule-based detection when <50 samples (insufficient for ML)
+- 🆕 **Zero-Code Experience** - ML runs automatically behind the scenes
+- 🆕 **Interactive Performance** - ML optimized for real-time threat hunting
+- See [ML_IMPLEMENTATION.md](ML_IMPLEMENTATION.md) for complete ML documentation
+
 **🎨 UI/UX Overhaul - Workflow-Centric Design:**
 - 🆕 **Polished Header** - Professional design with integrated workflow guidance subtitle
 - 🆕 **Reorganized Strategy Tabs** - Natural analyst workflow with numbered steps (1️⃣ → 4️⃣)
@@ -86,21 +99,27 @@ A Jupyter notebook-based threat hunting platform that provides interactive analy
 
 The dashboard includes **thirty-six comprehensive threat hunting strategies**:
 
-**Beacon Hunter (C2 Detection)**
+**Beacon Hunter (C2 Detection)** 🤖 *ML-ENHANCED*
 - Detects command-and-control beaconing behavior by analyzing connection timing patterns
 - Identifies rhythmic network traffic indicative of automated callbacks
+- **NEW: Machine Learning** - Isolation Forest detects anomalous beaconing patterns
+- **NEW: Confidence Scores** - HIGH/MEDIUM/LOW ML confidence with plain English explanations
 - Calculates beacon scores based on connection consistency and frequency
 - Useful for finding compromised hosts communicating with C2 servers
 
-**Entropy Analyzer (DNS Tunneling)**
+**Entropy Analyzer (DNS Tunneling)** 🤖 *ML-ENHANCED*
 - Detects DNS tunneling and Domain Generation Algorithm (DGA) domains
 - Calculates Shannon entropy on string fields to identify high-randomness data
+- **NEW: Pattern Discovery** - KMeans clustering groups similar DGA domains together
+- **NEW: Cluster Risk Levels** - CRITICAL/HIGH/MEDIUM clusters identify malware families
 - Flags long, high-entropy strings that may indicate data exfiltration
 - Helps identify covert channels and encoded communications
 
-**Exfiltration Monitor (Producer/Consumer Ratio)**
+**Exfiltration Monitor (Producer/Consumer Ratio)** 🤖 *ML-ENHANCED*
 - Identifies hosts with unusual upload-to-download traffic ratios
 - Detects potential data exfiltration by finding "producer" hosts
+- **NEW: Outlier Detection** - Local Outlier Factor identifies unusual traffic patterns
+- **NEW: Density-Based Analysis** - Finds hosts that differ dramatically from neighbors
 - Calculates suspicion scores based on traffic volume and ratio
 - Highlights hosts behaving abnormally compared to typical download patterns
 
@@ -360,6 +379,39 @@ The dashboard includes **thirty-six comprehensive threat hunting strategies**:
 - Identifies steganography via consistent packet sizes
 - Detects micro-packet streams for data exfiltration
 - Essential for finding hidden command and control channels
+
+### 🤖 Machine Learning Features
+
+**Automated Intelligent Analysis** (Zero-Code Experience)
+- ML runs automatically behind the scenes - analysts never write code
+- Requires 50+ samples for ML activation (graceful fallback to rule-based detection)
+- Three strategies currently ML-enhanced: Beacon, Entropy, Exfiltration
+- All ML enhancements maintain backward compatibility with existing workflows
+
+**ML Algorithms Used**:
+1. **Isolation Forest** (BeaconStrategy) - Detects anomalous timing patterns in C2 beaconing
+2. **KMeans Clustering** (EntropyStrategy) - Groups similar DGA domains to identify malware families
+3. **Local Outlier Factor** (ExfilStrategy) - Identifies unusual traffic patterns via density analysis
+
+**ML Output Columns** (Added to Strategy Results):
+- `ml_anomaly_score` / `ml_outlier_score` / `ml_cluster`: Numeric ML scores (0-100 or cluster ID)
+- `ml_confidence`: Human-readable confidence (HIGH/MEDIUM/LOW/NORMAL)
+- `ml_explanation`: Plain English explanation of ML decision with feature contributions
+
+**Confidence Levels Explained**:
+- 🔴 **HIGH CONFIDENCE**: ML strongly agrees threat is unusual - prioritize investigation
+- 🟡 **MEDIUM CONFIDENCE**: ML detects moderate anomaly - worth reviewing
+- 🟢 **LOW CONFIDENCE**: ML sees as mostly normal - rule-based logic flagged it
+- ℹ️ **NORMAL**: ML considers it typical periodic traffic - may be false positive
+
+**Key Benefits**:
+- Catches subtle patterns rule-based detection might miss
+- Groups related threats together (e.g., same malware campaign)
+- Provides confidence levels to help prioritize investigation
+- Explains decisions in plain English for junior analysts
+- Fast enough for interactive use (<1 second on typical datasets)
+
+**Learn More**: See [ML_IMPLEMENTATION.md](ML_IMPLEMENTATION.md) for complete technical documentation, algorithms, hyperparameters, and usage examples.
 
 ### 🔧 Interactive Controls
 
@@ -807,11 +859,18 @@ When adding new features or strategies:
 
 **Current Release:**
 - **36 comprehensive threat hunting strategies** covering modern attack vectors
-- **114 unit tests** with 100% pass rate
-- **13,937 lines of code** across core modules
+- **3 ML-enhanced strategies** with automatic anomaly detection, clustering, and outlier analysis
+- **119 unit tests** with 100% pass rate (114 strategy tests + 5 ML tests)
+- **14,000+ lines of code** across core modules
 - **12 quick action buttons** for one-click analysis including Threat Overview
 - **Multiple export formats** (CSV, JSON) for flexible integration
 - **Zero security vulnerabilities** detected by CodeQL analysis
+
+**Machine Learning:**
+- **3 ML algorithms** deployed: Isolation Forest, KMeans, Local Outlier Factor
+- **Zero-code experience** - ML runs automatically with 50+ samples
+- **Plain English explanations** for every ML decision
+- **Interactive performance** - optimized for real-time threat hunting
 
 **Code Distribution:**
 - `strategies.py`: 6,712 lines - Pure threat detection logic
