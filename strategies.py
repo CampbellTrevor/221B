@@ -22,6 +22,80 @@ try:
 except ImportError:
     HAS_PLOTLY = False
 
+# Try to import scikit-learn for ML features (optional)
+try:
+    from sklearn.ensemble import IsolationForest
+    from sklearn.cluster import KMeans
+    from sklearn.neighbors import LocalOutlierFactor
+    from sklearn.preprocessing import StandardScaler
+    HAS_SKLEARN = True
+except ImportError:
+    HAS_SKLEARN = False
+
+
+# ML Configuration Constants
+ML_MIN_SAMPLES = 50  # Minimum samples required to apply ML
+ML_CONTAMINATION = 0.1  # Expected proportion of outliers (10%)
+ML_RANDOM_STATE = 42  # For reproducible results
+
+
+def explain_ml_score(score: float, method: str = "anomaly") -> str:
+    """
+    Generate plain-English explanation of ML score for analysts.
+    
+    Args:
+        score: ML-generated score (typically 0-100 or -1 to 1)
+        method: Type of ML method ('anomaly', 'cluster', 'outlier')
+    
+    Returns:
+        Human-readable explanation string
+    """
+    if method == "anomaly":
+        if score >= 75:
+            return "🔴 HIGH CONFIDENCE - Machine learning identified this as highly anomalous compared to normal patterns"
+        elif score >= 50:
+            return "🟡 MEDIUM CONFIDENCE - ML detected moderate deviation from typical behavior"
+        else:
+            return "🟢 LOW CONFIDENCE - ML sees similarity to normal patterns, but rule-based logic flagged it"
+    elif method == "cluster":
+        return f"Grouped with similar patterns (Cluster {int(score)})"
+    elif method == "outlier":
+        if score >= 75:
+            return "🔴 EXTREME OUTLIER - Significantly different from all other hosts"
+        elif score >= 50:
+            return "🟡 MODERATE OUTLIER - Noticeably different from typical behavior"
+        else:
+            return "🟢 SLIGHT OUTLIER - Minor deviations detected"
+    return "Analysis performed"
+
+
+def get_feature_importance_explanation(features: dict) -> str:
+    """
+    Explain which features contributed most to ML detection.
+    
+    Args:
+        features: Dictionary of feature names to normalized values
+    
+    Returns:
+        Explanation of top contributing features
+    """
+    if not features:
+        return "No feature data available"
+    
+    # Sort features by absolute value (impact)
+    sorted_features = sorted(features.items(), key=lambda x: abs(x[1]), reverse=True)
+    
+    explanations = []
+    for feat_name, feat_value in sorted_features[:3]:  # Top 3 features
+        if feat_value > 0.5:
+            explanations.append(f"High {feat_name}")
+        elif feat_value < -0.5:
+            explanations.append(f"Low {feat_name}")
+        else:
+            explanations.append(f"Moderate {feat_name}")
+    
+    return "Key factors: " + ", ".join(explanations)
+
 
 class HuntStrategy(ABC):
     """
@@ -130,6 +204,10 @@ class BeaconStrategy(HuntStrategy):
         """
         Analyze connection patterns to detect beaconing behavior.
         
+        Uses a hybrid approach:
+        1. Rule-based scoring (traditional logic)
+        2. ML-based anomaly detection (Isolation Forest) when sufficient data
+        
         Args:
             df: DataFrame with connection logs
             col_map: Mapping of {'timestamp': actual_col, 'source_ip': actual_col, 
@@ -137,6 +215,7 @@ class BeaconStrategy(HuntStrategy):
         
         Returns:
             DataFrame with source_ip, dest_ip, connection_count, delta_variance, and beacon_score
+            Plus ML columns: ml_anomaly_score, ml_confidence, ml_explanation
         """
         # Map columns
         ts_col = col_map['timestamp']
@@ -204,11 +283,122 @@ class BeaconStrategy(HuntStrategy):
         
         result_df = pd.DataFrame(results)
         
+        # Apply ML-based anomaly detection if we have enough data and sklearn is available
+        if not result_df.empty and HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+            result_df = self._apply_ml_anomaly_detection(result_df)
+        else:
+            # Add placeholder ML columns when ML is not applied
+            result_df['ml_anomaly_score'] = 0.0
+            result_df['ml_confidence'] = 'N/A (insufficient data or sklearn not available)'
+            result_df['ml_explanation'] = 'Rule-based detection only - need 50+ beaconing pairs for ML analysis'
+        
         # Filter and sort by beacon score
         if not result_df.empty:
             # Only show high-confidence beacons
             result_df = result_df[result_df['beacon_score'] >= self.MIN_BEACON_SCORE]
             result_df = result_df.sort_values('beacon_score', ascending=False)
+        
+        return result_df
+    
+    def _apply_ml_anomaly_detection(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply Isolation Forest ML model to detect anomalous beaconing patterns.
+        
+        This method is called when sufficient data is available (50+ samples).
+        It uses timing features to identify unusual beaconing behavior that might
+        indicate C2 communication versus legitimate periodic traffic.
+        
+        Args:
+            result_df: DataFrame with rule-based beacon analysis results
+        
+        Returns:
+            DataFrame with additional ML columns: ml_anomaly_score, ml_confidence, ml_explanation
+        """
+        # Feature engineering: Select features for ML model
+        # We use timing characteristics that distinguish C2 beaconing from normal periodic traffic
+        ml_features = ['coeff_variation', 'mean_delta_sec', 'connection_count', 'delta_variance']
+        
+        # Prepare feature matrix
+        X = result_df[ml_features].copy()
+        
+        # Handle infinite values (can occur with cv when mean_delta is 0)
+        X = X.replace([np.inf, -np.inf], np.nan)
+        X = X.fillna(X.median())
+        
+        # Scale features (important for distance-based algorithms like Isolation Forest)
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Train Isolation Forest model
+        # contamination=0.1 means we expect ~10% of data to be anomalies (beacons)
+        # n_estimators=100 for stable predictions
+        # random_state for reproducibility
+        iso_forest = IsolationForest(
+            contamination=ML_CONTAMINATION,
+            n_estimators=100,
+            random_state=ML_RANDOM_STATE,
+            n_jobs=-1  # Use all CPU cores
+        )
+        
+        # Fit and predict
+        iso_forest.fit(X_scaled)
+        
+        # Get anomaly predictions (-1 = anomaly, 1 = normal)
+        predictions = iso_forest.predict(X_scaled)
+        
+        # Get anomaly scores (lower = more anomalous)
+        # decision_function returns negative scores for anomalies
+        anomaly_scores_raw = iso_forest.decision_function(X_scaled)
+        
+        # Convert to 0-100 scale where higher = more anomalous
+        # Normalize using percentile ranking
+        from scipy.stats import rankdata
+        ml_anomaly_score = (rankdata(anomaly_scores_raw) / len(anomaly_scores_raw)) * 100
+        
+        # Add ML results to dataframe
+        result_df['ml_anomaly_score'] = ml_anomaly_score
+        result_df['ml_prediction'] = predictions
+        
+        # Generate confidence and explanation for each detection
+        ml_confidence_list = []
+        ml_explanation_list = []
+        
+        for idx, row in result_df.iterrows():
+            score = row['ml_anomaly_score']
+            is_anomaly = row['ml_prediction'] == -1
+            
+            # Confidence level based on score
+            if is_anomaly and score >= 75:
+                confidence = "HIGH"
+                explanation = "🔴 ML HIGH CONFIDENCE: This beaconing pattern is highly unusual. Features like timing consistency and connection frequency are outliers compared to other traffic."
+            elif is_anomaly and score >= 50:
+                confidence = "MEDIUM"
+                explanation = "🟡 ML MEDIUM CONFIDENCE: Moderate anomaly detected. Some timing characteristics differ from normal patterns, worth investigating."
+            elif is_anomaly:
+                confidence = "LOW"
+                explanation = "🟢 ML LOW CONFIDENCE: Slight anomaly detected but similar to other patterns. Rule-based detection is primary indicator."
+            else:
+                confidence = "NORMAL"
+                explanation = f"ℹ️ ML sees this as normal periodic traffic (score: {score:.1f}/100). Rule-based logic flagged it due to timing regularity."
+            
+            # Add feature contribution explanation
+            feature_vals = {
+                'timing_consistency': 1.0 - row['coeff_variation'],  # Lower CV = more consistent
+                'connection_frequency': min(row['connection_count'] / 50.0, 1.0),  # Normalize to 0-1
+                'interval_regularity': 1.0 if 60 <= row['mean_delta_sec'] <= 3600 else 0.5
+            }
+            
+            feature_explanation = get_feature_importance_explanation(feature_vals)
+            explanation += f" {feature_explanation}"
+            
+            ml_confidence_list.append(confidence)
+            ml_explanation_list.append(explanation)
+        
+        result_df['ml_confidence'] = ml_confidence_list
+        result_df['ml_explanation'] = ml_explanation_list
+        
+        # Drop the internal ml_prediction column (not needed in output)
+        result_df = result_df.drop(columns=['ml_prediction'])
         
         return result_df
     
@@ -370,7 +560,10 @@ class BeaconStrategy(HuntStrategy):
             'delta_variance': 'How much the timing between connections varies (lower = more consistent)',
             'mean_delta_sec': 'Average time (in seconds) between consecutive connections',
             'coeff_variation': 'Normalized measure of timing consistency (lower = more regular/suspicious). Values below 0.3 indicate very consistent timing patterns typical of automated C2 beaconing',
-            'beacon_score': 'Overall suspiciousness score (0-100). Higher scores indicate stronger evidence of C2 beaconing. Scores ≥50 suggest automated beaconing behavior worth investigating'
+            'beacon_score': 'Overall suspiciousness score (0-100). Higher scores indicate stronger evidence of C2 beaconing. Scores ≥50 suggest automated beaconing behavior worth investigating',
+            'ml_anomaly_score': '🤖 MACHINE LEARNING: How unusual this beaconing pattern is compared to all others (0-100). Higher scores mean ML identified this as more anomalous. Requires 50+ beaconing pairs for ML analysis',
+            'ml_confidence': '🤖 ML CONFIDENCE LEVEL: How confident the machine learning model is about this detection (HIGH/MEDIUM/LOW/NORMAL). Shows whether ML agrees with rule-based detection',
+            'ml_explanation': '🤖 ML REASONING: Plain English explanation of why machine learning flagged this, including which features (timing consistency, connection frequency, interval regularity) contributed most to the detection'
         }
 
 
@@ -397,12 +590,17 @@ class EntropyStrategy(HuntStrategy):
         """
         Calculate Shannon Entropy for string fields.
         
+        Uses a hybrid approach:
+        1. Rule-based scoring (entropy + length thresholds)
+        2. ML-based clustering (KMeans) to group similar DGA/tunneling patterns
+        
         Args:
             df: DataFrame with string data (e.g., DNS queries)
             col_map: Mapping of {'target_string': actual_col}
         
         Returns:
             DataFrame with target_string, string_length, entropy_score, and suspicion_score
+            Plus ML columns: ml_cluster, ml_cluster_risk, ml_explanation
         """
         # Map columns
         str_col = col_map['target_string']
@@ -454,11 +652,115 @@ class EntropyStrategy(HuntStrategy):
         # Filter to high-suspicion items only
         result_df = result_df[result_df['suspicion_score'] >= self.MIN_SUSPICION_SCORE]
         
+        # Apply ML clustering if we have enough data
+        if not result_df.empty and HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+            result_df = self._apply_ml_clustering(result_df)
+        else:
+            # Add placeholder ML columns
+            result_df['ml_cluster'] = 'N/A'
+            result_df['ml_cluster_risk'] = 'N/A'
+            result_df['ml_explanation'] = 'Rule-based detection only - need 50+ suspicious strings for ML clustering'
+        
         # Sort by suspicion score (descending)
         result_df = result_df.sort_values('suspicion_score', ascending=False)
         
         # Remove duplicates (aggregate counts if present)
         result_df = result_df.drop_duplicates(subset=['target_string'], keep='first')
+        
+        return result_df
+    
+    def _apply_ml_clustering(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply KMeans clustering to group similar DGA/tunneling patterns.
+        
+        This helps analysts understand if multiple suspicious domains follow
+        the same generation pattern (likely same malware family) or if they're
+        isolated incidents.
+        
+        Args:
+            result_df: DataFrame with rule-based entropy analysis results
+        
+        Returns:
+            DataFrame with additional ML columns: ml_cluster, ml_cluster_risk, ml_explanation
+        """
+        # Feature engineering for clustering
+        ml_features = ['entropy_score', 'string_length']
+        X = result_df[ml_features].copy()
+        
+        # Scale features for clustering
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Determine optimal number of clusters (3-5 clusters typical for DGA patterns)
+        # Use elbow method implicitly: min(n_samples//10, 5)
+        n_clusters = min(max(len(result_df) // 10, 3), 5)
+        
+        # Train KMeans model
+        kmeans = KMeans(
+            n_clusters=n_clusters,
+            random_state=ML_RANDOM_STATE,
+            n_init=10
+        )
+        
+        # Fit and predict clusters
+        cluster_labels = kmeans.fit_predict(X_scaled)
+        result_df['ml_cluster'] = cluster_labels
+        
+        # Calculate cluster risk levels based on average suspicion scores
+        cluster_stats = result_df.groupby('ml_cluster').agg({
+            'suspicion_score': ['mean', 'count'],
+            'entropy_score': 'mean',
+            'string_length': 'mean'
+        }).round(2)
+        
+        # Assign risk levels to clusters
+        cluster_risk_map = {}
+        cluster_descriptions = {}
+        
+        for cluster_id in range(n_clusters):
+            if cluster_id not in cluster_stats.index:
+                continue
+                
+            avg_suspicion = cluster_stats.loc[cluster_id, ('suspicion_score', 'mean')]
+            cluster_size = cluster_stats.loc[cluster_id, ('suspicion_score', 'count')]
+            avg_entropy = cluster_stats.loc[cluster_id, ('entropy_score', 'mean')]
+            avg_length = cluster_stats.loc[cluster_id, ('string_length', 'mean')]
+            
+            # Determine risk level
+            if avg_suspicion >= 75:
+                risk_level = "🔴 CRITICAL"
+                risk_desc = f"High-risk DGA pattern cluster (avg score: {avg_suspicion:.1f})"
+            elif avg_suspicion >= 60:
+                risk_level = "🟠 HIGH"
+                risk_desc = f"Suspicious pattern cluster (avg score: {avg_suspicion:.1f})"
+            else:
+                risk_level = "🟡 MEDIUM"
+                risk_desc = f"Moderate pattern cluster (avg score: {avg_suspicion:.1f})"
+            
+            cluster_risk_map[cluster_id] = risk_level
+            
+            # Create detailed description
+            pattern_type = ""
+            if avg_entropy >= 4.5 and avg_length >= 40:
+                pattern_type = "Long, high-entropy strings (likely DNS tunneling or data exfil)"
+            elif avg_entropy >= 4.5:
+                pattern_type = "High randomness (DGA domains or encoded data)"
+            elif avg_length >= 40:
+                pattern_type = "Long subdomains (potential DNS tunneling)"
+            else:
+                pattern_type = "Moderate entropy and length"
+            
+            cluster_descriptions[cluster_id] = (
+                f"🤖 ML CLUSTER {cluster_id}: {risk_desc}. "
+                f"Contains {int(cluster_size)} similar strings. "
+                f"Pattern: {pattern_type}. "
+                f"Avg entropy: {avg_entropy:.2f}, avg length: {int(avg_length)} chars. "
+                f"This cluster likely represents {'the same malware family or attack' if cluster_size > 5 else 'similar suspicious activity'}."
+            )
+        
+        # Map risk levels and explanations to results
+        result_df['ml_cluster_risk'] = result_df['ml_cluster'].map(cluster_risk_map)
+        result_df['ml_explanation'] = result_df['ml_cluster'].map(cluster_descriptions)
         
         return result_df
     
@@ -616,7 +918,10 @@ class EntropyStrategy(HuntStrategy):
             'target_string': 'The string value being analyzed (e.g., domain name, DNS query)',
             'string_length': 'Number of characters in the string. Very long strings (50+ characters) may indicate data exfiltration through DNS tunneling',
             'entropy_score': 'Shannon entropy measuring randomness (0-8 bits). Higher values indicate more random/encoded data. Normal domains typically have entropy 3-4, while tunneled/DGA domains often exceed 4.5 bits',
-            'suspicion_score': 'Overall suspiciousness score (0-100) combining entropy and length. Higher scores suggest DNS tunneling, Domain Generation Algorithms (DGA), or encoded data. Scores ≥50 warrant investigation'
+            'suspicion_score': 'Overall suspiciousness score (0-100) combining entropy and length. Higher scores suggest DNS tunneling, Domain Generation Algorithms (DGA), or encoded data. Scores ≥50 warrant investigation',
+            'ml_cluster': '🤖 MACHINE LEARNING: Which pattern group this string belongs to (0-4). ML groups similar suspicious strings together to identify malware families or attack campaigns. Requires 50+ suspicious strings for clustering',
+            'ml_cluster_risk': '🤖 ML CLUSTER RISK: Risk level of this pattern cluster (CRITICAL/HIGH/MEDIUM). Shows if your cluster contains highly suspicious or moderately suspicious strings on average',
+            'ml_explanation': '🤖 ML CLUSTERING: Plain English explanation of this cluster including size, risk level, and pattern type (DGA domains, DNS tunneling, etc.). Helps identify if multiple strings are from the same attack'
         }
 
 
@@ -647,6 +952,10 @@ class ExfilStrategy(HuntStrategy):
         """
         Calculate upload/download ratio for each source IP.
         
+        Uses a hybrid approach:
+        1. Rule-based scoring (ratio thresholds, percentiles)
+        2. ML-based outlier detection (Local Outlier Factor) for unusual traffic patterns
+        
         Args:
             df: DataFrame with connection logs
             col_map: Mapping of {'source_ip': actual_col, 'bytes_out': actual_col,
@@ -654,6 +963,7 @@ class ExfilStrategy(HuntStrategy):
         
         Returns:
             DataFrame with source_ip, total_bytes_out, total_bytes_in, exfil_ratio
+            Plus ML columns: ml_outlier_score, ml_confidence, ml_explanation
         """
         # Map columns
         src_col = col_map['source_ip']
@@ -717,11 +1027,118 @@ class ExfilStrategy(HuntStrategy):
         result_df.loc[result_df['total_bytes'] >= 10_000_000, 'exfil_score'] += 20  # 10MB+
         result_df.loc[(result_df['total_bytes'] >= 1_000_000) & (result_df['total_bytes'] < 10_000_000), 'exfil_score'] += 10  # 1MB+
         
+        # Apply ML outlier detection if we have enough data
+        if not result_df.empty and HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+            result_df = self._apply_ml_outlier_detection(result_df)
+        else:
+            result_df['ml_outlier_score'] = 0.0
+            result_df['ml_confidence'] = 'N/A (insufficient data or sklearn not available)'
+            result_df['ml_explanation'] = 'Rule-based detection only - need 50+ hosts for ML outlier analysis'
+        
         # Filter to high-confidence exfiltration
         result_df = result_df[result_df['exfil_score'] >= self.MIN_EXFIL_SCORE]
         
         # Sort by exfil_score (descending)
         result_df = result_df.sort_values('exfil_score', ascending=False)
+        
+        return result_df
+    
+    def _apply_ml_outlier_detection(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply Local Outlier Factor (LOF) to detect unusual traffic patterns.
+        
+        LOF is a density-based algorithm that identifies hosts whose traffic
+        behavior significantly differs from their neighbors, indicating
+        potential data exfiltration.
+        
+        Args:
+            result_df: DataFrame with rule-based exfiltration analysis results
+        
+        Returns:
+            DataFrame with additional ML columns: ml_outlier_score, ml_confidence, ml_explanation
+        """
+        # Feature engineering for outlier detection
+        # Use log scale for bytes to handle wide range of values
+        ml_features = ['total_bytes_out', 'total_bytes_in', 'exfil_ratio', 'total_bytes']
+        X = result_df[ml_features].copy()
+        
+        # Cap extreme ratios for better ML performance
+        X['exfil_ratio'] = X['exfil_ratio'].clip(upper=100)
+        
+        # Apply log transformation to byte counts (add 1 to avoid log(0))
+        X['total_bytes_out'] = np.log1p(X['total_bytes_out'])
+        X['total_bytes_in'] = np.log1p(X['total_bytes_in'])
+        X['total_bytes'] = np.log1p(X['total_bytes'])
+        
+        # Scale features
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Train Local Outlier Factor model
+        # n_neighbors=20 works well for most datasets
+        # contamination='auto' lets LOF determine outlier threshold
+        lof = LocalOutlierFactor(
+            n_neighbors=min(20, len(result_df) - 1),
+            contamination='auto',
+            novelty=False  # We're detecting outliers in training set
+        )
+        
+        # Fit and predict (-1 = outlier, 1 = inlier)
+        outlier_predictions = lof.fit_predict(X_scaled)
+        
+        # Get negative outlier factor scores (more negative = more outlier-like)
+        # Note: negative_outlier_factor_ is only available after fit_predict
+        outlier_scores_raw = lof.negative_outlier_factor_
+        
+        # Convert to 0-100 scale where higher = more outlier-like
+        # LOF scores are negative, closer to -1 is inlier, more negative is outlier
+        # We'll normalize using percentile ranking
+        from scipy.stats import rankdata
+        # Invert so more negative scores get higher ranks
+        ml_outlier_score = (rankdata(-outlier_scores_raw) / len(outlier_scores_raw)) * 100
+        
+        result_df['ml_outlier_score'] = ml_outlier_score
+        result_df['ml_is_outlier'] = (outlier_predictions == -1)
+        
+        # Generate explanations
+        ml_confidence_list = []
+        ml_explanation_list = []
+        
+        for idx, row in result_df.iterrows():
+            score = row['ml_outlier_score']
+            is_outlier = row['ml_is_outlier']
+            
+            if is_outlier and score >= 75:
+                confidence = "HIGH"
+                explanation = "🔴 ML HIGH CONFIDENCE: This host's traffic pattern is extremely unusual compared to others. Upload/download ratio and volume are outliers."
+            elif is_outlier and score >= 50:
+                confidence = "MEDIUM"
+                explanation = "🟡 ML MEDIUM CONFIDENCE: Moderate outlier detected. Traffic behavior differs from typical patterns."
+            elif is_outlier:
+                confidence = "LOW"
+                explanation = "🟢 ML LOW CONFIDENCE: Slight outlier but not dramatically different from other hosts."
+            else:
+                confidence = "NORMAL"
+                explanation = f"ℹ️ ML considers this traffic pattern normal (score: {score:.1f}/100). Rule-based logic flagged it based on ratio thresholds."
+            
+            # Feature contribution
+            feature_vals = {
+                'upload_ratio': min(row['exfil_ratio'] / 10.0, 1.0),  # Normalize
+                'upload_volume': row['upload_percentile'] / 100.0,
+                'total_traffic': min(row['total_bytes'] / 10_000_000.0, 1.0)
+            }
+            
+            feature_explanation = get_feature_importance_explanation(feature_vals)
+            explanation += f" {feature_explanation}"
+            
+            ml_confidence_list.append(confidence)
+            ml_explanation_list.append(explanation)
+        
+        result_df['ml_confidence'] = ml_confidence_list
+        result_df['ml_explanation'] = ml_explanation_list
+        
+        # Drop internal column
+        result_df = result_df.drop(columns=['ml_is_outlier'])
         
         return result_df
     
@@ -921,7 +1338,10 @@ class ExfilStrategy(HuntStrategy):
             'exfil_ratio': 'Upload-to-download ratio. Normal users typically download more than upload (ratio < 1). Ratios ≥2 indicate the host is uploading significantly more data than receiving, which may suggest data exfiltration',
             'total_bytes': 'Sum of uploaded and downloaded bytes, showing total network activity volume',
             'upload_percentile': "Percentile rank (0-100) of this source's upload volume compared to all sources. Values ≥90 indicate this source is in the top 10% of uploaders",
-            'exfil_score': 'Overall exfiltration suspiciousness score (0-100) based on ratio, upload volume, and total traffic. Higher scores indicate stronger evidence of data exfiltration. Scores ≥50 suggest potential data theft worth investigating'
+            'exfil_score': 'Overall exfiltration suspiciousness score (0-100) based on ratio, upload volume, and total traffic. Higher scores indicate stronger evidence of data exfiltration. Scores ≥50 suggest potential data theft worth investigating',
+            'ml_outlier_score': '🤖 MACHINE LEARNING: How unusual this traffic pattern is compared to all other hosts (0-100). Higher scores mean ML identified dramatically different upload/download behavior. Requires 50+ hosts for ML analysis',
+            'ml_confidence': '🤖 ML CONFIDENCE LEVEL: How confident the machine learning model is that this is an outlier (HIGH/MEDIUM/LOW/NORMAL). Shows whether ML agrees with rule-based exfiltration detection',
+            'ml_explanation': '🤖 ML REASONING: Plain English explanation using Local Outlier Factor (density-based outlier detection). Describes why this host traffic pattern differs from neighbors, including which features (upload ratio, volume, total traffic) are unusual'
         }
 
 
