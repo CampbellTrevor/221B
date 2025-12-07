@@ -506,22 +506,36 @@ class TestMLFeatures(unittest.TestCase):
         
         strategy = TunnelingStrategy()
         
-        # Create 60 connections with varying traffic patterns
+        # Create 60 connections with suspicious tunneling patterns
+        # Note: Scoring thresholds are defined in TunnelingStrategy class:
+        # MIN_TUNNEL_SCORE, non-standard port bonus, volume thresholds, connection count thresholds
+        # Test data designed to trigger detection by combining multiple suspicious factors
         data = []
         
         for conn_id in range(60):
             src_ip = f'192.168.1.{conn_id}'
             dst_ip = f'10.0.0.{conn_id % 10}'
-            # Mix of standard and non-standard ports with various byte volumes
-            port = np.random.choice([22, 80, 443, 8080, 1234, 5555, 9999])
-            bytes_total = np.random.choice([50000, 500000, 5000000, 50000000])
             
-            for conn in range(np.random.randint(5, 30)):
+            # Mix patterns to trigger detection:
+            # 1. Non-standard ports with high volume (30+40=70 points)
+            # 2. Non-standard ports with many connections (30+20=50+ points)
+            if conn_id % 2 == 0:
+                # Pattern 1: Non-standard port + high volume
+                port = np.random.choice([1234, 5555, 9999, 31337, 4444])  # Non-standard
+                bytes_per_conn = np.random.randint(2000000, 5000000)  # 2-5MB per connection
+                num_conns = np.random.randint(25, 60)  # Many connections for high total
+            else:
+                # Pattern 2: Non-standard port + many consistent connections
+                port = np.random.choice([8888, 7777, 3128, 1080, 6666])  # Non-standard
+                bytes_per_conn = np.random.randint(50000, 200000)  # 50-200KB per connection
+                num_conns = np.random.randint(50, 100)  # Lots of connections
+            
+            for conn in range(num_conns):
                 data.append({
                     'source_ip': src_ip,
                     'dest_ip': dst_ip,
                     'dest_port': port,
-                    'bytes_total': bytes_total + np.random.randint(-10000, 10000)
+                    'bytes_total': bytes_per_conn + np.random.randint(-5000, 5000)
                 })
         
         df = pd.DataFrame(data)
@@ -552,20 +566,44 @@ class TestMLFeatures(unittest.TestCase):
         
         strategy = APIAbuseStrategy()
         
-        # Create 60 sources with varying API usage patterns
+        # Create 60 sources with suspicious API abuse patterns
+        # Note: Scoring thresholds are defined in APIAbuseStrategy class:
+        # MIN_ABUSE_SCORE, volume thresholds, rate limit thresholds, diversity thresholds
+        # Test data designed to trigger detection by combining multiple abuse indicators
         data = []
         
         for source_id in range(60):
             src_ip = f'203.0.113.{source_id}'
-            # Mix of normal and abusive patterns
-            num_requests = np.random.choice([50, 200, 500, 1000])
-            endpoints = [f'/api/v1/endpoint{i}' for i in range(np.random.randint(1, 20))]
+            
+            # Create patterns that will trigger detection (50+ score)
+            # Pattern 1: High volume + rate limits (30+40=70 points)
+            # Pattern 2: High volume + low diversity + auth failures (30+15+20=65 points)
+            if source_id % 2 == 0:
+                # Pattern 1: High volume scraper hitting rate limits
+                num_requests = np.random.randint(1000, 1500)  # 30 points
+                num_rate_limits = np.random.randint(15, 30)   # 40 points
+                endpoints = [f'/api/v1/endpoint{i}' for i in range(5)]  # Few endpoints
+            else:
+                # Pattern 2: Credential stuffing with failures
+                num_requests = np.random.randint(600, 1000)   # 20 points
+                num_rate_limits = 0
+                endpoints = ['/api/v1/auth', '/api/v1/login']  # Very low diversity
+            
+            num_auth_failures = int(num_requests * 0.4) if source_id % 2 == 1 else 0  # 20 points
             
             for req_id in range(num_requests):
+                # Determine status code based on pattern
+                if req_id < num_rate_limits:
+                    status = '429'  # Rate limit
+                elif req_id < num_rate_limits + num_auth_failures:
+                    status = np.random.choice(['401', '403'])  # Auth failure
+                else:
+                    status = '200'  # Success
+                
                 data.append({
                     'source_ip': src_ip,
                     'url_path': np.random.choice(endpoints),
-                    'status_code': np.random.choice(['200', '401', '429', '500'], p=[0.7, 0.1, 0.15, 0.05])
+                    'status_code': status
                 })
         
         df = pd.DataFrame(data)
