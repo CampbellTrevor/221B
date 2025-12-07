@@ -1422,6 +1422,10 @@ class PortScanStrategy(HuntStrategy):
         """
         Analyze connection patterns to detect port scanning.
         
+        Uses a hybrid approach:
+        1. Rule-based scoring (traditional port scan detection)
+        2. ML-based anomaly detection (Isolation Forest) when sufficient data
+        
         Args:
             df: DataFrame with connection logs
             col_map: Mapping of {'source_ip': actual_col, 'dest_ip': actual_col,
@@ -1429,6 +1433,7 @@ class PortScanStrategy(HuntStrategy):
         
         Returns:
             DataFrame with source_ip, unique_ports, unique_targets, scan_score
+            Plus ML columns: ml_anomaly_score, ml_confidence, ml_explanation
         """
         src_col = col_map['source_ip']
         dst_col = col_map['dest_ip']
@@ -1493,8 +1498,101 @@ class PortScanStrategy(HuntStrategy):
                 })
         
         result_df = pd.DataFrame(results)
+        
+        # Apply ML-based anomaly detection if we have enough data and sklearn is available
+        if not result_df.empty and HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+            result_df = self._apply_ml_anomaly_detection(result_df)
+        else:
+            # Add placeholder ML columns when ML is not applied
+            result_df['ml_anomaly_score'] = 0.0
+            result_df['ml_confidence'] = 'N/A (insufficient data or sklearn not available)'
+            result_df['ml_explanation'] = 'Rule-based detection only - need 50+ scanning sources for ML analysis'
+        
         if not result_df.empty:
             result_df = result_df.sort_values('scan_score', ascending=False)
+        
+        return result_df
+    
+    def _apply_ml_anomaly_detection(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply Isolation Forest to detect unusual port scanning patterns.
+        
+        This identifies scans that are anomalous even among suspicious activity,
+        helping distinguish aggressive malicious scans from legitimate security tools.
+        
+        Args:
+            result_df: DataFrame with rule-based scan analysis results
+        
+        Returns:
+            DataFrame with additional ML columns: ml_anomaly_score, ml_confidence, ml_explanation
+        """
+        # Feature engineering for ML
+        ml_features = ['unique_ports', 'unique_targets', 'port_diversity', 'total_connections']
+        X = result_df[ml_features].copy()
+        
+        # Handle any NaN values
+        X = X.fillna(X.median())
+        
+        # Scale features for better anomaly detection
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Train Isolation Forest
+        iso_forest = IsolationForest(
+            contamination=ML_CONTAMINATION,
+            random_state=ML_RANDOM_STATE,
+            n_estimators=100,
+            n_jobs=-1
+        )
+        
+        # Fit and predict (-1 for anomalies, 1 for normal)
+        predictions = iso_forest.fit_predict(X_scaled)
+        
+        # Get anomaly scores (more negative = more anomalous)
+        anomaly_scores_raw = iso_forest.decision_function(X_scaled)
+        
+        # Normalize scores to 0-100 scale (higher = more anomalous)
+        # Use rank-based normalization for better interpretability
+        ml_anomaly_score = (rankdata(anomaly_scores_raw) / len(anomaly_scores_raw)) * 100
+        
+        # Add ML scores to results
+        result_df['ml_anomaly_score'] = ml_anomaly_score
+        
+        # Generate confidence levels and explanations
+        ml_confidence_list = []
+        ml_explanation_list = []
+        
+        for idx, row in result_df.iterrows():
+            score = row['ml_anomaly_score']
+            
+            # Determine confidence based on score
+            if score >= 75:
+                confidence = 'HIGH'
+                base_explanation = explain_ml_score(score, 'anomaly')
+            elif score >= 50:
+                confidence = 'MEDIUM'
+                base_explanation = explain_ml_score(score, 'anomaly')
+            else:
+                confidence = 'LOW'
+                base_explanation = explain_ml_score(score, 'anomaly')
+            
+            # Add feature importance explanation
+            # Normalize features to show relative contribution
+            features_normalized = {
+                'port_count': (row['unique_ports'] - result_df['unique_ports'].min()) / (result_df['unique_ports'].max() - result_df['unique_ports'].min() + 1e-9),
+                'target_count': (row['unique_targets'] - result_df['unique_targets'].min()) / (result_df['unique_targets'].max() - result_df['unique_targets'].min() + 1e-9),
+                'port_diversity': (row['port_diversity'] - result_df['port_diversity'].min()) / (result_df['port_diversity'].max() - result_df['port_diversity'].min() + 1e-9),
+                'connection_volume': (row['total_connections'] - result_df['total_connections'].min()) / (result_df['total_connections'].max() - result_df['total_connections'].min() + 1e-9)
+            }
+            
+            feature_explanation = get_feature_importance_explanation(features_normalized)
+            full_explanation = f"{base_explanation}. {feature_explanation}"
+            
+            ml_confidence_list.append(confidence)
+            ml_explanation_list.append(full_explanation)
+        
+        result_df['ml_confidence'] = ml_confidence_list
+        result_df['ml_explanation'] = ml_explanation_list
         
         return result_df
     
@@ -1539,7 +1637,10 @@ class PortScanStrategy(HuntStrategy):
             'unique_targets': 'Number of distinct target IP addresses scanned. Multiple targets indicate network-wide reconnaissance',
             'total_connections': 'Total number of connection attempts made by this source',
             'port_diversity': 'Average ports scanned per target. Values ≥5 indicate aggressive scanning across the port range',
-            'scan_score': 'Overall port scanning suspiciousness score (0-100). Higher scores indicate reconnaissance activity. Scores ≥50 suggest active port scanning that should be investigated for potential attack preparation'
+            'scan_score': 'Overall port scanning suspiciousness score (0-100). Higher scores indicate reconnaissance activity. Scores ≥50 suggest active port scanning that should be investigated for potential attack preparation',
+            'ml_anomaly_score': '🤖 MACHINE LEARNING: How unusual this scanning pattern is compared to all other scans (0-100). Higher scores mean ML identified this as more anomalous, potentially indicating aggressive malicious scanning vs legitimate security tools. Requires 50+ scanning sources for ML analysis',
+            'ml_confidence': '🤖 ML CONFIDENCE LEVEL: How confident the machine learning model is about this detection (HIGH/MEDIUM/LOW/NORMAL). Shows whether ML agrees this scan is unusual among all scanning activity',
+            'ml_explanation': '🤖 ML REASONING: Plain English explanation of why ML flagged this scan, including which features (port count, target count, diversity, volume) contributed most to the anomaly detection'
         }
 
 
@@ -1564,6 +1665,10 @@ class BruteForceStrategy(HuntStrategy):
         """
         Analyze authentication patterns to detect brute force attacks.
         
+        Uses a hybrid approach:
+        1. Rule-based scoring (traditional brute force detection)
+        2. ML-based anomaly detection (Isolation Forest) when sufficient data
+        
         Args:
             df: DataFrame with authentication logs
             col_map: Mapping of {'source_ip': actual_col, 'dest_ip': actual_col,
@@ -1572,6 +1677,7 @@ class BruteForceStrategy(HuntStrategy):
         Returns:
             DataFrame with source_ip, dest_ip, total_attempts, failed_attempts, 
                      failure_rate, brute_force_score
+            Plus ML columns: ml_anomaly_score, ml_confidence, ml_explanation
         """
         src_col = col_map['source_ip']
         dst_col = col_map['dest_ip']
@@ -1640,8 +1746,101 @@ class BruteForceStrategy(HuntStrategy):
                 })
         
         result_df = pd.DataFrame(results)
+        
+        # Apply ML-based anomaly detection if we have enough data and sklearn is available
+        if not result_df.empty and HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+            result_df = self._apply_ml_anomaly_detection(result_df)
+        else:
+            # Add placeholder ML columns when ML is not applied
+            result_df['ml_anomaly_score'] = 0.0
+            result_df['ml_confidence'] = 'N/A (insufficient data or sklearn not available)'
+            result_df['ml_explanation'] = 'Rule-based detection only - need 50+ authentication attack sources for ML analysis'
+        
         if not result_df.empty:
             result_df = result_df.sort_values('brute_force_score', ascending=False)
+        
+        return result_df
+    
+    def _apply_ml_anomaly_detection(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply Isolation Forest to detect unusual brute force attack patterns.
+        
+        This identifies attacks that are anomalous even among suspicious activity,
+        helping distinguish automated attack tools from manual attempts.
+        
+        Args:
+            result_df: DataFrame with rule-based brute force analysis results
+        
+        Returns:
+            DataFrame with additional ML columns: ml_anomaly_score, ml_confidence, ml_explanation
+        """
+        # Feature engineering for ML
+        ml_features = ['total_attempts', 'failed_attempts', 'successful_attempts', 'failure_rate']
+        X = result_df[ml_features].copy()
+        
+        # Handle any NaN values
+        X = X.fillna(X.median())
+        
+        # Scale features for better anomaly detection
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Train Isolation Forest
+        iso_forest = IsolationForest(
+            contamination=ML_CONTAMINATION,
+            random_state=ML_RANDOM_STATE,
+            n_estimators=100,
+            n_jobs=-1
+        )
+        
+        # Fit and predict (-1 for anomalies, 1 for normal)
+        predictions = iso_forest.fit_predict(X_scaled)
+        
+        # Get anomaly scores (more negative = more anomalous)
+        anomaly_scores_raw = iso_forest.decision_function(X_scaled)
+        
+        # Normalize scores to 0-100 scale (higher = more anomalous)
+        # Use rank-based normalization for better interpretability
+        ml_anomaly_score = (rankdata(anomaly_scores_raw) / len(anomaly_scores_raw)) * 100
+        
+        # Add ML scores to results
+        result_df['ml_anomaly_score'] = ml_anomaly_score
+        
+        # Generate confidence levels and explanations
+        ml_confidence_list = []
+        ml_explanation_list = []
+        
+        for idx, row in result_df.iterrows():
+            score = row['ml_anomaly_score']
+            
+            # Determine confidence based on score
+            if score >= 75:
+                confidence = 'HIGH'
+                base_explanation = explain_ml_score(score, 'anomaly')
+            elif score >= 50:
+                confidence = 'MEDIUM'
+                base_explanation = explain_ml_score(score, 'anomaly')
+            else:
+                confidence = 'LOW'
+                base_explanation = explain_ml_score(score, 'anomaly')
+            
+            # Add feature importance explanation
+            # Normalize features to show relative contribution
+            features_normalized = {
+                'attempt_volume': (row['total_attempts'] - result_df['total_attempts'].min()) / (result_df['total_attempts'].max() - result_df['total_attempts'].min() + 1e-9),
+                'failure_count': (row['failed_attempts'] - result_df['failed_attempts'].min()) / (result_df['failed_attempts'].max() - result_df['failed_attempts'].min() + 1e-9),
+                'failure_rate': (row['failure_rate'] - result_df['failure_rate'].min()) / (result_df['failure_rate'].max() - result_df['failure_rate'].min() + 1e-9),
+                'success_count': (row['successful_attempts'] - result_df['successful_attempts'].min()) / (result_df['successful_attempts'].max() - result_df['successful_attempts'].min() + 1e-9)
+            }
+            
+            feature_explanation = get_feature_importance_explanation(features_normalized)
+            full_explanation = f"{base_explanation}. {feature_explanation}"
+            
+            ml_confidence_list.append(confidence)
+            ml_explanation_list.append(full_explanation)
+        
+        result_df['ml_confidence'] = ml_confidence_list
+        result_df['ml_explanation'] = ml_explanation_list
         
         return result_df
     
@@ -1687,7 +1886,10 @@ class BruteForceStrategy(HuntStrategy):
             'failed_attempts': 'Number of authentication attempts that failed',
             'successful_attempts': 'Number of authentication attempts that succeeded',
             'failure_rate': 'Percentage of failed attempts (0-1). Values ≥0.7 indicate likely brute force attempts where attacker is guessing credentials',
-            'brute_force_score': 'Overall brute force attack suspiciousness score (0-100). Higher scores indicate credential stuffing or password spraying attacks. Scores ≥50 suggest active authentication attacks requiring immediate investigation'
+            'brute_force_score': 'Overall brute force attack suspiciousness score (0-100). Higher scores indicate credential stuffing or password spraying attacks. Scores ≥50 suggest active authentication attacks requiring immediate investigation',
+            'ml_anomaly_score': '🤖 MACHINE LEARNING: How unusual this attack pattern is compared to all other brute force attempts (0-100). Higher scores mean ML identified this as more anomalous, potentially indicating automated attack tools vs manual attempts. Requires 50+ attack sources for ML analysis',
+            'ml_confidence': '🤖 ML CONFIDENCE LEVEL: How confident the machine learning model is about this detection (HIGH/MEDIUM/LOW/NORMAL). Shows whether ML agrees this attack pattern is unusual',
+            'ml_explanation': '🤖 ML REASONING: Plain English explanation of why ML flagged this attack, including which features (attempt volume, failure rate, success count) contributed most to the anomaly detection'
         }
 
 
@@ -1885,12 +2087,17 @@ class LateralMovementStrategy(HuntStrategy):
         """
         Analyze connection patterns to detect lateral movement.
         
+        Uses a hybrid approach:
+        1. Rule-based scoring (traditional lateral movement detection)
+        2. ML-based anomaly detection (Isolation Forest) when sufficient data
+        
         Args:
             df: DataFrame with connection/authentication logs
             col_map: Mapping of column names
         
         Returns:
             DataFrame with suspicious lateral movement activity
+            Plus ML columns: ml_anomaly_score, ml_confidence, ml_explanation
         """
         ts_col = col_map['timestamp']
         src_col = col_map['source_ip']
@@ -1962,8 +2169,102 @@ class LateralMovementStrategy(HuntStrategy):
                 })
         
         result_df = pd.DataFrame(results)
+        
+        # Apply ML-based anomaly detection if we have enough data and sklearn is available
+        if not result_df.empty and HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
+            result_df = self._apply_ml_anomaly_detection(result_df)
+        else:
+            # Add placeholder ML columns when ML is not applied
+            result_df['ml_anomaly_score'] = 0.0
+            result_df['ml_confidence'] = 'N/A (insufficient data or sklearn not available)'
+            result_df['ml_explanation'] = 'Rule-based detection only - need 50+ lateral movement sources for ML analysis'
+        
         if not result_df.empty:
             result_df = result_df.sort_values('lateral_score', ascending=False)
+        
+        return result_df
+    
+    def _apply_ml_anomaly_detection(self, result_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply Isolation Forest to detect unusual lateral movement patterns.
+        
+        This identifies movement that is anomalous even among suspicious activity,
+        helping distinguish aggressive APT activity from normal admin behavior.
+        
+        Args:
+            result_df: DataFrame with rule-based lateral movement analysis results
+        
+        Returns:
+            DataFrame with additional ML columns: ml_anomaly_score, ml_confidence, ml_explanation
+        """
+        # Feature engineering for ML
+        # Use log scaling for time_span_hours and targets_per_hour to handle wide ranges
+        ml_features = ['unique_targets', 'total_connections', 'targets_per_hour']
+        X = result_df[ml_features].copy()
+        
+        # Handle any NaN or inf values
+        X = X.replace([np.inf, -np.inf], np.nan)
+        X = X.fillna(X.median())
+        
+        # Scale features for better anomaly detection
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Train Isolation Forest
+        iso_forest = IsolationForest(
+            contamination=ML_CONTAMINATION,
+            random_state=ML_RANDOM_STATE,
+            n_estimators=100,
+            n_jobs=-1
+        )
+        
+        # Fit and predict (-1 for anomalies, 1 for normal)
+        predictions = iso_forest.fit_predict(X_scaled)
+        
+        # Get anomaly scores (more negative = more anomalous)
+        anomaly_scores_raw = iso_forest.decision_function(X_scaled)
+        
+        # Normalize scores to 0-100 scale (higher = more anomalous)
+        # Use rank-based normalization for better interpretability
+        ml_anomaly_score = (rankdata(anomaly_scores_raw) / len(anomaly_scores_raw)) * 100
+        
+        # Add ML scores to results
+        result_df['ml_anomaly_score'] = ml_anomaly_score
+        
+        # Generate confidence levels and explanations
+        ml_confidence_list = []
+        ml_explanation_list = []
+        
+        for idx, row in result_df.iterrows():
+            score = row['ml_anomaly_score']
+            
+            # Determine confidence based on score
+            if score >= 75:
+                confidence = 'HIGH'
+                base_explanation = explain_ml_score(score, 'anomaly')
+            elif score >= 50:
+                confidence = 'MEDIUM'
+                base_explanation = explain_ml_score(score, 'anomaly')
+            else:
+                confidence = 'LOW'
+                base_explanation = explain_ml_score(score, 'anomaly')
+            
+            # Add feature importance explanation
+            # Normalize features to show relative contribution
+            features_normalized = {
+                'target_breadth': (row['unique_targets'] - result_df['unique_targets'].min()) / (result_df['unique_targets'].max() - result_df['unique_targets'].min() + 1e-9),
+                'connection_volume': (row['total_connections'] - result_df['total_connections'].min()) / (result_df['total_connections'].max() - result_df['total_connections'].min() + 1e-9),
+                'movement_speed': (row['targets_per_hour'] - result_df['targets_per_hour'].min()) / (result_df['targets_per_hour'].max() - result_df['targets_per_hour'].min() + 1e-9)
+            }
+            
+            feature_explanation = get_feature_importance_explanation(features_normalized)
+            full_explanation = f"{base_explanation}. {feature_explanation}"
+            
+            ml_confidence_list.append(confidence)
+            ml_explanation_list.append(full_explanation)
+        
+        result_df['ml_confidence'] = ml_confidence_list
+        result_df['ml_explanation'] = ml_explanation_list
         
         return result_df
     
@@ -2010,7 +2311,10 @@ class LateralMovementStrategy(HuntStrategy):
             'targets_per_hour': 'Speed of lateral movement. Values ≥5 indicate rapid reconnaissance or automated spreading',
             'first_seen': 'Timestamp of first observed connection',
             'last_seen': 'Timestamp of last observed connection',
-            'lateral_score': 'Overall lateral movement suspiciousness score (0-100). Higher scores indicate potential privilege escalation, network reconnaissance, or malware spreading. Scores ≥50 suggest an attacker moving through the network'
+            'lateral_score': 'Overall lateral movement suspiciousness score (0-100). Higher scores indicate potential privilege escalation, network reconnaissance, or malware spreading. Scores ≥50 suggest an attacker moving through the network',
+            'ml_anomaly_score': '🤖 MACHINE LEARNING: How unusual this lateral movement pattern is compared to all others (0-100). Higher scores mean ML identified this as more anomalous, potentially indicating APT activity vs normal admin behavior. Requires 50+ lateral movement sources for ML analysis',
+            'ml_confidence': '🤖 ML CONFIDENCE LEVEL: How confident the machine learning model is about this detection (HIGH/MEDIUM/LOW/NORMAL). Shows whether ML agrees this movement pattern is unusual',
+            'ml_explanation': '🤖 ML REASONING: Plain English explanation of why ML flagged this movement, including which features (target breadth, connection volume, movement speed) contributed most to the anomaly detection'
         }
 
 
