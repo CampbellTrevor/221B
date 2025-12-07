@@ -507,10 +507,9 @@ class TestMLFeatures(unittest.TestCase):
         strategy = TunnelingStrategy()
         
         # Create 60 connections with suspicious tunneling patterns
-        # To trigger detection, need MIN_TUNNEL_SCORE >= 50:
-        # - Non-standard port: 30 points
-        # - High volume (>10MB): 20-40 points  
-        # - Many connections (>20): 10-20 points
+        # Note: Scoring thresholds are defined in TunnelingStrategy class:
+        # MIN_TUNNEL_SCORE, non-standard port bonus, volume thresholds, connection count thresholds
+        # Test data designed to trigger detection by combining multiple suspicious factors
         data = []
         
         for conn_id in range(60):
@@ -568,11 +567,9 @@ class TestMLFeatures(unittest.TestCase):
         strategy = APIAbuseStrategy()
         
         # Create 60 sources with suspicious API abuse patterns
-        # To trigger detection, need MIN_ABUSE_SCORE >= 50:
-        # - High volume (>=1000): 30 points
-        # - Rate limit errors (>10): 40 points
-        # - Low diversity + volume: 15 points
-        # - Auth failures (>30%): 20 points
+        # Note: Scoring thresholds are defined in APIAbuseStrategy class:
+        # MIN_ABUSE_SCORE, volume thresholds, rate limit thresholds, diversity thresholds
+        # Test data designed to trigger detection by combining multiple abuse indicators
         data = []
         
         for source_id in range(60):

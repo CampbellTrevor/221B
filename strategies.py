@@ -5850,13 +5850,17 @@ class WebshellDetectionStrategy(HuntStrategy):
             webshell_score = min(webshell_score, 100)
             
             if webshell_score >= 50:
+                # Note: We store both count and list for suspicious_params because:
+                # 1. ML clustering requires numeric features (suspicious_params)
+                # 2. Analysts need to see actual parameter names for investigation (suspicious_params_list)
+                # Computing the list on-the-fly would require storing raw data, which is more complex
                 results.append({
                     'source_ip': src_ip,
                     'total_requests': len(group),
                     'suspicious_uris': ', '.join(sorted(suspicious_uris)[:5]) if suspicious_uris else 'N/A',
                     'post_to_scripts': post_to_scripts,
-                    'suspicious_params': len(suspicious_params_found),  # Store count for ML
-                    'suspicious_params_list': ', '.join(sorted(suspicious_params_found)[:5]),  # Store string for display
+                    'suspicious_params': len(suspicious_params_found),  # Numeric count for ML
+                    'suspicious_params_list': ', '.join(sorted(suspicious_params_found)[:5]),  # String list for display
                     'tool_agent_requests': tool_agents,
                     'flags': ', '.join(set(flags)),
                     'webshell_score': webshell_score
@@ -6010,8 +6014,8 @@ class WebshellDetectionStrategy(HuntStrategy):
             'total_requests': 'Total number of web requests from this IP',
             'suspicious_uris': 'Known web shell file names detected in URIs (c99.php, r57.php, etc.)',
             'post_to_scripts': 'Count of POST requests to script files (.php, .asp, .jsp)',
-            'suspicious_params': 'Count of unique command execution parameters found (used for ML analysis)',
-            'suspicious_params_list': 'Command execution parameters found (cmd, exec, shell, eval, etc.)',
+            'suspicious_params': 'Count of unique command execution parameters found. This numeric value is used for ML clustering analysis to identify attack campaigns',
+            'suspicious_params_list': 'Human-readable list of command execution parameters detected (cmd, exec, shell, eval, etc.). This is the display version of suspicious_params count',
             'tool_agent_requests': 'Requests from attack tools or scanners',
             'flags': 'Specific web shell indicators (webshell_filename, encoded_command, etc.)',
             'webshell_score': 'Overall web shell risk score (0-100). Higher scores indicate probable web shell access or deployment. Scores ≥75 suggest active web shell usage. Scores ≥50 require immediate investigation',
