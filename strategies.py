@@ -43,12 +43,35 @@ def explain_ml_score(score: float, method: str = "anomaly") -> str:
     """
     Generate plain-English explanation of ML score for analysts.
     
+    Provides accessible explanations of machine learning scores to help analysts
+    understand and prioritize detections. Uses emoji indicators and confidence
+    levels (HIGH/MEDIUM/LOW) appropriate for the ML method used.
+    
     Args:
-        score: ML-generated score (typically 0-100 or -1 to 1)
-        method: Type of ML method ('anomaly', 'cluster', 'outlier')
+        score: ML-generated score, typically 0-100 (higher = more anomalous/suspicious)
+               or cluster ID for clustering methods
+        method: Type of ML method used:
+                - 'anomaly': Isolation Forest or similar anomaly detection
+                - 'cluster': KMeans or similar clustering
+                - 'outlier': Local Outlier Factor or density-based outlier detection
     
     Returns:
-        Human-readable explanation string
+        Human-readable explanation string with:
+        - Emoji indicator (🔴/🟡/🟢/ℹ️) for visual clarity
+        - Confidence level (HIGH/MEDIUM/LOW/NORMAL)
+        - Plain English description of what the score means
+        
+    Score Ranges and Meanings:
+        For anomaly/outlier methods:
+        - 75-100: HIGH CONFIDENCE - Highly unusual, prioritize investigation
+        - 50-74: MEDIUM CONFIDENCE - Moderate deviation, worth reviewing
+        - 0-49: LOW CONFIDENCE - Slight anomaly or rule-based only
+    
+    Examples:
+        >>> explain_ml_score(87.5, "anomaly")
+        "🔴 HIGH CONFIDENCE - Machine learning identified this as highly anomalous..."
+        >>> explain_ml_score(55.0, "outlier")
+        "🟡 MEDIUM CONFIDENCE - ML detected moderate deviation from typical behavior"
     """
     if method == "anomaly":
         if score >= 75:
@@ -73,11 +96,37 @@ def get_feature_importance_explanation(features: dict) -> str:
     """
     Explain which features contributed most to ML detection.
     
+    Generates human-readable explanations of feature contributions to help analysts
+    understand why a particular detection was flagged. Identifies the top 3 most
+    impactful features and describes their relative values.
+    
     Args:
-        features: Dictionary of feature names to normalized values
+        features: Dictionary mapping feature names to their normalized values (0-1 scale).
+                 Feature names should be descriptive (e.g., 'timing_consistency', 
+                 'upload_ratio', 'connection_frequency'). Values are normalized where:
+                 - 0.0 = minimum observed value
+                 - 1.0 = maximum observed value
+                 - Negative values = below baseline
     
     Returns:
-        Explanation of top contributing features
+        String explanation in format "Key factors: High feature1, Low feature2, Moderate feature3"
+        If no features provided, returns "No feature data available"
+        
+    Feature Value Interpretation:
+        - >0.5: "High" - Feature value is above average
+        - <-0.5: "Low" - Feature value is below average  
+        - -0.5 to 0.5: "Moderate" - Feature value is near average
+    
+    Example:
+        >>> features = {'timing_consistency': 0.95, 'upload_volume': 0.45, 'total_traffic': -0.2}
+        >>> get_feature_importance_explanation(features)
+        "Key factors: High timing_consistency, Moderate upload_volume, Low total_traffic"
+        
+    Usage:
+        This function is typically called after ML model predictions to provide
+        transparency about which data attributes most influenced the decision.
+        The explanation helps analysts validate whether the detection makes sense
+        given the context of their network environment.
     """
     if not features:
         return "No feature data available"
@@ -351,7 +400,12 @@ class BeaconStrategy(HuntStrategy):
         anomaly_scores_raw = iso_forest.decision_function(X_scaled)
         
         # Convert to 0-100 scale where higher = more anomalous
-        # Normalize using percentile ranking
+        # Use percentile ranking (rankdata) for several reasons:
+        # 1. More interpretable for analysts: "95th percentile" is clearer than raw -0.23 score
+        # 2. Consistent scale across different datasets (always 0-100)
+        # 3. Robust to outliers - extreme anomalies don't skew the scale
+        # 4. Preserves ranking which is what matters for prioritization
+        # Note: This sacrifices absolute magnitude but gains interpretability
         ml_anomaly_score = (rankdata(anomaly_scores_raw) / len(anomaly_scores_raw)) * 100
         
         # Add ML results to dataframe
@@ -1091,8 +1145,12 @@ class ExfilStrategy(HuntStrategy):
         
         # Convert to 0-100 scale where higher = more outlier-like
         # LOF scores are negative, closer to -1 is inlier, more negative is outlier
-        # We'll normalize using percentile ranking
-        # Invert so more negative scores get higher ranks
+        # Use percentile ranking (similar to Isolation Forest normalization):
+        # 1. Percentiles (0-100) are more analyst-friendly than raw LOF scores (-inf to -1)
+        # 2. Consistent interpretation across different datasets
+        # 3. Ranking is what matters for triage and prioritization
+        # 4. Preserves relative ordering while improving interpretability
+        # Invert scores so more negative (more outlier-like) gets higher rank
         ml_outlier_score = (rankdata(-outlier_scores_raw) / len(outlier_scores_raw)) * 100
         
         result_df['ml_outlier_score'] = ml_outlier_score
