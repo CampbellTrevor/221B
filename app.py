@@ -2221,7 +2221,7 @@ class WatsonDashboard:
             description='📥 CSV',
             button_style='success',
             icon='download',
-            tooltip='Export as CSV',
+            tooltip='Export as CSV for analysis',
             layout=widgets.Layout(width='95px')
         )
         
@@ -2229,7 +2229,7 @@ class WatsonDashboard:
             description='📦 JSON',
             button_style='info',
             icon='download',
-            tooltip='Export as JSON for SIEM integration',
+            tooltip='Export as JSON for SIEM',
             layout=widgets.Layout(width='95px')
         )
         
