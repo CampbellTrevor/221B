@@ -669,29 +669,67 @@ class WatsonDashboard:
                 """
             )
             
-            # Assemble tab content
-            tab_content = widgets.VBox([
-                description,
-                widgets.HTML("<hr>"),
-                widgets.HTML("<h4>Data Source</h4>"),
+            # Create collapsible strategy description using Accordion
+            strategy_accordion = widgets.Accordion(children=[description])
+            strategy_accordion.set_title(0, f"📋 About {strategy.name}")
+            strategy_accordion.selected_index = None  # Start collapsed to save space
+            
+            # Create collapsible configuration management using Accordion
+            config_section = widgets.VBox([
+                tab_data['config_name_input'],
+                widgets.HBox([
+                    tab_data['save_config_button'], 
+                    tab_data['load_config_button']
+                ], layout=widgets.Layout(margin='5px 0'))
+            ])
+            config_accordion = widgets.Accordion(children=[config_section])
+            config_accordion.set_title(0, "💾 Save/Load Configuration")
+            config_accordion.selected_index = None  # Start collapsed - used less frequently
+            
+            # Group data source controls compactly
+            data_source_section = widgets.VBox([
+                widgets.HTML("<h4 style='margin: 10px 0 5px 0;'>1️⃣ Select Data Source</h4>"),
                 tab_data['table_search'],
                 tab_data['table_dropdown'],
-                tab_data['load_table_button'],
-                widgets.HTML("<hr>"),
-                widgets.HTML("<h4>Column Mapping</h4>"),
-                tab_data['column_mapping_container'],
-                widgets.HTML("<hr>"),
-                widgets.HTML("<h4>Configuration Management</h4>"),
-                tab_data['config_name_input'],
-                widgets.HBox([tab_data['save_config_button'], tab_data['load_config_button']]),
-                widgets.HTML("<hr>"),
-                widgets.HTML("<h4>Query Options</h4>"),
-                tab_data['limit_input'],
-                tab_data['enable_date_filter'],
-                tab_data['start_date'],
-                tab_data['end_date'],
-                tab_data['run_button'],
-                widgets.HTML("<hr>"),
+                tab_data['load_table_button']
+            ], layout=widgets.Layout(margin='0 0 15px 0'))
+            
+            # Column mapping section
+            column_mapping_section = widgets.VBox([
+                widgets.HTML("<h4 style='margin: 10px 0 5px 0;'>2️⃣ Map Columns</h4>"),
+                tab_data['column_mapping_container']
+            ], layout=widgets.Layout(margin='0 0 15px 0'))
+            
+            # Query options section - grouped horizontally for compactness
+            query_options_section = widgets.VBox([
+                widgets.HTML("<h4 style='margin: 10px 0 5px 0;'>3️⃣ Configure Query</h4>"),
+                widgets.HBox([
+                    tab_data['limit_input'],
+                    tab_data['enable_date_filter']
+                ], layout=widgets.Layout(margin='5px 0')),
+                widgets.HBox([
+                    tab_data['start_date'],
+                    tab_data['end_date']
+                ], layout=widgets.Layout(margin='5px 0'))
+            ], layout=widgets.Layout(margin='0 0 15px 0'))
+            
+            # Run analysis section - prominent
+            run_section = widgets.VBox([
+                widgets.HTML("<h4 style='margin: 10px 0 5px 0;'>4️⃣ Run Analysis</h4>"),
+                tab_data['run_button']
+            ], layout=widgets.Layout(margin='0 0 15px 0'))
+            
+            # Assemble tab content with improved workflow organization
+            tab_content = widgets.VBox([
+                strategy_accordion,
+                widgets.HTML("<hr style='margin: 15px 0;'>"),
+                data_source_section,
+                column_mapping_section,
+                query_options_section,
+                run_section,
+                config_accordion,
+                widgets.HTML("<hr style='margin: 15px 0;'>"),
+                widgets.HTML("<h4 style='margin: 10px 0 5px 0;'>📊 Results</h4>"),
                 tab_data['output_widget']
             ])
             
@@ -3975,11 +4013,13 @@ class WatsonDashboard:
         
         Arranges all widgets in a vertical layout and displays them.
         """
-        # Create header
+        # Create header - more compact
         header = widgets.HTML(
             value="""
-            <h2>🔍 221B: The Analyst's Head-Up Display</h2>
-            <p>Select a hunt strategy tab below to begin your analysis.</p>
+            <div style="margin-bottom: 10px;">
+                <h2 style="margin-bottom: 5px;">🔍 221B: The Analyst's Head-Up Display</h2>
+                <p style="margin: 0; color: #666;">Quick Actions → Select Strategy Tab → Configure & Run Analysis</p>
+            </div>
             """
         )
         
@@ -4219,36 +4259,44 @@ class WatsonDashboard:
         insights_button.on_click(on_insights_click)
         overview_button.on_click(on_overview_click)
         
-        # Split buttons into three rows for better layout
-        action_row1 = widgets.HBox([
+        # Organize buttons by function with labels for clarity
+        # Critical Analysis Actions
+        critical_actions = widgets.HBox([
             triage_button,
             correlation_button,
-            report_button,
-            export_all_button,
-            metrics_button
-        ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))
+            overview_button
+        ], layout=widgets.Layout(justify_content='flex-start', margin='2px 0'))
         
-        action_row2 = widgets.HBox([
-            performance_button,
-            timeline_button,
+        # Analytics & Insights
+        analytics_actions = widgets.HBox([
+            metrics_button,
             heatmap_button,
             insights_button,
-            overview_button
-        ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))
+            timeline_button,
+            performance_button
+        ], layout=widgets.Layout(justify_content='flex-start', margin='2px 0'))
         
-        action_row3 = widgets.HBox([
+        # Workflow & Support
+        workflow_actions = widgets.HBox([
             recommend_button,
+            report_button,
+            export_all_button,
             help_button
-        ], layout=widgets.Layout(justify_content='flex-start', margin='5px 0'))
+        ], layout=widgets.Layout(justify_content='flex-start', margin='2px 0'))
         
-        action_buttons = widgets.VBox([action_row1, action_row2, action_row3])
+        # Compact action buttons with minimal spacing
+        action_buttons = widgets.VBox([
+            critical_actions,
+            analytics_actions, 
+            workflow_actions
+        ], layout=widgets.Layout(margin='5px 0 10px 0'))
         
-        # Arrange layout with tabs
+        # Arrange layout with tabs - compact and clean
         dashboard = widgets.VBox([
             header,
             action_buttons,
             action_output,
-            widgets.HTML("<hr>"),
+            widgets.HTML("<hr style='margin: 10px 0;'>"),
             self.tab_widget,
         ])
         
