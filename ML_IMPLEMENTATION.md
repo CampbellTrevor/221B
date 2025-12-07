@@ -136,6 +136,210 @@ Local Outlier Factor measures how isolated a data point is from its neighbors:
 
 ---
 
+### 4. Port Scan Detector (Reconnaissance)
+
+**ML Method**: Isolation Forest (Anomaly Detection)
+
+**What It Does**:
+- Analyzes port scanning patterns to detect unusual reconnaissance
+- Identifies aggressive malicious scans vs legitimate security tools
+- Distinguishes automated attack scanners from normal scanning activity
+
+**Features Used**:
+- `unique_ports`: Number of distinct ports scanned
+- `unique_targets`: Number of target IPs scanned
+- `port_diversity`: Ports scanned per target
+- `total_connections`: Volume of scan activity
+
+**When ML Activates**: 50+ sources performing port scans
+
+**New Columns**:
+- `ml_anomaly_score` (0-100): How unusual this scan pattern is
+- `ml_confidence`: HIGH/MEDIUM/LOW/NORMAL confidence level
+- `ml_explanation`: Plain English explanation with feature contributions
+
+**Interpretation for Analysts**:
+- **Score 75-100**: Highly aggressive scan - likely malicious reconnaissance
+- **Score 50-74**: Suspicious scan pattern - investigate source
+- **Score <50**: May be legitimate security tool or low-intensity scan
+
+---
+
+### 5. Brute Force Detector (Authentication Attacks)
+
+**ML Method**: Isolation Forest (Anomaly Detection)
+
+**What It Does**:
+- Analyzes authentication attack patterns
+- Distinguishes automated attack tools from manual password guessing
+- Identifies unusually aggressive credential stuffing campaigns
+
+**Features Used**:
+- `total_attempts`: Volume of authentication attempts
+- `failed_attempts`: Number of failures
+- `successful_attempts`: Number of successes
+- `failure_rate`: Ratio of failures to attempts
+
+**When ML Activates**: 50+ sources with authentication attacks
+
+**New Columns**:
+- `ml_anomaly_score` (0-100): How unusual this attack pattern is
+- `ml_confidence`: HIGH/MEDIUM/LOW/NORMAL confidence level
+- `ml_explanation`: Plain English explanation with feature contributions
+
+**Interpretation for Analysts**:
+- **Score 75-100**: Highly automated attack - likely bot/tool
+- **Score 50-74**: Suspicious attack pattern - investigate urgently
+- **Score <50**: May be manual attempts or low-volume attack
+
+---
+
+### 6. Lateral Movement Detector (Privilege Escalation)
+
+**ML Method**: Isolation Forest (Anomaly Detection)
+
+**What It Does**:
+- Analyzes network movement patterns
+- Distinguishes APT lateral movement from normal admin activity
+- Identifies unusually aggressive or rapid network traversal
+
+**Features Used**:
+- `unique_targets`: Breadth of network access
+- `total_connections`: Volume of connections
+- `targets_per_hour`: Speed of movement
+
+**When ML Activates**: 50+ sources showing lateral movement
+
+**New Columns**:
+- `ml_anomaly_score` (0-100): How unusual this movement is
+- `ml_confidence`: HIGH/MEDIUM/LOW/NORMAL confidence level
+- `ml_explanation`: Plain English explanation with feature contributions
+
+**Interpretation for Analysts**:
+- **Score 75-100**: Highly aggressive movement - likely APT activity
+- **Score 50-74**: Suspicious movement - investigate for compromise
+- **Score <50**: May be normal admin activity or automated tools
+
+---
+
+### 7. DNS Anomaly Detector (Malware C2 & Exfiltration)
+
+**ML Method**: KMeans Clustering (Pattern Discovery)
+
+**What It Does**:
+- Groups similar DNS attack patterns together
+- Identifies related sources from same malware campaign
+- Helps analysts understand if threats are coordinated
+
+**Features Used**:
+- `total_queries`: Volume of DNS queries
+- `nxdomain_ratio`: Failure rate
+- `avg_query_length`: Query string length
+- `high_entropy_queries`: Randomness indicators
+- `suspicious_tld_count`: Malicious TLD usage
+
+**When ML Activates**: 50+ sources with suspicious DNS activity
+
+**New Columns**:
+- `ml_cluster` (0-4): Which pattern group this belongs to
+- `ml_cluster_risk`: CRITICAL/HIGH/MEDIUM/LOW risk level
+- `ml_explanation`: Detailed cluster description with pattern type
+
+**Cluster Interpretation**:
+- **Cluster Size >10**: Strong evidence of coordinated campaign
+- **Cluster Size 5-10**: Possible related activity
+- **Cluster Size <5**: May be isolated incidents
+
+---
+
+### 8. Insider Threat Detector (Behavioral Anomalies)
+
+**ML Method**: Local Outlier Factor (Density-Based Outlier Detection)
+
+**What It Does**:
+- Identifies users whose behavior dramatically differs from peers
+- Distinguishes malicious insiders from high-activity normal users
+- Detects subtle behavioral anomalies indicating insider threats
+
+**Features Used**:
+- `unique_resources`: Breadth of data access
+- `unique_source_ips`: IP diversity (credential sharing indicator)
+- `off_hours_ratio`: After-hours activity level
+- `sensitive_access_count`: Access to sensitive data
+- `log_bytes`: Log-scaled data transfer volume
+
+**When ML Activates**: 50+ users with suspicious behavior
+
+**New Columns**:
+- `ml_outlier_score` (0-100): How different from peers
+- `ml_confidence`: HIGH/MEDIUM/LOW/NORMAL confidence level
+- `ml_explanation`: Plain English explanation with feature contributions
+
+**Interpretation for Analysts**:
+- **Score 75-100**: Extreme behavioral outlier - investigate immediately
+- **Score 50-74**: Notable behavioral deviation - monitor closely
+- **Score <50**: High activity but within normal peer range
+
+---
+
+### 9. Data Hoarding Detector (Theft Preparation)
+
+**ML Method**: Local Outlier Factor (Density-Based Outlier Detection)
+
+**What It Does**:
+- Identifies hosts with dramatically different download patterns
+- Distinguishes data theft preparation from legitimate backups
+- Detects unusual bulk data collection activities
+
+**Features Used**:
+- `log_bytes_downloaded`: Log-scaled download volume
+- `unique_data_sources`: Number of sources accessed
+- `connection_count`: Download frequency
+- `log_avg_bytes_per_conn`: Average download size (log-scaled)
+
+**When ML Activates**: 50+ hosts with data hoarding behavior
+
+**New Columns**:
+- `ml_outlier_score` (0-100): How different from other downloaders
+- `ml_confidence`: HIGH/MEDIUM/LOW/NORMAL confidence level
+- `ml_explanation`: Plain English explanation with feature contributions
+
+**Interpretation for Analysts**:
+- **Score 75-100**: Extreme hoarding - likely data theft preparation
+- **Score 50-74**: Unusual download pattern - investigate
+- **Score <50**: High volume but within normal backup range
+
+---
+
+### 10. User-Agent Anomaly Detector (Bot & Attack Detection)
+
+**ML Method**: KMeans Clustering (Pattern Discovery)
+
+**What It Does**:
+- Groups similar bot families and attack tools together
+- Identifies coordinated botnet activity
+- Helps analysts understand if sources use same tools
+
+**Features Used**:
+- `unique_user_agents`: Diversity of user agents
+- `total_requests`: Request volume
+- `suspicious_count`: Number of suspicious agents
+- `empty_agents`: Missing user agent count
+
+**When ML Activates**: 50+ sources with suspicious user agents
+
+**New Columns**:
+- `ml_cluster` (0-4): Which pattern group this belongs to
+- `ml_cluster_risk`: CRITICAL/HIGH/MEDIUM/LOW risk level
+- `ml_explanation`: Detailed cluster description with pattern type
+
+**Cluster Interpretation**:
+- **Attack tools detected**: Critical - automated exploitation tools
+- **Empty agents**: High - likely bot or script activity
+- **Suspicious patterns**: Medium - automated scraping/reconnaissance
+
+---
+
 ## 📊 ML Architecture
 
 ### Minimum Sample Requirements
@@ -147,6 +351,13 @@ All ML features require **50+ samples** to activate:
 | BeaconStrategy | Source/dest pairs showing beaconing | Need enough pairs for statistical significance |
 | EntropyStrategy | Suspicious high-entropy strings | Clustering requires sufficient data points |
 | ExfilStrategy | Hosts with traffic data | LOF needs neighbors to compare against |
+| PortScanStrategy | Sources performing port scans | Anomaly detection needs baseline of normal scans |
+| BruteForceStrategy | Sources attacking authentication | Need patterns from multiple attack sources |
+| LateralMovementStrategy | Sources moving laterally | Compare movement patterns across sources |
+| DNSAnomalyStrategy | Sources with suspicious DNS | Clustering requires multiple DNS attack sources |
+| InsiderThreatStrategy | Users with suspicious behavior | Compare user behavior across peers |
+| DataHoardingStrategy | Hosts hoarding data | LOF needs neighbors to identify outliers |
+| UserAgentAnomalyStrategy | Sources with suspicious user agents | Clustering requires multiple bot/tool sources |
 
 **Below 50 samples**: Graceful fallback to rule-based detection with explanation message.
 
@@ -426,23 +637,39 @@ print(results[['source_ip', 'beacon_score', 'ml_anomaly_score', 'ml_confidence']
 
 ## 🚀 Future Enhancements
 
-### Short Term
-- [ ] Add ML to PortScanStrategy (Isolation Forest for scan patterns)
-- [ ] Add ML to BruteForceStrategy (Clustering for attack patterns)
-- [ ] UI enhancements to visualize ML confidence
-- [ ] Feature importance visualization
+### ✅ Completed (11 Strategies Enhanced)
+- [x] Add ML to PortScanStrategy (Isolation Forest for scan patterns)
+- [x] Add ML to BruteForceStrategy (Isolation Forest for attack patterns)
+- [x] Add ML to LateralMovementStrategy (Isolation Forest for APT detection)
+- [x] Add ML to DNSAnomalyStrategy (KMeans for DNS attack campaigns)
+- [x] Add ML to InsiderThreatStrategy (LOF for behavioral anomalies)
+- [x] Add ML to DataHoardingStrategy (LOF for data theft detection)
+- [x] Add ML to UserAgentAnomalyStrategy (KMeans for bot families)
+- [x] Plain English explanations for all ML decisions
+- [x] Feature importance explanations
+- [x] Graceful fallback with clear messaging
+
+### Short Term (Optional Enhancements)
+- [ ] Add ML to TimeAnomalyStrategy (Isolation Forest for off-hours patterns)
+- [ ] Add ML to GeoAnomalyStrategy (Isolation Forest for geographic outliers)
+- [ ] Add ML to CryptoMiningStrategy (Isolation Forest for mining patterns)
+- [ ] Add ML to FilelessMalwareStrategy (KMeans for LOLBin pattern grouping)
+- [ ] UI enhancements to visualize ML confidence scores
+- [ ] Interactive feature importance visualization
 
 ### Medium Term
-- [ ] Model persistence (save/load trained models)
-- [ ] Online learning (update models with new data)
-- [ ] Ensemble methods (combine multiple models)
-- [ ] Automated hyperparameter tuning
+- [ ] Model persistence (save/load trained models for reuse)
+- [ ] Online learning (update models with new data incrementally)
+- [ ] Ensemble methods (combine multiple models for better accuracy)
+- [ ] Automated hyperparameter tuning (optimize contamination, n_clusters, etc.)
+- [ ] Model performance metrics dashboard
 
 ### Long Term  
-- [ ] Active learning (analyst feedback improves models)
+- [ ] Active learning (analyst feedback improves models over time)
 - [ ] Transfer learning (share models across similar networks)
 - [ ] Explainable AI (SHAP/LIME for detailed feature attribution)
 - [ ] Adversarial robustness (detect ML evasion attempts)
+- [ ] Temporal analysis (time-series ML for trend detection)
 
 ---
 
