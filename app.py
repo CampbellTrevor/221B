@@ -1426,7 +1426,8 @@ class WatsonDashboard:
         
         # Identify most effective strategies
         most_effective = insights_df.nlargest(3, 'High Severity')
-        print(f"🏆 Top 3: " + " | ".join([f"{row['Strategy']} ({row['High Severity']})" for _, row in most_effective.iterrows()]))
+        top_strategies = " | ".join([f"{s} ({h})" for s, h in zip(most_effective['Strategy'], most_effective['High Severity'])])
+        print(f"🏆 Top 3: {top_strategies}")
         print()
         
         # Visualization if plotly available
