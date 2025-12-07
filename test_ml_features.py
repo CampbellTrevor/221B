@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 from strategies import (
     BeaconStrategy, EntropyStrategy, ExfilStrategy,
     TimeAnomalyStrategy, GeoAnomalyStrategy, CryptoMiningStrategy, FilelessMalwareStrategy,
+    AccountTakeoverStrategy, TunnelingStrategy, APIAbuseStrategy,
+    DataStagingStrategy, WebshellDetectionStrategy, PrivilegeEscalationStrategy,
     HAS_SKLEARN
 )
 
@@ -446,12 +448,314 @@ class TestMLFeatures(unittest.TestCase):
         
         print(f"✓ FilelessMalwareStrategy ML test passed: {len(result)} detections in {unique_clusters} clusters")
     
+    def test_account_takeover_ml_with_sufficient_data(self):
+        """Test that AccountTakeoverStrategy applies ML with 50+ samples."""
+        if not HAS_SKLEARN:
+            self.skipTest("scikit-learn not available")
+        
+        strategy = AccountTakeoverStrategy()
+        
+        # Create 60 users with varying authentication patterns
+        base_time = datetime.now()
+        data = []
+        
+        for user_id in range(60):
+            username = f'user{user_id}'
+            # Some users have normal patterns, some suspicious
+            num_ips = np.random.choice([1, 2, 5, 10], p=[0.4, 0.3, 0.2, 0.1])
+            fail_rate = np.random.choice([0.0, 0.1, 0.5, 0.8], p=[0.4, 0.3, 0.2, 0.1])
+            
+            for event_id in range(20):
+                ip_idx = np.random.randint(0, num_ips)
+                is_failure = np.random.random() < fail_rate
+                
+                data.append({
+                    'timestamp': base_time + timedelta(minutes=event_id * 5),
+                    'username': username,
+                    'source_ip': f'10.0.{user_id}.{ip_idx}',
+                    'action': 'login',
+                    'status': 'failure' if is_failure else 'success'
+                })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'username': 'username',
+            'source_ip': 'source_ip',
+            'action': 'action',
+            'status': 'status'
+        }
+        
+        result = strategy.analyze(df, col_map)
+        
+        # Verify ML columns are present
+        self.assertIn('ml_anomaly_score', result.columns)
+        self.assertIn('ml_confidence', result.columns)
+        self.assertIn('ml_explanation', result.columns)
+        
+        # Verify ML was applied (not N/A)
+        if not result.empty:
+            self.assertFalse((result['ml_confidence'] == 'N/A (insufficient data or sklearn not available)').all())
+        
+        print(f"✓ AccountTakeoverStrategy ML test passed: {len(result)} detections with ML analysis")
+    
+    def test_tunneling_ml_with_sufficient_data(self):
+        """Test that TunnelingStrategy applies ML with 50+ samples."""
+        if not HAS_SKLEARN:
+            self.skipTest("scikit-learn not available")
+        
+        strategy = TunnelingStrategy()
+        
+        # Create 60 connections with varying traffic patterns
+        data = []
+        
+        for conn_id in range(60):
+            src_ip = f'192.168.1.{conn_id}'
+            dst_ip = f'10.0.0.{conn_id % 10}'
+            # Mix of standard and non-standard ports with various byte volumes
+            port = np.random.choice([22, 80, 443, 8080, 1234, 5555, 9999])
+            bytes_total = np.random.choice([50000, 500000, 5000000, 50000000])
+            
+            for conn in range(np.random.randint(5, 30)):
+                data.append({
+                    'source_ip': src_ip,
+                    'dest_ip': dst_ip,
+                    'dest_port': port,
+                    'bytes_total': bytes_total + np.random.randint(-10000, 10000)
+                })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'dest_ip': 'dest_ip',
+            'dest_port': 'dest_port',
+            'bytes_total': 'bytes_total'
+        }
+        
+        result = strategy.analyze(df, col_map)
+        
+        # Verify ML columns are present
+        self.assertIn('ml_anomaly_score', result.columns)
+        self.assertIn('ml_confidence', result.columns)
+        self.assertIn('ml_explanation', result.columns)
+        
+        # Verify ML was applied
+        if not result.empty:
+            self.assertFalse((result['ml_confidence'] == 'N/A (insufficient data or sklearn not available)').all())
+        
+        print(f"✓ TunnelingStrategy ML test passed: {len(result)} detections with ML analysis")
+    
+    def test_api_abuse_ml_with_sufficient_data(self):
+        """Test that APIAbuseStrategy applies ML with 50+ samples."""
+        if not HAS_SKLEARN:
+            self.skipTest("scikit-learn not available")
+        
+        strategy = APIAbuseStrategy()
+        
+        # Create 60 sources with varying API usage patterns
+        data = []
+        
+        for source_id in range(60):
+            src_ip = f'203.0.113.{source_id}'
+            # Mix of normal and abusive patterns
+            num_requests = np.random.choice([50, 200, 500, 1000])
+            endpoints = [f'/api/v1/endpoint{i}' for i in range(np.random.randint(1, 20))]
+            
+            for req_id in range(num_requests):
+                data.append({
+                    'source_ip': src_ip,
+                    'url_path': np.random.choice(endpoints),
+                    'status_code': np.random.choice(['200', '401', '429', '500'], p=[0.7, 0.1, 0.15, 0.05])
+                })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'url_path': 'url_path',
+            'status_code': 'status_code'
+        }
+        
+        result = strategy.analyze(df, col_map)
+        
+        # Verify ML columns are present
+        self.assertIn('ml_anomaly_score', result.columns)
+        self.assertIn('ml_confidence', result.columns)
+        self.assertIn('ml_explanation', result.columns)
+        
+        # Verify ML was applied
+        if not result.empty:
+            self.assertFalse((result['ml_confidence'] == 'N/A (insufficient data or sklearn not available)').all())
+        
+        print(f"✓ APIAbuseStrategy ML test passed: {len(result)} detections with ML analysis")
+    
+    def test_data_staging_ml_with_sufficient_data(self):
+        """Test that DataStagingStrategy applies ML with 50+ samples."""
+        if not HAS_SKLEARN:
+            self.skipTest("scikit-learn not available")
+        
+        strategy = DataStagingStrategy()
+        
+        # Create 60 sources with varying file operation patterns
+        base_time = datetime.now()
+        data = []
+        
+        for source_id in range(60):
+            src_ip = f'10.10.{source_id // 256}.{source_id % 256}'
+            # Mix of normal and suspicious patterns
+            num_ops = np.random.choice([10, 30, 100, 200])
+            
+            for op_id in range(num_ops):
+                file_ext = np.random.choice(['.txt', '.doc', '.zip', '.tmp'], p=[0.5, 0.2, 0.2, 0.1])
+                sensitive = np.random.choice([True, False], p=[0.2, 0.8])
+                path = f'/finance/data/file{op_id}{file_ext}' if sensitive else f'/home/user/file{op_id}{file_ext}'
+                
+                data.append({
+                    'timestamp': base_time + timedelta(seconds=op_id * 2),
+                    'source_ip': src_ip,
+                    'file_path': path,
+                    'operation': np.random.choice(['read', 'write', 'copy']),
+                    'file_size': np.random.randint(1000, 50000000)
+                })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'timestamp': 'timestamp',
+            'source_ip': 'source_ip',
+            'file_path': 'file_path',
+            'operation': 'operation',
+            'file_size': 'file_size'
+        }
+        
+        result = strategy.analyze(df, col_map)
+        
+        # Verify ML columns are present
+        self.assertIn('ml_outlier_score', result.columns)
+        self.assertIn('ml_confidence', result.columns)
+        self.assertIn('ml_explanation', result.columns)
+        
+        # Verify ML was applied
+        if not result.empty:
+            self.assertFalse((result['ml_confidence'] == 'N/A (insufficient data or sklearn not available)').all())
+        
+        print(f"✓ DataStagingStrategy ML test passed: {len(result)} detections with ML analysis")
+    
+    def test_webshell_ml_with_sufficient_data(self):
+        """Test that WebshellDetectionStrategy applies ML with 50+ samples."""
+        if not HAS_SKLEARN:
+            self.skipTest("scikit-learn not available")
+        
+        strategy = WebshellDetectionStrategy()
+        
+        # Create 60 sources with varying webshell patterns
+        data = []
+        
+        for source_id in range(60):
+            src_ip = f'198.51.100.{source_id}'
+            # Mix of normal and suspicious patterns
+            num_requests = np.random.randint(10, 100)
+            
+            for req_id in range(num_requests):
+                suspicious = np.random.random() < 0.3
+                if suspicious:
+                    uri = np.random.choice(['/shell.php', '/c99.php', '/admin/upload.php'])
+                    method = 'POST'
+                    params = np.random.choice(['cmd=ls', 'exec=whoami', 'shell=true'])
+                else:
+                    uri = f'/page{req_id}.html'
+                    method = 'GET'
+                    params = ''
+                
+                data.append({
+                    'source_ip': src_ip,
+                    'uri': f'{uri}?{params}',
+                    'method': method,
+                    'status_code': '200',
+                    'user_agent': 'curl/7.68.0' if suspicious else 'Mozilla/5.0'
+                })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'uri': 'uri',
+            'method': 'method',
+            'status_code': 'status_code',
+            'user_agent': 'user_agent'
+        }
+        
+        result = strategy.analyze(df, col_map)
+        
+        # Verify ML columns are present
+        self.assertIn('ml_cluster', result.columns)
+        self.assertIn('ml_cluster_risk', result.columns)
+        self.assertIn('ml_explanation', result.columns)
+        
+        # Verify clustering was applied
+        if not result.empty:
+            self.assertFalse((result['ml_cluster_risk'] == 'N/A (insufficient data or sklearn not available)').all())
+        
+        print(f"✓ WebshellDetectionStrategy ML test passed: {len(result)} detections with ML clustering")
+    
+    def test_privilege_escalation_ml_with_sufficient_data(self):
+        """Test that PrivilegeEscalationStrategy applies ML with 50+ samples."""
+        if not HAS_SKLEARN:
+            self.skipTest("scikit-learn not available")
+        
+        strategy = PrivilegeEscalationStrategy()
+        
+        # Create 60 source/user combinations with varying escalation patterns
+        data = []
+        
+        for source_id in range(60):
+            src_ip = f'172.16.{source_id // 256}.{source_id % 256}'
+            username = f'user{source_id}'
+            # Mix of normal admin work and suspicious patterns
+            num_commands = np.random.randint(10, 100)
+            
+            for cmd_id in range(num_commands):
+                suspicious = np.random.random() < 0.4
+                if suspicious:
+                    process = np.random.choice(['powershell.exe', 'cmd.exe', 'mimikatz.exe'])
+                    command = np.random.choice(['sudo su', 'net user administrator', 'mimikatz sekurlsa'])
+                else:
+                    process = np.random.choice(['notepad.exe', 'explorer.exe'])
+                    command = 'normal command'
+                
+                data.append({
+                    'source_ip': src_ip,
+                    'username': username,
+                    'command': command,
+                    'process_name': process
+                })
+        
+        df = pd.DataFrame(data)
+        col_map = {
+            'source_ip': 'source_ip',
+            'username': 'username',
+            'command': 'command',
+            'process_name': 'process_name'
+        }
+        
+        result = strategy.analyze(df, col_map)
+        
+        # Verify ML columns are present
+        self.assertIn('ml_anomaly_score', result.columns)
+        self.assertIn('ml_confidence', result.columns)
+        self.assertIn('ml_explanation', result.columns)
+        
+        # Verify ML was applied
+        if not result.empty:
+            self.assertFalse((result['ml_confidence'] == 'N/A (insufficient data or sklearn not available)').all())
+        
+        print(f"✓ PrivilegeEscalationStrategy ML test passed: {len(result)} detections with ML analysis")
+    
     def test_ml_column_explanations(self):
         """Test that ML columns have proper explanations."""
         strategies_to_test = [
             BeaconStrategy(), EntropyStrategy(), ExfilStrategy(),
             TimeAnomalyStrategy(), GeoAnomalyStrategy(), 
-            CryptoMiningStrategy(), FilelessMalwareStrategy()
+            CryptoMiningStrategy(), FilelessMalwareStrategy(),
+            AccountTakeoverStrategy(), TunnelingStrategy(), APIAbuseStrategy(),
+            DataStagingStrategy(), WebshellDetectionStrategy(), PrivilegeEscalationStrategy()
         ]
         
         for strategy in strategies_to_test:

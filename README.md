@@ -407,12 +407,12 @@ The dashboard includes **thirty-six comprehensive threat hunting strategies**:
 **Automated Intelligent Analysis** (Zero-Code Experience)
 - ML runs automatically behind the scenes - analysts never write code
 - Requires 50+ samples for ML activation (graceful fallback to rule-based detection)
-- **15 strategies now ML-enhanced** (42% of all strategies) covering high-value detection use cases
+- **20 strategies now ML-enhanced** (56% of all strategies) covering high-value detection use cases
 - All ML enhancements maintain backward compatibility with existing workflows
 
 **ML-Enhanced Strategies by Algorithm Type**:
 
-**Isolation Forest** (9 strategies) - Anomaly Detection:
+**Isolation Forest** (14 strategies) - Anomaly Detection:
 1. **BeaconStrategy** - Detects anomalous C2 timing patterns
 2. **PortScanStrategy** - Identifies aggressive malicious scans vs security tools
 3. **BruteForceStrategy** - Distinguishes automated attack tools from manual attempts
@@ -421,17 +421,23 @@ The dashboard includes **thirty-six comprehensive threat hunting strategies**:
 6. **TimeAnomalyStrategy** - Detects sophisticated off-hours access patterns
 7. **GeoAnomalyStrategy** - Identifies VPN abuse and account compromise
 8. **CryptoMiningStrategy** - Distinguishes cryptojacking from legitimate services
+9. **AccountTakeoverStrategy** 🆕 - Identifies credential theft and compromised accounts
+10. **TunnelingStrategy** 🆕 - Detects covert channels and protocol encapsulation
+11. **APIAbuseStrategy** 🆕 - Identifies malicious API scraping and rate limit violations
+12. **PrivilegeEscalationStrategy** 🆕 - Distinguishes malicious escalation from admin work
 
 **KMeans Clustering** (5 strategies) - Pattern Discovery:
 1. **EntropyStrategy** - Groups DGA domains into malware families
 2. **DNSAnomalyStrategy** - Clusters DNS attack campaigns
 3. **UserAgentAnomalyStrategy** - Groups bot families and attack tools
 4. **FilelessMalwareStrategy** - Groups LOLBin abuse patterns and attack campaigns
+5. **WebshellDetectionStrategy** 🆕 - Clusters webshell attack patterns and campaigns
 
-**Local Outlier Factor** (3 strategies) - Behavioral Outliers:
+**Local Outlier Factor** (4 strategies) - Behavioral Outliers:
 1. **ExfilStrategy** - Finds hosts with dramatically different traffic patterns
 2. **InsiderThreatStrategy** - Identifies behavioral anomalies in user activity
 3. **DataHoardingStrategy** - Detects data theft vs legitimate backups
+4. **DataStagingStrategy** 🆕 - Identifies outlier file operation patterns for data theft
 
 **ML Output Columns** (Added to Strategy Results):
 - `ml_anomaly_score` / `ml_outlier_score` / `ml_cluster`: Numeric ML scores (0-100 or cluster ID)
@@ -905,16 +911,16 @@ When adding new features or strategies:
 
 **Current Release:**
 - **36 comprehensive threat hunting strategies** covering modern attack vectors
-- **15 ML-enhanced strategies** (42%) with automatic anomaly detection, clustering, and outlier analysis
-- **119 unit tests** with 100% pass rate (114 strategy tests + 5 ML tests)
-- **15,000+ lines of code** across core modules (including ML implementations)
+- **20 ML-enhanced strategies** (56%) with automatic anomaly detection, clustering, and outlier analysis
+- **125 unit tests** with 100% pass rate (114 strategy tests + 11 ML tests)
+- **16,000+ lines of code** across core modules (including ML implementations)
 - **12 quick action buttons** for one-click analysis including Threat Overview
 - **Multiple export formats** (CSV, JSON) for flexible integration
 - **Zero security vulnerabilities** detected by CodeQL analysis
 
 **Machine Learning:**
-- **3 ML algorithms** deployed across 15 strategies: Isolation Forest (9), KMeans (5), Local Outlier Factor (3)
-- **15 strategies ML-enhanced**: Beacon, Entropy, Exfil, PortScan, BruteForce, LateralMovement, DNSAnomaly, InsiderThreat, DataHoarding, UserAgentAnomaly, TimeAnomaly, GeoAnomaly, CryptoMining, FilelessMalware
+- **3 ML algorithms** deployed across 20 strategies: Isolation Forest (14), KMeans (5), Local Outlier Factor (4)
+- **20 strategies ML-enhanced**: Beacon, Entropy, Exfil, PortScan, BruteForce, LateralMovement, DNSAnomaly, InsiderThreat, DataHoarding, UserAgentAnomaly, TimeAnomaly, GeoAnomaly, CryptoMining, FilelessMalware, AccountTakeover, Tunneling, APIAbuse, DataStaging, Webshell, PrivilegeEscalation
 - **Zero-code experience** - ML runs automatically with 50+ samples
 - **Plain English explanations** for every ML decision with feature importance
 - **Interactive performance** - optimized for real-time threat hunting
