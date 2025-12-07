@@ -1966,8 +1966,6 @@ class WatsonDashboard:
             except Exception:
                 # Silently fail if visualization doesn't work
                 pass
-        
-        print()
     
     def _get_recommended_data_sources_html(self, strategy: HuntStrategy) -> str:
         """
