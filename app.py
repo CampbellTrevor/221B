@@ -550,9 +550,10 @@ class WatsonDashboard:
                     style={'description_width': 'initial'}
                 ),
                 'load_table_button': widgets.Button(
-                    description='📊 Load Schema',
+                    description='📊 Load Table Schema',
                     button_style='info',
-                    layout=widgets.Layout(width='auto', min_width='150px')
+                    icon='database',
+                    layout=widgets.Layout(width='auto', min_width='180px')
                 ),
                 'column_dropdowns': {},
                 'column_mapping_container': widgets.VBox([]),
@@ -585,14 +586,16 @@ class WatsonDashboard:
                     layout=widgets.Layout(width='auto', min_width='180px', height='40px')
                 ),
                 'save_config_button': widgets.Button(
-                    description='💾 Save Config',
+                    description='💾 Save Configuration',
                     button_style='info',
-                    layout=widgets.Layout(width='auto', min_width='140px')
+                    icon='save',
+                    layout=widgets.Layout(width='auto', min_width='180px')
                 ),
                 'load_config_button': widgets.Button(
-                    description='📂 Load Config',
+                    description='📂 Load Configuration',
                     button_style='warning',
-                    layout=widgets.Layout(width='auto', min_width='140px')
+                    icon='folder-open',
+                    layout=widgets.Layout(width='auto', min_width='180px')
                 ),
                 'config_name_input': widgets.Text(
                     placeholder='Enter config name...',
@@ -2952,7 +2955,7 @@ class WatsonDashboard:
                 print(f"✅ Configuration loaded: {config_name}")
                 print(f"📅 Saved: {saved_at.strftime('%Y-%m-%d %H:%M:%S')}")
                 print(f"📊 Table: {config['table']}")
-                print(f"🎯 Ready to run analysis!")
+                print("🎯 Ready to run analysis!")
             else:
                 print(f"❌ Table '{config['table']}' not found in available tables.")
         except Exception as e:
@@ -3289,7 +3292,7 @@ class WatsonDashboard:
                 scanner_count = len(result_df[result_df.get('is_likely_scanner', False)]) if 'is_likely_scanner' in result_df.columns else 0
                 if scanner_count > 0:
                     print(f"🔍 Scanner Detection: {scanner_count} results flagged as potential security scanners (Nessus, ACAS, etc.)")
-                    print(f"   These are highlighted in yellow and can be filtered out as false positives.")
+                    print("   These are highlighted in yellow and can be filtered out as false positives.")
                     print()
                 
                 # Store results for correlation analysis
