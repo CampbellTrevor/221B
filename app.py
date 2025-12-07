@@ -1423,10 +1423,14 @@ class WatsonDashboard:
         total_high = insights_df['High Severity'].sum()
         total_medium = insights_df['Medium Severity'].sum()
         total_low = insights_df['Low Severity'].sum()
-        print(f"🎯 {total_findings:,} total | 🔴 {total_high:,} ({total_high/total_findings*100:.1f}%) | 🟡 {total_medium:,} ({total_medium/total_findings*100:.1f}%) | 🟢 {total_low:,} ({total_low/total_findings*100:.1f}%)")
         
-        # Identify most effective strategies
-        if len(insights_df) > 0:
+        if total_findings > 0:
+            high_pct = total_high / total_findings * 100
+            med_pct = total_medium / total_findings * 100
+            low_pct = total_low / total_findings * 100
+            print(f"🎯 {total_findings:,} total | 🔴 {total_high:,} ({high_pct:.1f}%) | 🟡 {total_medium:,} ({med_pct:.1f}%) | 🟢 {total_low:,} ({low_pct:.1f}%)")
+            
+            # Identify most effective strategies
             most_effective = insights_df.nlargest(min(3, len(insights_df)), 'High Severity')
             top_strategies = " | ".join([f"{s} ({h})" for s, h in zip(most_effective['Strategy'], most_effective['High Severity'])])
             print(f"🏆 Top {len(most_effective)}: {top_strategies}")
