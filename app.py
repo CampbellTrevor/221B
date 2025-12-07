@@ -1147,7 +1147,8 @@ class WatsonDashboard:
         timeline_df = pd.DataFrame(timeline_data)
         
         # Display summary statistics
-        print(f"📊 {len(timeline_df):,} events from {timeline_df['timestamp'].min()} to {timeline_df['timestamp'].max()} ({timeline_df['strategy'].nunique()} strategies)")
+        if len(timeline_df) > 0:
+            print(f"📊 {len(timeline_df):,} events from {timeline_df['timestamp'].min()} to {timeline_df['timestamp'].max()} ({timeline_df['strategy'].nunique()} strategies)")
         print()
         
         # Group by date and severity
@@ -1303,7 +1304,8 @@ class WatsonDashboard:
         # Show severity breakdown
         severity_counts = ip_df.groupby('severity').size()
         severity_emojis = {'High': '🔴', 'Medium': '🟡', 'Low': '🟢'}
-        severity_msg = " | ".join([f"{severity_emojis[s]} {s}: {severity_counts.get(s, 0):,}" for s in ['High', 'Medium', 'Low']])
+        severity_levels = ['High', 'Medium', 'Low']
+        severity_msg = " | ".join([f"{severity_emojis[s]} {s}: {severity_counts.get(s, 0):,}" for s in severity_levels])
         print(f"🎯 {severity_msg}")
         print()
         
@@ -1431,7 +1433,8 @@ class WatsonDashboard:
             print(f"🎯 {total_findings:,} total | 🔴 {total_high:,} ({high_pct:.1f}%) | 🟡 {total_medium:,} ({med_pct:.1f}%) | 🟢 {total_low:,} ({low_pct:.1f}%)")
             
             # Identify most effective strategies
-            most_effective = insights_df.nlargest(min(3, len(insights_df)), 'High Severity')
+            MAX_TOP_STRATEGIES = 3
+            most_effective = insights_df.nlargest(min(MAX_TOP_STRATEGIES, len(insights_df)), 'High Severity')
             top_strategies = " | ".join([f"{s} ({h})" for s, h in zip(most_effective['Strategy'], most_effective['High Severity'])])
             print(f"🏆 Top {len(most_effective)}: {top_strategies}")
         print()
