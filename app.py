@@ -844,52 +844,52 @@ class WatsonDashboard:
         
         # Build dashboard HTML using consolidated gradient constants
         dashboard_html = f"""
-        <div style="background: {GRADIENT_DARK_CARD}; color: white; padding: 32px; border-radius: 20px; margin: 20px 0; box-shadow: 0 10px 25px rgba(0,0,0,0.3);">
-            <h2 style="margin-top: 0; font-size: 2em; display: flex; align-items: center; gap: 12px; margin-bottom: 30px;">
-                🛡️ Real-Time Threat Intelligence Dashboard
+        <div style="background: {GRADIENT_DARK_CARD}; color: white; padding: 24px; border-radius: 16px; margin: 16px 0; box-shadow: 0 8px 20px rgba(0,0,0,0.25);">
+            <h2 style="margin-top: 0; font-size: 1.8em; display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                🛡️ Threat Intelligence Dashboard
             </h2>
             
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 30px;">
-                <div style="background: {GRADIENT_RED_CRITICAL}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px;">
+                <div style="background: {GRADIENT_RED_CRITICAL}; padding: 20px; border-radius: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="{CSS_METRIC_VALUE}">🔴 {high_severity_count}</div>
-                    <div style="{CSS_METRIC_LABEL}">Critical Threats</div>
+                    <div style="{CSS_METRIC_LABEL}">Critical</div>
                     <div style="{CSS_METRIC_SUBLABEL}">Score ≥ 75</div>
                 </div>
                 
-                <div style="background: {GRADIENT_AMBER_WARNING}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_AMBER_WARNING}; padding: 20px; border-radius: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="{CSS_METRIC_VALUE}">🟡 {medium_severity_count}</div>
-                    <div style="{CSS_METRIC_LABEL}">Medium Threats</div>
+                    <div style="{CSS_METRIC_LABEL}">Medium</div>
                     <div style="{CSS_METRIC_SUBLABEL}">Score 50-74</div>
                 </div>
                 
-                <div style="background: {GRADIENT_GREEN_SUCCESS}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_GREEN_SUCCESS}; padding: 20px; border-radius: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="{CSS_METRIC_VALUE}">🟢 {low_severity_count}</div>
-                    <div style="{CSS_METRIC_LABEL}">Low Priority</div>
+                    <div style="{CSS_METRIC_LABEL}">Low</div>
                     <div style="{CSS_METRIC_SUBLABEL}">Score < 50</div>
                 </div>
                 
-                <div style="background: {GRADIENT_BLUE_PRIMARY}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_BLUE_PRIMARY}; padding: 20px; border-radius: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="{CSS_METRIC_VALUE}">📊 {total_threats}</div>
-                    <div style="{CSS_METRIC_LABEL}">Total Detections</div>
-                    <div style="{CSS_METRIC_SUBLABEL}">Across {strategies_run} strategies</div>
+                    <div style="{CSS_METRIC_LABEL}">Detections</div>
+                    <div style="{CSS_METRIC_SUBLABEL}">{strategies_run} strategies</div>
                 </div>
                 
-                <div style="background: {GRADIENT_PURPLE_DEEP}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_PURPLE_DEEP}; padding: 20px; border-radius: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="{CSS_METRIC_VALUE}">⚡ {avg_threat_score:.1f}</div>
-                    <div style="{CSS_METRIC_LABEL}">Average Score</div>
+                    <div style="{CSS_METRIC_LABEL}">Avg Score</div>
                     <div style="{CSS_METRIC_SUBLABEL}">Threat severity</div>
                 </div>
                 
-                <div style="background: {GRADIENT_PINK_MAGENTA}; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
+                <div style="background: {GRADIENT_PINK_MAGENTA}; padding: 20px; border-radius: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.1);">
                     <div style="{CSS_METRIC_VALUE}">⚠️ {max_threat_score:.1f}</div>
-                    <div style="{CSS_METRIC_LABEL}">Peak Threat</div>
+                    <div style="{CSS_METRIC_LABEL}">Peak</div>
                     <div style="{CSS_METRIC_SUBLABEL}">Highest score</div>
                 </div>
             </div>
             
-            <div style="background: rgba(255,255,255,0.1); padding: 20px; border-radius: 12px; backdrop-filter: blur(10px);">
-                <h3 style="margin-top: 0; margin-bottom: 15px;">📈 Strategy Performance</h3>
-                <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+            <div style="background: rgba(255,255,255,0.1); padding: 16px; border-radius: 10px; backdrop-filter: blur(10px);">
+                <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 1.2em;">📈 Strategy Performance</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
         """
         
         # Add strategy badges
@@ -3447,24 +3447,24 @@ class WatsonDashboard:
         high_count = len([d for d in correlation_data if d['Threat Level'] == 'HIGH'])
         
         summary_html = f"""
-        <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
-            <h3 style="margin-top: 0; color: white;">🚨 Correlated Threats Summary</h3>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+        <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 16px; border-radius: 10px; margin: 8px 0;">
+            <h3 style="margin-top: 0; margin-bottom: 12px; color: white; font-size: 1.3em;">🚨 Correlated Threats</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: white;">{len(multi_strategy_ips)}</div>
-                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Correlated IPs</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">IPs</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: #ff6b6b">{critical_count}</div>
-                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Critical Threats</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Critical</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: #ffd93d">{high_count}</div>
-                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">High Priority</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">High</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}">{len(self.strategy_results)}</div>
-                    <div style="{CSS_TEXT_SUBTLE}">Strategies Analyzed</div>
+                    <div style="{CSS_TEXT_SUBTLE}">Strategies</div>
                 </div>
             </div>
         </div>
@@ -3636,22 +3636,22 @@ class WatsonDashboard:
             print("System appears to be in good health.")
             return
         
-        # Create summary
+        # Create summary - compact
         summary_html = f"""
-        <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 20px; border-radius: 10px; margin: 10px 0;">
-            <h3 style="margin-top: 0; color: white;">🚨 Quick Triage Summary</h3>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+        <div style="background: {GRADIENT_RED_DANGER}; color: white; padding: 16px; border-radius: 10px; margin: 8px 0;">
+            <h3 style="margin-top: 0; margin-bottom: 12px; color: white; font-size: 1.3em;">🚨 Quick Triage Summary</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: white;">{len(high_severity_findings)}</div>
-                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Critical Threats</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Critical</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: white;">{len(self.strategy_results)}</div>
-                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Strategies Analyzed</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Strategies</div>
                 </div>
                 <div style="{CSS_STAT_BOX}">
                     <div style="{CSS_HEADING_LARGE}; color: white;">{len(set(f.get('Source IP', '') for f in high_severity_findings if f.get('Source IP')))}</div>
-                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Unique Source IPs</div>
+                    <div style="{CSS_TEXT_SUBTLE}; color: rgba(255,255,255,0.9);">Source IPs</div>
                 </div>
             </div>
         </div>
