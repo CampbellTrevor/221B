@@ -711,10 +711,8 @@ class EntropyStrategy(HuntStrategy):
         result_df = df[[str_col, 'string_length', 'entropy_score', 'suspicion_score']].copy()
         result_df = result_df.rename(columns={str_col: 'target_string'})
         
-        # Filter to high-suspicion items only
-        result_df = result_df[result_df['suspicion_score'] >= self.MIN_SUSPICION_SCORE]
-        
-        # Apply ML clustering if we have enough data
+        # Apply ML clustering if we have enough data (BEFORE filtering)
+        # This ensures we have enough samples for ML even if filtering reduces the count
         if not result_df.empty and HAS_SKLEARN and len(result_df) >= ML_MIN_SAMPLES:
             result_df = self._apply_ml_clustering(result_df)
         else:
@@ -722,6 +720,9 @@ class EntropyStrategy(HuntStrategy):
             result_df['ml_cluster'] = 'N/A'
             result_df['ml_cluster_risk'] = 'N/A'
             result_df['ml_explanation'] = 'Rule-based detection only - need 50+ suspicious strings for ML clustering'
+        
+        # Filter to high-suspicion items only (AFTER ML analysis)
+        result_df = result_df[result_df['suspicion_score'] >= self.MIN_SUSPICION_SCORE]
         
         # Sort by suspicion score (descending)
         result_df = result_df.sort_values('suspicion_score', ascending=False)
