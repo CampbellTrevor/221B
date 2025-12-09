@@ -3931,78 +3931,60 @@ class WatsonDashboard:
         """
         Display ASOM (Analytic Scheme of Maneuver) browser.
         Shows simple mapping between strategies and the actions they cover.
+        Uses accordion widgets to minimize vertical space.
         """
         print("📋 ASOM Browser - Analytic Scheme of Maneuver")
         print("=" * 80)
         
-        # Create HTML for ASOM browser
-        html_content = f"""
-        <div style="background: {GRADIENT_BLUE_PRIMARY}; color: white; padding: 24px; border-radius: 12px; margin: 8px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-            <h3 style="margin: 0 0 8px 0; color: white; font-size: 1.5em;">📋 ASOM Browser</h3>
-            <p style="margin: 0; font-size: 0.95em; opacity: 0.95;">
-                Browse detection strategies and the Analytic Scheme of Maneuver (ASOM) actions they cover.
-                Each strategy implements specific detection actions for identifying threats.
+        # Create compact header
+        header_html = widgets.HTML(f"""
+        <div style="background: {GRADIENT_BLUE_PRIMARY}; color: white; padding: 16px; border-radius: 8px; margin: 8px 0;">
+            <h3 style="margin: 0 0 4px 0; color: white; font-size: 1.3em;">📋 ASOM Browser</h3>
+            <p style="margin: 0; font-size: 0.85em; opacity: 0.9;">
+                {len(self.strategies)} detection strategies covering {sum(len(s.asom_actions) for s in self.strategies)} ASOM actions
             </p>
         </div>
+        """)
         
-        <div style="margin: 16px 0;">
-            <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                <h4 style="margin: 0 0 12px 0; font-size: 1.2em;">📊 Coverage Summary</h4>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
-                    <div style="background: white; padding: 12px; border-radius: 6px; border-left: 4px solid #3b82f6;">
-                        <div style="font-size: 2em; font-weight: bold; color: #3b82f6;">{len(self.strategies)}</div>
-                        <div style="font-size: 0.9em; color: #666;">Detection Strategies</div>
-                    </div>
-                    <div style="background: white; padding: 12px; border-radius: 6px; border-left: 4px solid #8b5cf6;">
-                        <div style="font-size: 2em; font-weight: bold; color: #8b5cf6;">{sum(len(s.asom_actions) for s in self.strategies)}</div>
-                        <div style="font-size: 0.9em; color: #666;">ASOM Actions Covered</div>
-                    </div>
-                </div>
-            </div>
-        
-            <h4 style="margin: 16px 0 12px 0; font-size: 1.2em; color: #1a1a1a;">Strategies and Their Actions</h4>
-        """
-        
-        # Display each strategy with its actions
-        for i, strategy in enumerate(self.strategies):
-            border_style = "border-bottom: 1px solid #e0e0e0;" if i < len(self.strategies) - 1 else ""
-            
-            # Display all actions for this strategy
-            actions_display = ""
+        # Create accordion widgets for each strategy
+        strategy_accordions = []
+        for strategy in self.strategies:
+            # Create actions display
+            actions_html = ""
             for j, action in enumerate(strategy.asom_actions, 1):
-                action_preview = action[:150] + "..." if len(action) > 150 else action
-                actions_display += f"<div style='margin: 6px 0; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; border-left: 3px solid #3b82f6;'><strong>Action {j}:</strong> {action_preview}</div>"
+                action_preview = action[:200] + "..." if len(action) > 200 else action
+                actions_html += f"""
+                <div style='margin: 4px 0; padding: 6px 10px; background: #f8f9fa; border-radius: 3px; border-left: 2px solid #3b82f6; font-size: 0.9em;'>
+                    <strong>Action {j}:</strong> {action_preview}
+                </div>
+                """
             
-            html_content += f"""
-            <div style="background: white; padding: 20px; margin-bottom: 8px; border-radius: 8px; border: 1px solid #e0e0e0; {border_style}">
-                <div style="margin-bottom: 12px;">
-                    <h5 style="margin: 0; font-size: 1.15em; color: #1a1a1a;">{strategy.name}</h5>
-                    <div style="margin-top: 6px; color: #666; font-size: 0.9em;">
-                        <span style="display: inline-block; margin-right: 8px;">📌 {len(strategy.asom_actions)} action(s)</span>
-                    </div>
+            # Create HTML content for this strategy
+            strategy_content = widgets.HTML(f"""
+            <div style="padding: 8px;">
+                <div style="color: #666; font-size: 0.85em; margin-bottom: 8px;">
+                    📌 {len(strategy.asom_actions)} detection action(s)
                 </div>
-                <div style="margin-top: 12px;">
-                    {actions_display}
-                </div>
+                {actions_html}
             </div>
-            """
+            """)
+            
+            # Create accordion for this strategy
+            accordion = widgets.Accordion(children=[strategy_content])
+            accordion.set_title(0, f"{strategy.name}")
+            accordion.selected_index = None  # Start collapsed
+            strategy_accordions.append(accordion)
         
-        html_content += """
+        # Create info section
+        info_html = widgets.HTML("""
+        <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-top: 8px; font-size: 0.9em;">
+            <strong>About ASOM:</strong> Analytic Scheme of Maneuver defines detection actions for identifying threats.
+            Expand each strategy above to see its specific ASOM actions.
         </div>
+        """)
         
-        <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-top: 16px;">
-            <h4 style="margin: 0 0 8px 0; font-size: 1.1em;">ℹ️ About ASOM</h4>
-            <p style="margin: 4px 0; font-size: 0.95em; line-height: 1.6;">
-                <strong>ASOM (Analytic Scheme of Maneuver)</strong> defines the detection actions that analysts can use to identify threats.
-                Each strategy above implements specific ASOM actions with simple, rule-based logic that is directly actionable.
-            </p>
-            <p style="margin: 8px 0 0 0; font-size: 0.9em; color: #666; font-style: italic;">
-                💡 Tip: Select a strategy from the tabs above to run its detections on your data.
-            </p>
-        </div>
-        """
-        
-        display(HTML(html_content))
+        # Combine all widgets
+        display(widgets.VBox([header_html] + strategy_accordions + [info_html]))
     
     def display(self):
         """

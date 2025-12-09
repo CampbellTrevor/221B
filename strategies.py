@@ -310,16 +310,29 @@ class ScheduledTaskJobStrategy(HuntStrategy):
     
     def _get_suspicious_patterns(self) -> dict:
         """Return technique-specific suspicious patterns."""
-        # Define patterns based on ASOM requirements for this technique
         patterns = {
-            'processes': [],
-            'commands': []
+            'processes': [r'schtasks', r'at\.exe', r'Register-ScheduledTask'],
+            'commands': [r'/create', r'/s\s+\\\\', r'-CimSession', r'/tn\s+', r'/tr\s+']
         }
-        
-        # Add technique-specific patterns here
-        # This would be customized per technique based on ASOM actions
-        
         return patterns
+    
+    def get_description(self) -> str:
+        return """
+**What This Strategy Detects:**
+Identifies malicious scheduled task creation through:
+- **Remote Task Creation**: Detects schtasks.exe with /s arguments indicating remote execution
+- **Suspicious Task Content**: Analyzes task XML for malicious payloads or commands
+- **Privilege Context**: Flags tasks created by non-privileged users
+- **Correlation**: Links process creation with DCE-RPC activity within 5-minute windows
+
+**Key Fields Used:**
+- `process_name`: Looking for schtasks.exe, PowerShell with Register-ScheduledTask
+- `command_line`: Analyzing task commands (/create, /s, /tn)
+- `event_id`: Windows Event ID 4688, 4698/4702
+- `username`: Checking privilege context
+
+**Detection Logic:** Groups by source IP, pattern matches for schtasks commands, calculates threat scores based on volume (90th percentile), temporal bursts (<2s gaps), command entropy (>4.5), and multiple event types. Flags scores ≥50.
+"""
     
     def get_column_explanations(self) -> dict:
         return {
@@ -511,16 +524,30 @@ class PowerShellStrategy(HuntStrategy):
     
     def _get_suspicious_patterns(self) -> dict:
         """Return technique-specific suspicious patterns."""
-        # Define patterns based on ASOM requirements for this technique
         patterns = {
-            'processes': [],
-            'commands': []
+            'processes': [r'powershell', r'pwsh', r'System\.Management\.Automation'],
+            'commands': [r'-enc', r'-encodedcommand', r'downloadstring', r'iex', r'invoke-expression', 
+                        r'-nop', r'-w\s+hidden', r'bypass']
         }
-        
-        # Add technique-specific patterns here
-        # This would be customized per technique based on ASOM actions
-        
         return patterns
+    
+    def get_description(self) -> str:
+        return """
+**What This Strategy Detects:**
+Identifies suspicious PowerShell usage through:
+- **Unexpected Hosts**: Flags System.Management.Automation.dll loaded by non-standard processes (expected: powershell.exe, pwsh.exe; suspicious: everything else)
+- **Obfuscated Commands**: Uses Shannon entropy calculation to detect encoded/obfuscated PowerShell (entropy threshold: 4.5)
+- **Suspicious Patterns**: Detects common malicious techniques (downloads, execution bypasses, hidden windows)
+
+**Key Fields Used:**
+- `process_name`: Checking which process loaded PowerShell DLL via Sysmon Event ID 7 (ImageLoad)
+- `command_line`: Entropy analysis for obfuscation, pattern matching for suspicious arguments (-enc, -nop, -w hidden, bypass)
+- `event_id`: Sysmon Event ID 7 (ImageLoad), Windows Event ID 4103 (PowerShell execution)
+
+**Why Shannon Entropy?** High entropy (>4.5) indicates base64 encoding or obfuscation commonly used to evade detection. Normal PowerShell commands have lower entropy.
+
+**Detection Logic:** Groups by source, checks process names against allowlist, calculates command entropy, matches suspicious patterns (downloads, bypass flags), and combines multiple threat factors.
+"""
     
     def get_column_explanations(self) -> dict:
         return {
@@ -1717,16 +1744,33 @@ class DNSStrategy(HuntStrategy):
     
     def _get_suspicious_patterns(self) -> dict:
         """Return technique-specific suspicious patterns."""
-        # Define patterns based on ASOM requirements for this technique
+        # DNS-specific patterns - focusing on non-browser processes and suspicious query patterns
         patterns = {
-            'processes': [],
+            'processes': [r'cmd', r'powershell', r'rundll32', r'regsvr32', r'mshta', r'wscript', r'cscript'],
             'commands': []
         }
-        
-        # Add technique-specific patterns here
-        # This would be customized per technique based on ASOM actions
-        
         return patterns
+    
+    def get_description(self) -> str:
+        return """
+**What This Strategy Detects:**
+Identifies DNS-based threats through:
+- **Suspicious Process DNS**: Flags non-browser/non-system processes making DNS queries (cmd, powershell, rundll32, etc.)
+- **High Entropy Domains**: Detects DGA (Domain Generation Algorithm) domains via Shannon entropy analysis (threshold: 4.5)
+- **Query Volume Anomalies**: Identifies potential DNS tunneling through excessive query rates from single sources
+
+**Key Fields Used:**
+- `dns_query` or `query_name`: Domain entropy analysis for DGA detection
+- `process_name`: Checking which process initiated DNS queries (via Sysmon Event ID 22)
+- `timestamp`: Calculating queries per minute to detect tunneling
+- `source_ip`: Grouping queries by source for volume analysis
+
+**Why High Entropy?** DGA domains (used by malware to generate C2 domains) have high randomness. Example: normal domain "google.com" (entropy: ~3.2), DGA domain "xk3nmv2qpw9z.com" (entropy: ~3.9).  Above 4.5 indicates likely DGA.
+
+**Why Process Matters?** Browsers and system services legitimately query DNS. Command-line tools, scripts, and LOLBins making DNS queries often indicate C2 communication or reconnaissance.
+
+**Detection Logic:** Groups by source IP, calculates domain entropy, checks process names against suspicious list, monitors query frequency (>5/min suspicious), combines factors for threat scoring.
+"""
     
     def get_column_explanations(self) -> dict:
         return {
