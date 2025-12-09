@@ -1864,7 +1864,15 @@ class ValidAccountsStrategy(HuntStrategy):
         ]
     
     def _get_required_inputs(self) -> list:
-        return ['timestamp', 'source_ip', 'event_id', 'username']
+        return [
+            'timestamp',      # Required for all detections
+            'source_ip',      # Required for all detections
+            'event_id',       # Required for event filtering
+            'username',       # Required for all detections
+            'logon_type',     # Optional - needed for service account interactive login detection
+            'command_line',   # Optional - needed for reconnaissance command detection
+            'target_group'    # Optional - helpful for privileged group modification detection
+        ]
     
     def get_description(self) -> str:
         return """
@@ -2128,6 +2136,12 @@ Comprehensive detection of compromised or misused valid accounts through five sp
         if not user_col:
             return results
         
+        # logon_type is REQUIRED for proper service account detection
+        if not logon_type_col:
+            print(f"[Service Account] WARNING: logon_type column not found. Cannot detect interactive logins. Returning 0 results.")
+            print(f"[Service Account] HINT: Map logon_type to a column like 'winlog.logon.type' or 'event_data.LogonType' to enable this detection.")
+            return results
+        
         # Identify service accounts (expanded keywords)
         service_keywords = ['svc-', 'service-', 'system', 'sql-', 'iis-', 'apache', 'nginx', 'admin$', 'backup-', 'app-', 'robot', 'automation']
         
@@ -2135,41 +2149,23 @@ Comprehensive detection of compromised or misused valid accounts through five sp
             username = str(row[user_col]).lower()
             
             if any(keyword in username for keyword in service_keywords):
-                # Check for interactive logon types
-                if logon_type_col:
-                    logon_type = str(row[logon_type_col])
-                    if logon_type in ['2', '10']:
-                        results.append({
-                            'detection_type': 'Service Account Interactive Login',
-                            'username': row[user_col],
-                            'source_ip': row[src_col] if src_col else 'N/A',
-                            'event_count': 1,
-                            'threat_score': 90,
-                            'technique_id': 'T1078',
-                            'technique_name': 'Valid Accounts',
-                            'tactics': 'Persistence, Privilege Escalation',
-                            'evidence': f"Service account interactive login (Logon Type {logon_type})",
-                            'explanation': f"Service account {row[user_col]} performed interactive login (Type {logon_type}). Service accounts should only be used programmatically. Suggests compromise.",
-                            'first_seen': row.get(ts_col, 'N/A') if ts_col else 'N/A',
-                            'last_seen': row.get(ts_col, 'N/A') if ts_col else 'N/A',
-                            'logon_type': logon_type
-                        })
-                else:
-                    # Fallback: flag service account activity without logon type check
+                # Check for interactive logon types (Type 2 = Interactive, Type 10 = RemoteInteractive)
+                logon_type = str(row[logon_type_col])
+                if logon_type in ['2', '10']:
                     results.append({
-                        'detection_type': 'Service Account Activity',
+                        'detection_type': 'Service Account Interactive Login',
                         'username': row[user_col],
                         'source_ip': row[src_col] if src_col else 'N/A',
                         'event_count': 1,
-                        'threat_score': 65,
+                        'threat_score': 90,
                         'technique_id': 'T1078',
                         'technique_name': 'Valid Accounts',
                         'tactics': 'Persistence, Privilege Escalation',
-                        'evidence': f"Service account activity detected",
-                        'explanation': f"Service account {row[user_col]} activity detected. Review for unauthorized usage.",
+                        'evidence': f"Service account interactive login (Logon Type {logon_type})",
+                        'explanation': f"Service account {row[user_col]} performed interactive login (Type {logon_type}). Service accounts should only be used programmatically. Suggests compromise.",
                         'first_seen': row.get(ts_col, 'N/A') if ts_col else 'N/A',
                         'last_seen': row.get(ts_col, 'N/A') if ts_col else 'N/A',
-                        'logon_type': 'Unknown'
+                        'logon_type': logon_type
                     })
         
         return results
@@ -2230,7 +2226,10 @@ Comprehensive detection of compromised or misused valid accounts through five sp
         
         print(f"[Recon Commands] Columns found: cmd={cmd_col}, user={user_col}, src={src_col}")
         
+        # command_line is REQUIRED for reconnaissance command detection
         if not cmd_col:
+            print(f"[Recon Commands] WARNING: command_line column not found. Cannot detect reconnaissance commands. Returning 0 results.")
+            print(f"[Recon Commands] HINT: Map command_line to a column like 'process.command_line', 'CommandLine', or 'cmd' to enable this detection.")
             return results
         
         # Reconnaissance command patterns
