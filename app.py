@@ -3929,28 +3929,19 @@ class WatsonDashboard:
     
     def _show_asom_browser(self):
         """
-        Display ASOM (Actions for Security Operations Monitoring) browser.
-        Shows mappings between MITRE ATT&CK techniques, ASOM actions, and strategies.
+        Display ASOM (Analytic Scheme of Maneuver) browser.
+        Shows simple mapping between strategies and the actions they cover.
         """
-        print("📋 ASOM Browser - Strategy to Action Mappings")
+        print("📋 ASOM Browser - Analytic Scheme of Maneuver")
         print("=" * 80)
-        
-        # Group strategies by tactic
-        tactic_groups = {}
-        for strategy in self.strategies:
-            for tactic in strategy.tactics:
-                if tactic not in tactic_groups:
-                    tactic_groups[tactic] = []
-                if strategy not in tactic_groups[tactic]:
-                    tactic_groups[tactic].append(strategy)
         
         # Create HTML for ASOM browser
         html_content = f"""
         <div style="background: {GRADIENT_BLUE_PRIMARY}; color: white; padding: 24px; border-radius: 12px; margin: 8px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
             <h3 style="margin: 0 0 8px 0; color: white; font-size: 1.5em;">📋 ASOM Browser</h3>
             <p style="margin: 0; font-size: 0.95em; opacity: 0.95;">
-                Browse detection strategies aligned with ASOM (Actions for Security Operations Monitoring) framework.
-                Each strategy maps to MITRE ATT&CK techniques and implements specific detection actions.
+                Browse detection strategies and the Analytic Scheme of Maneuver (ASOM) actions they cover.
+                Each strategy implements specific detection actions for identifying threats.
             </p>
         </div>
         
@@ -3960,78 +3951,50 @@ class WatsonDashboard:
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
                     <div style="background: white; padding: 12px; border-radius: 6px; border-left: 4px solid #3b82f6;">
                         <div style="font-size: 2em; font-weight: bold; color: #3b82f6;">{len(self.strategies)}</div>
-                        <div style="font-size: 0.9em; color: #666;">Strategies</div>
+                        <div style="font-size: 0.9em; color: #666;">Detection Strategies</div>
                     </div>
                     <div style="background: white; padding: 12px; border-radius: 6px; border-left: 4px solid #8b5cf6;">
                         <div style="font-size: 2em; font-weight: bold; color: #8b5cf6;">{sum(len(s.asom_actions) for s in self.strategies)}</div>
-                        <div style="font-size: 0.9em; color: #666;">ASOM Actions</div>
-                    </div>
-                    <div style="background: white; padding: 12px; border-radius: 6px; border-left: 4px solid #ec4899;">
-                        <div style="font-size: 2em; font-weight: bold; color: #ec4899;">{len(set(s.technique_id for s in self.strategies))}</div>
-                        <div style="font-size: 0.9em; color: #666;">ATT&CK Techniques</div>
-                    </div>
-                    <div style="background: white; padding: 12px; border-radius: 6px; border-left: 4px solid #10b981;">
-                        <div style="font-size: 2em; font-weight: bold; color: #10b981;">{len(tactic_groups)}</div>
-                        <div style="font-size: 0.9em; color: #666;">Tactics Covered</div>
+                        <div style="font-size: 0.9em; color: #666;">ASOM Actions Covered</div>
                     </div>
                 </div>
             </div>
+        
+            <h4 style="margin: 16px 0 12px 0; font-size: 1.2em; color: #1a1a1a;">Strategies and Their Actions</h4>
         """
         
-        # Display strategies grouped by tactic
-        for tactic in sorted(tactic_groups.keys()):
-            strategies = tactic_groups[tactic]
+        # Display each strategy with its actions
+        for i, strategy in enumerate(self.strategies):
+            border_style = "border-bottom: 1px solid #e0e0e0;" if i < len(self.strategies) - 1 else ""
+            
+            # Display all actions for this strategy
+            actions_display = ""
+            for j, action in enumerate(strategy.asom_actions, 1):
+                action_preview = action[:150] + "..." if len(action) > 150 else action
+                actions_display += f"<div style='margin: 6px 0; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; border-left: 3px solid #3b82f6;'><strong>Action {j}:</strong> {action_preview}</div>"
             
             html_content += f"""
-            <div style="margin-bottom: 16px;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 16px; border-radius: 8px 8px 0 0;">
-                    <h4 style="margin: 0; font-size: 1.1em;">🎯 {tactic} ({len(strategies)} strategies)</h4>
-                </div>
-                <div style="background: white; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px;">
-            """
-            
-            for i, strategy in enumerate(strategies):
-                border_style = "border-bottom: 1px solid #f0f0f0;" if i < len(strategies) - 1 else ""
-                
-                # Truncate actions for display
-                actions_display = ""
-                for j, action in enumerate(strategy.asom_actions[:3], 1):
-                    action_preview = action[:120] + "..." if len(action) > 120 else action
-                    actions_display += f"<div style='margin: 4px 0; padding-left: 12px; border-left: 2px solid #e0e0e0;'>{j}. {action_preview}</div>"
-                
-                if len(strategy.asom_actions) > 3:
-                    actions_display += f"<div style='margin: 4px 0; padding-left: 12px; font-style: italic; color: #666;'>... and {len(strategy.asom_actions) - 3} more action(s)</div>"
-                
-                html_content += f"""
-                <div style="padding: 16px; {border_style}">
-                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                        <div>
-                            <strong style="font-size: 1.05em; color: #1a1a1a;">{strategy.name}</strong>
-                            <div style="margin-top: 4px;">
-                                <span style="display: inline-block; background: #3b82f6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; margin-right: 4px;">{strategy.technique_id}</span>
-                                <span style="color: #666; font-size: 0.9em;">{len(strategy.asom_actions)} detection action(s)</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div style="margin-top: 12px; font-size: 0.9em; color: #444;">
-                        <div style="font-weight: 600; margin-bottom: 6px; color: #666;">Detection Actions:</div>
-                        {actions_display}
+            <div style="background: white; padding: 20px; margin-bottom: 8px; border-radius: 8px; border: 1px solid #e0e0e0; {border_style}">
+                <div style="margin-bottom: 12px;">
+                    <h5 style="margin: 0; font-size: 1.15em; color: #1a1a1a;">{strategy.name}</h5>
+                    <div style="margin-top: 6px; color: #666; font-size: 0.9em;">
+                        <span style="display: inline-block; margin-right: 8px;">📌 {len(strategy.asom_actions)} action(s)</span>
                     </div>
                 </div>
-                """
-            
-            html_content += """
+                <div style="margin-top: 12px;">
+                    {actions_display}
                 </div>
             </div>
             """
         
         html_content += """
+        </div>
+        
         <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-top: 16px;">
-            <h4 style="margin: 0 0 8px 0; font-size: 1.1em;">ℹ️ About ASOM Alignment</h4>
+            <h4 style="margin: 0 0 8px 0; font-size: 1.1em;">ℹ️ About ASOM</h4>
             <p style="margin: 4px 0; font-size: 0.95em; line-height: 1.6;">
-                These strategies are aligned with the <strong>Actions for Security Operations Monitoring (ASOM)</strong> framework.
-                Each strategy implements one or more detection actions from ASOM, mapped to MITRE ATT&CK techniques and tactics.
-                The focus is on simple, rule-based, atomic detections that are directly actionable by security analysts.
+                <strong>ASOM (Analytic Scheme of Maneuver)</strong> defines the detection actions that analysts can use to identify threats.
+                Each strategy above implements specific ASOM actions with simple, rule-based logic that is directly actionable.
             </p>
             <p style="margin: 8px 0 0 0; font-size: 0.9em; color: #666; font-style: italic;">
                 💡 Tip: Select a strategy from the tabs above to run its detections on your data.
