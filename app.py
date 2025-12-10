@@ -554,7 +554,7 @@ class WatsonDashboard:
                 ),
                 'table_dropdown': widgets.Dropdown(
                     options=self.all_tables,
-                    description='Select Table:',
+                    description='Primary Table:',
                     style={'description_width': 'initial'}
                 ),
                 'load_table_button': widgets.Button(
@@ -563,8 +563,49 @@ class WatsonDashboard:
                     icon='database',
                     layout=widgets.Layout(width='140px')
                 ),
+                # Multi-table support
+                'enable_multi_table': widgets.Checkbox(
+                    value=False,
+                    description='Enable Multi-Table Join',
+                    style={'description_width': 'initial'}
+                ),
+                'secondary_table_dropdown': widgets.Dropdown(
+                    options=self.all_tables,
+                    description='Secondary Table:',
+                    style={'description_width': 'initial'},
+                    disabled=True
+                ),
+                'load_secondary_button': widgets.Button(
+                    description='📊 Load Secondary',
+                    button_style='info',
+                    icon='database',
+                    layout=widgets.Layout(width='150px'),
+                    disabled=True
+                ),
+                'join_key_primary': widgets.Dropdown(
+                    options=[],
+                    description='Join on (Primary):',
+                    style={'description_width': 'initial'},
+                    disabled=True
+                ),
+                'join_key_secondary': widgets.Dropdown(
+                    options=[],
+                    description='Join on (Secondary):',
+                    style={'description_width': 'initial'},
+                    disabled=True
+                ),
+                'correlation_window': widgets.IntText(
+                    value=120,
+                    description='Time Window (sec):',
+                    min=1,
+                    max=3600,
+                    style={'description_width': 'initial'},
+                    disabled=True
+                ),
                 'column_dropdowns': {},
+                'secondary_column_dropdowns': {},
                 'column_mapping_container': widgets.VBox([]),
+                'secondary_columns': [],
                 'limit_input': widgets.IntText(
                     value=10000,
                     description='Row Limit:',
@@ -638,12 +679,20 @@ class WatsonDashboard:
             def make_load_config_handler(tab_idx):
                 return lambda btn: self._load_strategy_config(btn, tab_idx)
             
+            def make_multi_table_toggle_handler(tab_idx):
+                return lambda change: self._on_multi_table_toggle(change, tab_idx)
+            
+            def make_load_secondary_handler(tab_idx):
+                return lambda btn: self._on_load_secondary_table(btn, tab_idx)
+            
             tab_data['table_search'].observe(make_table_search_handler(i), names='value')
             tab_data['load_table_button'].on_click(make_load_table_handler(i))
             tab_data['run_button'].on_click(make_run_analysis_handler(i))
             tab_data['enable_date_filter'].observe(make_date_filter_handler(i), names='value')
             tab_data['save_config_button'].on_click(make_save_config_handler(i))
             tab_data['load_config_button'].on_click(make_load_config_handler(i))
+            tab_data['enable_multi_table'].observe(make_multi_table_toggle_handler(i), names='value')
+            tab_data['load_secondary_button'].on_click(make_load_secondary_handler(i))
             
             # Create strategy description with input details
             input_descriptions = self._get_input_descriptions(strategy)
@@ -697,12 +746,32 @@ class WatsonDashboard:
             config_accordion.selected_index = None  # Start collapsed - used less frequently
             
             # Group data source controls compactly with subtle section header
+            # Build multi-table section conditionally
+            multi_table_section = widgets.VBox([
+                widgets.HTML("<div style='margin: 8px 0 4px 0; font-size: 0.85em; color: #666;'>⚙️ <strong>Multi-Table Join Configuration</strong></div>"),
+                tab_data['secondary_table_dropdown'],
+                tab_data['load_secondary_button'],
+                widgets.HTML("<div style='margin: 8px 0 2px 0; font-size: 0.8em; color: #888;'>Configure how tables will be joined:</div>"),
+                widgets.HBox([tab_data['join_key_primary'], tab_data['join_key_secondary']]),
+                widgets.HBox([
+                    tab_data['correlation_window'],
+                    widgets.HTML("<div style='margin-left: 10px; padding-top: 8px; font-size: 0.8em; color: #888;'>Time window for temporal correlation</div>")
+                ])
+            ], layout=widgets.Layout(margin='5px 0 0 15px', padding='8px', border='1px solid #e0e0e0', border_radius='4px'))
+            
             data_source_section = widgets.VBox([
                 widgets.HTML("<div style='margin: 4px 0 3px 0; font-size: 0.9em; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.5px;'>1️⃣ Select Data Source</div>"),
                 tab_data['table_search'],
                 tab_data['table_dropdown'],
-                tab_data['load_table_button']
+                tab_data['load_table_button'],
+                widgets.HTML("<div style='margin: 8px 0 4px 0;'></div>"),
+                tab_data['enable_multi_table'],
+                multi_table_section
             ], layout=widgets.Layout(margin='0 0 10px 0'))
+            
+            # Store reference to multi-table section for show/hide
+            tab_data['multi_table_section'] = multi_table_section
+            multi_table_section.layout.display = 'none'  # Hidden by default
             
             # Column mapping section with subtle header
             column_mapping_section = widgets.VBox([
@@ -1880,6 +1949,79 @@ class WatsonDashboard:
             clear_output(wait=True)
             print(f"✅ Loaded {len(tab_data['available_columns'])} columns from {current_table}")
             print("Configure column mappings above and click 'Run Analysis' when ready.")
+            
+            # Update join key options if multi-table is enabled
+            if tab_data['enable_multi_table'].value and tab_data['available_columns']:
+                tab_data['join_key_primary'].options = tab_data['available_columns']
+    
+    def _on_multi_table_toggle(self, change, tab_index: int):
+        """
+        Handle multi-table enable/disable toggle.
+        
+        Args:
+            change: Change event from checkbox widget
+            tab_index: Index of the tab
+        """
+        tab_data = self.strategy_tab_contents[tab_index]
+        enabled = change['new']
+        
+        # Show/hide multi-table section
+        if enabled:
+            tab_data['multi_table_section'].layout.display = 'block'
+            tab_data['secondary_table_dropdown'].disabled = False
+            tab_data['load_secondary_button'].disabled = False
+            tab_data['join_key_primary'].disabled = False
+            tab_data['join_key_secondary'].disabled = False
+            tab_data['correlation_window'].disabled = False
+        else:
+            tab_data['multi_table_section'].layout.display = 'none'
+            tab_data['secondary_table_dropdown'].disabled = True
+            tab_data['load_secondary_button'].disabled = True
+            tab_data['join_key_primary'].disabled = True
+            tab_data['join_key_secondary'].disabled = True
+            tab_data['correlation_window'].disabled = True
+    
+    def _on_load_secondary_table(self, button, tab_index: int):
+        """
+        Load secondary table schema for multi-table join.
+        
+        Args:
+            button: Button widget that triggered this callback
+            tab_index: Index of the tab
+        """
+        tab_data = self.strategy_tab_contents[tab_index]
+        secondary_table = tab_data['secondary_table_dropdown'].value
+        
+        if not secondary_table or secondary_table in ['No tables available', 'Error loading tables', 'No matching tables']:
+            with tab_data['output_widget']:
+                print("⚠️ Please select a valid secondary table.")
+            return
+        
+        # Get column information for secondary table
+        with tab_data['output_widget']:
+            print(f"📥 Loading schema for secondary table {secondary_table}...")
+        
+        tab_data['secondary_columns'] = self._get_table_columns(secondary_table)
+        
+        # Update join key dropdown for secondary table
+        tab_data['join_key_secondary'].options = tab_data['secondary_columns']
+        
+        # Auto-suggest common join keys
+        primary_cols = set(tab_data['available_columns'])
+        secondary_cols = set(tab_data['secondary_columns'])
+        common_cols = primary_cols.intersection(secondary_cols)
+        
+        # Prioritize common join keys
+        for common_key in ['source_ip', 'src_ip', 'ip', 'host', 'user', 'username']:
+            if common_key in common_cols:
+                tab_data['join_key_primary'].value = common_key
+                tab_data['join_key_secondary'].value = common_key
+                break
+        
+        with tab_data['output_widget']:
+            print(f"✅ Loaded {len(tab_data['secondary_columns'])} columns from {secondary_table}")
+            if common_cols:
+                print(f"💡 Suggested join keys: {', '.join(list(common_cols)[:5])}")
     
     def _display_summary_stats(self, df: pd.DataFrame, strategy: ASOMLStrategy):
         """
@@ -3093,6 +3235,76 @@ class WatsonDashboard:
         
         return df
     
+    def _build_query(self, table: str, col_map: dict, tab_data: dict, limit: int) -> str:
+        """
+        Build a SQL query with date filtering and limit.
+        
+        Args:
+            table: Table name
+            col_map: Column mapping dictionary
+            tab_data: Tab data dictionary with filter settings
+            limit: Row limit
+            
+        Returns:
+            SQL query string, or None if validation fails
+        """
+        try:
+            # Sanitize all column names and table name
+            sanitized_columns = [self._sanitize_identifier(col) for col in col_map.values()]
+            sanitized_table = self._sanitize_identifier(table)
+            
+            # Build the query
+            query = f"SELECT {', '.join(sanitized_columns)} FROM {sanitized_table}"
+            
+            # Add date filtering if enabled
+            where_clauses = []
+            if tab_data['enable_date_filter'].value:
+                # Find timestamp column for date filtering
+                timestamp_col = col_map.get('timestamp')
+                if timestamp_col:
+                    sanitized_ts_col = self._sanitize_identifier(timestamp_col)
+                    
+                    if tab_data['start_date'].value:
+                        # Validate date value - DatePicker should provide datetime.date object
+                        start_date = tab_data['start_date'].value
+                        if not isinstance(start_date, (date, datetime.datetime)):
+                            print("⚠️ Invalid start date format")
+                            return None
+                        start_date_str = start_date.isoformat() if hasattr(start_date, 'isoformat') else str(start_date)
+                        # Sanitize date string - ensure it matches YYYY-MM-DD format
+                        if not re.match(r'^\d{4}-\d{2}-\d{2}$', start_date_str):
+                            print("⚠️ Invalid start date format")
+                            return None
+                        where_clauses.append(f"CAST({sanitized_ts_col} AS DATE) >= DATE '{start_date_str}'")
+                    
+                    if tab_data['end_date'].value:
+                        # Validate date value - DatePicker should provide datetime.date object
+                        end_date = tab_data['end_date'].value
+                        if not isinstance(end_date, (date, datetime.datetime)):
+                            print("⚠️ Invalid end date format")
+                            return None
+                        end_date_str = end_date.isoformat() if hasattr(end_date, 'isoformat') else str(end_date)
+                        # Sanitize date string - ensure it matches YYYY-MM-DD format
+                        if not re.match(r'^\d{4}-\d{2}-\d{2}$', end_date_str):
+                            print("⚠️ Invalid end date format")
+                            return None
+                        where_clauses.append(f"CAST({sanitized_ts_col} AS DATE) <= DATE '{end_date_str}'")
+                else:
+                    # Warn user that date filtering requires timestamp column
+                    print("⚠️ Date filtering requires a 'timestamp' column to be mapped.")
+                    return None
+            
+            if where_clauses:
+                query += " WHERE " + " AND ".join(where_clauses)
+            
+            query += f" LIMIT {limit}"
+            
+            return query
+            
+        except ValueError as e:
+            print(f"❌ Invalid SQL identifier: {e}")
+            return None
+    
     def _run_analysis(self, button, tab_index: int):
         """
         Execute the selected hunt strategy on the selected table.
@@ -3126,73 +3338,20 @@ class WatsonDashboard:
         for required_input, dropdown in column_dropdowns.items():
             col_map[required_input] = dropdown.value
         
-        # Build SELECT query with sanitized identifiers, date filtering, and LIMIT
-        try:
-            # Sanitize all column names and table name
-            sanitized_columns = [self._sanitize_identifier(col) for col in col_map.values()]
-            sanitized_table = self._sanitize_identifier(current_table)
-            
-            # Validate and sanitize limit value (IntText widget provides basic validation)
-            limit = max(1, min(1000000, int(tab_data['limit_input'].value)))
-            
-            # Build the query
-            query = f"SELECT {', '.join(sanitized_columns)} FROM {sanitized_table}"
-            
-            # Add date filtering if enabled
-            where_clauses = []
-            if tab_data['enable_date_filter'].value:
-                # Find timestamp column for date filtering
-                timestamp_col = col_map.get('timestamp')
-                if timestamp_col:
-                    sanitized_ts_col = self._sanitize_identifier(timestamp_col)
-                    
-                    if tab_data['start_date'].value:
-                        # Validate date value - DatePicker should provide datetime.date object
-                        start_date = tab_data['start_date'].value
-                        if not isinstance(start_date, (date, datetime.datetime)):
-                            with tab_data['output_widget']:
-                                print("⚠️ Invalid start date format")
-                            return
-                        start_date_str = start_date.isoformat() if hasattr(start_date, 'isoformat') else str(start_date)
-                        # Sanitize date string - ensure it matches YYYY-MM-DD format
-                        if not re.match(r'^\d{4}-\d{2}-\d{2}$', start_date_str):
-                            with tab_data['output_widget']:
-                                print("⚠️ Invalid start date format")
-                            return
-                        where_clauses.append(f"CAST({sanitized_ts_col} AS DATE) >= DATE '{start_date_str}'")
-                    
-                    if tab_data['end_date'].value:
-                        # Validate date value - DatePicker should provide datetime.date object
-                        end_date = tab_data['end_date'].value
-                        if not isinstance(end_date, (date, datetime.datetime)):
-                            with tab_data['output_widget']:
-                                print("⚠️ Invalid end date format")
-                            return
-                        end_date_str = end_date.isoformat() if hasattr(end_date, 'isoformat') else str(end_date)
-                        # Sanitize date string - ensure it matches YYYY-MM-DD format
-                        if not re.match(r'^\d{4}-\d{2}-\d{2}$', end_date_str):
-                            with tab_data['output_widget']:
-                                print("⚠️ Invalid end date format")
-                            return
-                        where_clauses.append(f"CAST({sanitized_ts_col} AS DATE) <= DATE '{end_date_str}'")
-                else:
-                    # Warn user that date filtering requires timestamp column
-                    with tab_data['output_widget']:
-                        print("⚠️ Date filtering requires a 'timestamp' column to be mapped. Please load the table schema and ensure a timestamp field is available.")
-                    return
-            
-            if where_clauses:
-                query += " WHERE " + " AND ".join(where_clauses)
-            
-            query += f" LIMIT {limit}"
-            
-        except ValueError as e:
-            with tab_data['output_widget']:
-                print(f"❌ Invalid SQL identifier: {e}")
-            return
+        # Check if multi-table join is enabled
+        multi_table_enabled = tab_data['enable_multi_table'].value
+        secondary_table = tab_data['secondary_table_dropdown'].value if multi_table_enabled else None
+        
+        # Validate and sanitize limit value (IntText widget provides basic validation)
+        limit = max(1, min(1000000, int(tab_data['limit_input'].value)))
         
         with tab_data['output_widget']:
-            print(f"🔍 Running {strategy.name} on {current_table} (limit: {limit})...")
+            if multi_table_enabled and secondary_table:
+                print(f"🔍 Running {strategy.name} with multi-table join (limit: {limit})...")
+                print(f"   Primary: {current_table}")
+                print(f"   Secondary: {secondary_table}")
+            else:
+                print(f"🔍 Running {strategy.name} on {current_table} (limit: {limit})...")
             
             # Create progress indicator
             progress_bar = widgets.IntProgress(
@@ -3209,9 +3368,92 @@ class WatsonDashboard:
             display(progress_box)
             
             try:
-                # Execute query
-                progress_bar.value = 20
-                df = isf.run_query(query)
+                # Build and execute queries
+                if multi_table_enabled and secondary_table and secondary_table not in ['No tables available', 'Error loading tables', 'No matching tables']:
+                    # Multi-table mode: query both tables and join
+                    progress_label.value = "<b>Querying primary table...</b>"
+                    progress_bar.value = 10
+                    
+                    # Build primary query
+                    primary_query = self._build_query(current_table, col_map, tab_data, limit)
+                    if not primary_query:
+                        progress_box.close()
+                        return
+                    
+                    df_primary = isf.run_query(primary_query)
+                    
+                    if df_primary is None or df_primary.empty:
+                        progress_box.close()
+                        print("⚠️ Primary table query returned no data.")
+                        return
+                    
+                    progress_bar.value = 30
+                    progress_label.value = "<b>Querying secondary table...</b>"
+                    
+                    # Build secondary query - get all columns from secondary table
+                    secondary_cols = tab_data['secondary_columns']
+                    if not secondary_cols:
+                        progress_box.close()
+                        print("⚠️ Please load secondary table schema first.")
+                        return
+                    
+                    sanitized_sec_cols = [self._sanitize_identifier(col) for col in secondary_cols]
+                    sanitized_sec_table = self._sanitize_identifier(secondary_table)
+                    secondary_query = f"SELECT {', '.join(sanitized_sec_cols)} FROM {sanitized_sec_table} LIMIT {limit}"
+                    
+                    df_secondary = isf.run_query(secondary_query)
+                    
+                    if df_secondary is None or df_secondary.empty:
+                        progress_box.close()
+                        print("⚠️ Secondary table query returned no data.")
+                        print("💡 Proceeding with primary table data only...")
+                        df = df_primary
+                    else:
+                        progress_bar.value = 50
+                        progress_label.value = "<b>Joining tables...</b>"
+                        
+                        # Use DataCorrelator to join tables
+                        from strategies import DataCorrelator
+                        correlator = DataCorrelator()
+                        
+                        # Get join configuration
+                        join_key_primary = tab_data['join_key_primary'].value
+                        join_key_secondary = tab_data['join_key_secondary'].value
+                        correlation_window = int(tab_data['correlation_window'].value)
+                        
+                        if not join_key_primary or not join_key_secondary:
+                            progress_box.close()
+                            print("⚠️ Please configure join keys.")
+                            return
+                        
+                        # Determine timestamp columns for temporal join
+                        timestamp_col_primary = col_map.get('timestamp', 'timestamp')
+                        timestamp_col_secondary = 'timestamp' if 'timestamp' in secondary_cols else timestamp_col_primary
+                        
+                        # Perform temporal join
+                        df = correlator.temporal_join(
+                            df_primary, df_secondary,
+                            timestamp_col_primary, timestamp_col_secondary,
+                            [join_key_primary],  # join_keys must match
+                            window_seconds=correlation_window
+                        )
+                        
+                        if df.empty:
+                            progress_box.close()
+                            print("⚠️ No matching records found between tables within the correlation window.")
+                            print(f"💡 Try increasing the correlation window (currently {correlation_window}s)")
+                            return
+                        
+                        print(f"✅ Joined {len(df_primary)} primary + {len(df_secondary)} secondary → {len(df)} correlated records")
+                else:
+                    # Single table mode
+                    progress_bar.value = 20
+                    query = self._build_query(current_table, col_map, tab_data, limit)
+                    if not query:
+                        progress_box.close()
+                        return
+                    
+                    df = isf.run_query(query)
                 
                 if df is None or df.empty:
                     progress_box.close()
