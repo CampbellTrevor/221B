@@ -17,7 +17,7 @@ import datetime
 from datetime import date
 from multiprocessing import cpu_count
 from ionic_scripting_framework import isf
-from strategies import HuntStrategy
+from strategies import ASOMLStrategy
 import html as html_lib  # For HTML escaping
 
 # Try to import plotly for visualizations (optional)
@@ -2943,7 +2943,7 @@ class WatsonDashboard:
         # Check if strategy supports parallel processing
         # Only use parallel processing if the method has been overridden (not just inherited)
         strategy_class = strategy.__class__
-        base_class = HuntStrategy
+        base_class = ASOMLStrategy
         has_custom_parallel = (hasattr(strategy_class, 'parallel_analyze') and 
                                strategy_class.parallel_analyze != base_class.parallel_analyze)
         
