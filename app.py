@@ -90,7 +90,7 @@ class WatsonDashboard:
         Initialize the WatsonDashboard.
         
         Args:
-            strategies: List of HuntStrategy objects to make available
+            strategies: List of ASOMLStrategy objects to make available
             cache_dir: Directory to store cached data (default: '.221b_cache')
             cache_days: Number of days to keep cached tables list (default: 7)
         """
@@ -467,7 +467,7 @@ class WatsonDashboard:
             print(f"Error fetching tables: {e}")
             return ['Error loading tables']
     
-    def _get_input_descriptions(self, strategy: HuntStrategy) -> dict:
+    def _get_input_descriptions(self, strategy: ASOMLStrategy) -> dict:
         """
         Get descriptions and examples for each required input of a strategy.
         
@@ -507,7 +507,7 @@ class WatsonDashboard:
         return {inp: descriptions.get(inp, ("Required field", "")) 
                 for inp in strategy.required_inputs}
     
-    def _get_strategy_recommendation(self, strategy: HuntStrategy) -> str:
+    def _get_strategy_recommendation(self, strategy: ASOMLStrategy) -> str:
         """
         Get contextual recommendation for when to use a strategy.
         
@@ -1881,7 +1881,7 @@ class WatsonDashboard:
             print(f"✅ Loaded {len(tab_data['available_columns'])} columns from {current_table}")
             print("Configure column mappings above and click 'Run Analysis' when ready.")
     
-    def _display_summary_stats(self, df: pd.DataFrame, strategy: HuntStrategy):
+    def _display_summary_stats(self, df: pd.DataFrame, strategy: ASOMLStrategy):
         """
         Display summary statistics dashboard for analysis results.
         
@@ -1982,7 +1982,7 @@ class WatsonDashboard:
                 # Silently fail if visualization doesn't work
                 pass
     
-    def _get_recommended_data_sources_html(self, strategy: HuntStrategy) -> str:
+    def _get_recommended_data_sources_html(self, strategy: ASOMLStrategy) -> str:
         """
         Generate HTML for recommended data sources for a given strategy.
         
@@ -2027,7 +2027,7 @@ class WatsonDashboard:
         
         return rec_html
     
-    def _display_recommended_data_sources(self, strategy: HuntStrategy):
+    def _display_recommended_data_sources(self, strategy: ASOMLStrategy):
         """
         Display recommended data sources for a given strategy.
         
@@ -2925,7 +2925,7 @@ class WatsonDashboard:
         except Exception as e:
             print(f"❌ Failed to load configuration: {e}")
     
-    def _run_parallel_analysis(self, strategy: HuntStrategy, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+    def _run_parallel_analysis(self, strategy: ASOMLStrategy, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
         """
         Run strategy analysis with multiprocessing support.
         
