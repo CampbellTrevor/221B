@@ -12,6 +12,7 @@ import pandas as pd
 import re
 import json
 import os
+import sys
 import time
 import datetime
 from datetime import date
@@ -459,33 +460,72 @@ class WatsonDashboard:
             
             # Execute query with feedback
             print("   Executing query via IONIC Scripting Framework...")
-            df = isf.run_query(query)
-            print(f"   Query completed. Result type: {type(df)}")
+            import sys
+            sys.stdout.flush()  # Ensure output is visible
             
-            if df is not None and not df.empty:
-                tables = df['table_name'].tolist()
+            df = isf.run_query(query)
+            
+            # Safely get the type information
+            try:
+                df_type = type(df).__name__
+                df_module = type(df).__module__
+                print(f"   Query completed. Result type: {df_module}.{df_type}")
+                sys.stdout.flush()
+            except Exception as type_error:
+                print(f"   Query completed. Result: <error getting type: {type_error}>")
+                sys.stdout.flush()
+            
+            # Check the result and process accordingly
+            try:
+                # First check if df is None
+                if df is None:
+                    print("⚠️ Query returned None (database connection may have failed)")
+                    sys.stdout.flush()
+                    print("   Check IONIC configuration and database credentials")
+                    sys.stdout.flush()
+                    return ['Error loading tables - check database connection']
                 
-                # Save to cache
-                cache_data = {
-                    'timestamp': datetime.datetime.now().isoformat(),
-                    'tables': tables
-                }
-                with open(self.tables_cache_file, 'w') as f:
-                    json.dump(cache_data, f, indent=2)
-                
-                print(f"✅ Cached {len(tables)} tables")
-                return tables
-            elif df is not None and df.empty:
-                print("⚠️ Query returned empty DataFrame (no tables found in database)")
-                print("   This may indicate:")
-                print("   - Database has no user tables")
-                print("   - Connection permissions issue")
-                print("   - Schema filter is too restrictive")
-                return ['No tables available']
-            else:
-                print("⚠️ Query returned None (database connection may have failed)")
-                print("   Check IONIC configuration and database credentials")
-                return ['Error loading tables - check database connection']
+                # Check if it's a DataFrame and if it has data
+                if hasattr(df, 'empty'):
+                    if df.empty:
+                        print("⚠️ Query returned empty DataFrame (no tables found in database)")
+                        sys.stdout.flush()
+                        print("   This may indicate:")
+                        print("   - Database has no user tables")
+                        print("   - Connection permissions issue")
+                        print("   - Schema filter is too restrictive")
+                        sys.stdout.flush()
+                        return ['No tables available']
+                    else:
+                        # DataFrame has data, extract tables
+                        tables = df['table_name'].tolist()
+                        
+                        # Save to cache
+                        cache_data = {
+                            'timestamp': datetime.datetime.now().isoformat(),
+                            'tables': tables
+                        }
+                        with open(self.tables_cache_file, 'w') as f:
+                            json.dump(cache_data, f, indent=2)
+                        
+                        print(f"✅ Cached {len(tables)} tables")
+                        sys.stdout.flush()
+                        return tables
+                else:
+                    # Not a DataFrame-like object
+                    print(f"⚠️ Query returned unexpected type (not a DataFrame)")
+                    sys.stdout.flush()
+                    print(f"   Returned object does not have 'empty' attribute")
+                    sys.stdout.flush()
+                    return ['Error loading tables - unexpected return type']
+                    
+            except Exception as check_error:
+                print(f"❌ Error processing query result: {check_error}")
+                sys.stdout.flush()
+                import traceback
+                traceback.print_exc()
+                sys.stdout.flush()
+                return ['Error loading tables']
         except Exception as e:
             print(f"❌ Error fetching tables: {e}")
             import traceback
