@@ -397,10 +397,20 @@ class WatsonDashboard:
         # Delete old cache if it exists
         if os.path.exists(self.tables_cache_file):
             os.remove(self.tables_cache_file)
+            print("   Deleted old cache file")
+        else:
+            print("   No existing cache file to delete")
         
         # Force re-query
         tables = self._get_available_tables()
-        print("✅ Cache refreshed successfully!")
+        
+        # Verify cache was created
+        if os.path.exists(self.tables_cache_file):
+            print(f"✅ Cache refreshed successfully! New cache file created.")
+        else:
+            print(f"⚠️ Cache refresh completed but cache file was not created")
+            print(f"   This indicates the database query returned no results or failed")
+        
         return tables
     
     def _get_available_tables(self) -> list:
@@ -446,7 +456,11 @@ class WatsonDashboard:
             WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
             ORDER BY table_name
             """
+            
+            # Execute query with feedback
+            print("   Executing query via IONIC Scripting Framework...")
             df = isf.run_query(query)
+            print(f"   Query completed. Result type: {type(df)}")
             
             if df is not None and not df.empty:
                 tables = df['table_name'].tolist()
@@ -461,10 +475,21 @@ class WatsonDashboard:
                 
                 print(f"✅ Cached {len(tables)} tables")
                 return tables
-            else:
+            elif df is not None and df.empty:
+                print("⚠️ Query returned empty DataFrame (no tables found in database)")
+                print("   This may indicate:")
+                print("   - Database has no user tables")
+                print("   - Connection permissions issue")
+                print("   - Schema filter is too restrictive")
                 return ['No tables available']
+            else:
+                print("⚠️ Query returned None (database connection may have failed)")
+                print("   Check IONIC configuration and database credentials")
+                return ['Error loading tables - check database connection']
         except Exception as e:
-            print(f"Error fetching tables: {e}")
+            print(f"❌ Error fetching tables: {e}")
+            import traceback
+            traceback.print_exc()
             return ['Error loading tables']
     
     def _get_input_descriptions(self, strategy: ASOMLStrategy) -> dict:
