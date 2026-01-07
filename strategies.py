@@ -57,6 +57,7 @@ ML_MIN_SAMPLES = 50  # Minimum samples required to apply ML
 ML_CONTAMINATION = 0.1  # Expected proportion of outliers (10%)
 ML_RANDOM_STATE = 42  # For reproducible results
 ML_MIN_SAMPLES_PER_CLUSTER = 15  # Minimum samples per cluster
+ML_DNS_C2_THRESHOLD = 70  # Threshold for DNS C2 ML detection (0-100)
 
 # Feature normalization thresholds for explainability
 ML_NORM_BYTES_HIGH = 100_000_000  # 100MB threshold for high data volume
@@ -1623,10 +1624,10 @@ class DNSC2Strategy(ASOMLStrategy):
         else:
             ml_scores = np.zeros(len(anomaly_scores))
         
-        # Build results for high-confidence detections (score > 90)
+        # Build results for high-confidence detections
         results = []
         for i, idx in enumerate(feature_indices):
-            if predictions[i] == -1 and ml_scores[i] > 70:  # Lowered from 90 for testing
+            if predictions[i] == -1 and ml_scores[i] > ML_DNS_C2_THRESHOLD:
                 row = df.loc[idx]
                 ml_score = ml_scores[i]
                 

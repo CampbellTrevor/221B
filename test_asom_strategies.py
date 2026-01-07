@@ -17,6 +17,12 @@ from strategies import (
 )
 
 
+# Test constants for DNS C2 detection
+HIGH_ENTROPY_DOMAIN = 'adfasdkfjhaksjdfhaksjdhfaksjdhfkajsdhfkajsdhf.com'  # High entropy domain for testing
+BASE64_ENCODED_COMMAND = 'powershell.exe -enc YmFzZTY0ZW5jb2RlZGNvbW1hbmQ='  # Base64 encoded command for testing
+LONG_RANDOM_DOMAIN = 'aaaaabbbbbcccccdddddeeeeefffffggggg'  # Long random string for DGA-like testing
+
+
 class TestCompromisedCredentialsStrategy(unittest.TestCase):
     """Test CCIR 1: Compromised Credentials Strategy."""
     
@@ -479,7 +485,7 @@ class TestDNSC2Strategy(unittest.TestCase):
         for i in range(5):
             data.append({
                 'timestamp': base_time + timedelta(minutes=20 + i),
-                'query': 'adfasdkfjhaksjdfhaksjdhfaksjdhfkajsdhfkajsdhf.com',  # High entropy
+                'query': HIGH_ENTROPY_DOMAIN,
                 'query_type': 'TXT',  # Suspicious type
                 'source_ip': '192.168.1.100',
                 'hostname': 'workstation1',
@@ -531,7 +537,7 @@ class TestDNSC2Strategy(unittest.TestCase):
                 'source_ip': '10.0.0.100',
                 'hostname': 'compromised-host',
                 'process_name': 'powershell.exe',
-                'command_line': 'powershell.exe -enc YmFzZTY0ZW5jb2RlZGNvbW1hbmQ=',  # High entropy
+                'command_line': BASE64_ENCODED_COMMAND,
                 'parent_process': 'winword.exe',
                 'query_count': 10
             })
@@ -670,7 +676,7 @@ class TestDNSC2Strategy(unittest.TestCase):
         for i in range(10):
             data.append({
                 'timestamp': base_time + timedelta(minutes=60 + i),
-                'query': f'aaaaabbbbbcccccdddddeeeeefffffggggg{i}.tk',  # Long, high entropy, free TLD
+                'query': f'{LONG_RANDOM_DOMAIN}{i}.tk',
                 'query_type': 'TXT',
                 'source_ip': '10.0.0.100',
                 'hostname': 'compromised-host',
