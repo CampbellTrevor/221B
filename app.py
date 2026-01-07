@@ -563,6 +563,13 @@ class WatsonDashboard:
                     icon='database',
                     layout=widgets.Layout(width='140px')
                 ),
+                'refresh_tables_button': widgets.Button(
+                    description='🔄 Refresh Tables',
+                    button_style='warning',
+                    icon='refresh',
+                    tooltip='Refresh the list of available tables from database',
+                    layout=widgets.Layout(width='150px')
+                ),
                 # Multi-table support
                 'enable_multi_table': widgets.Checkbox(
                     value=False,
@@ -685,8 +692,12 @@ class WatsonDashboard:
             def make_load_secondary_handler(tab_idx):
                 return lambda btn: self._on_load_secondary_table(btn, tab_idx)
             
+            def make_refresh_tables_handler(tab_idx):
+                return lambda btn: self._on_refresh_tables_click(btn, tab_idx)
+            
             tab_data['table_search'].observe(make_table_search_handler(i), names='value')
             tab_data['load_table_button'].on_click(make_load_table_handler(i))
+            tab_data['refresh_tables_button'].on_click(make_refresh_tables_handler(i))
             tab_data['run_button'].on_click(make_run_analysis_handler(i))
             tab_data['enable_date_filter'].observe(make_date_filter_handler(i), names='value')
             tab_data['save_config_button'].on_click(make_save_config_handler(i))
@@ -763,7 +774,10 @@ class WatsonDashboard:
                 widgets.HTML("<div style='margin: 4px 0 3px 0; font-size: 0.9em; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.5px;'>1️⃣ Select Data Source</div>"),
                 tab_data['table_search'],
                 tab_data['table_dropdown'],
-                tab_data['load_table_button'],
+                widgets.HBox([
+                    tab_data['load_table_button'],
+                    tab_data['refresh_tables_button']
+                ], layout=widgets.Layout(margin='0 0 0 0')),
                 widgets.HTML("<div style='margin: 8px 0 4px 0;'></div>"),
                 tab_data['enable_multi_table'],
                 multi_table_section
@@ -855,6 +869,53 @@ class WatsonDashboard:
         # Enable/disable date picker widgets
         tab_data['start_date'].disabled = not enabled
         tab_data['end_date'].disabled = not enabled
+    
+    def _on_refresh_tables_click(self, button, tab_index: int):
+        """
+        Handle refresh tables button click.
+        Refreshes the cache and updates all table dropdowns.
+        
+        Args:
+            button: Button widget that triggered this callback
+            tab_index: Index of the tab where button was clicked
+        """
+        # Show progress indicator in the tab that triggered the refresh
+        tab_data = self.strategy_tab_contents[tab_index]
+        
+        # Create output widget for feedback
+        with tab_data['output_widget']:
+            clear_output(wait=True)
+            print("🔄 Refreshing table list from database...")
+            
+            try:
+                # Force refresh the cache
+                refreshed_tables = self._refresh_cache()
+                
+                # Update the class variable
+                self.all_tables = refreshed_tables
+                
+                # Update all table dropdowns in all tabs
+                for tab_idx, tab_content in self.strategy_tab_contents.items():
+                    # Update primary table dropdown
+                    current_primary = tab_content['table_dropdown'].value
+                    tab_content['table_dropdown'].options = self.all_tables
+                    # Try to preserve selection if it still exists
+                    if current_primary in self.all_tables:
+                        tab_content['table_dropdown'].value = current_primary
+                    
+                    # Update secondary table dropdown
+                    current_secondary = tab_content['secondary_table_dropdown'].value
+                    tab_content['secondary_table_dropdown'].options = self.all_tables
+                    # Try to preserve selection if it still exists
+                    if current_secondary in self.all_tables:
+                        tab_content['secondary_table_dropdown'].value = current_secondary
+                
+                print(f"✅ Successfully refreshed {len(self.all_tables)} tables across all tabs!")
+                
+            except Exception as e:
+                print(f"❌ Error refreshing tables: {e}")
+                import traceback
+                traceback.print_exc()
     
     def _calculate_severity_metrics(self):
         """
