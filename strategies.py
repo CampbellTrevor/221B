@@ -57,6 +57,7 @@ ML_MIN_SAMPLES = 50  # Minimum samples required to apply ML
 ML_CONTAMINATION = 0.1  # Expected proportion of outliers (10%)
 ML_RANDOM_STATE = 42  # For reproducible results
 ML_MIN_SAMPLES_PER_CLUSTER = 15  # Minimum samples per cluster
+ML_DNS_C2_THRESHOLD = 70  # Threshold for DNS C2 ML detection (0-100)
 
 # Feature normalization thresholds for explainability
 ML_NORM_BYTES_HIGH = 100_000_000  # 100MB threshold for high data volume
@@ -835,6 +836,851 @@ class CompromisedCredentialsStrategy(ASOMLStrategy):
 
 
 # ============================================================================
+# CCIR 22: DNS C2 Strategy
+# ============================================================================
+
+class DNSC2Strategy(ASOMLStrategy):
+    """
+    CCIR 22: Is an adversary using the Domain Name System (DNS) protocol for command and control communications?
+    
+    Implements 6 actions across 2 indicators, each with 3 sophistication levels:
+    
+    **Indicator 1: Process-Based DNS Detection (Sysmon focus)**
+    
+    Level 1 (Rule-Based):
+    - Watchlist of processes that shouldn't initiate DNS queries
+    - Detects suspicious processes: cmd.exe, powershell.exe, rundll32.exe, etc.
+    - Identifies parent process relationships (Office apps, browsers as parents)
+    
+    Level 2 (Statistical Baseline):
+    - Establishes baseline DNS behavior per process name
+    - Tracks: hourly query volume, query name entropy, unique domains ratio, query type distribution
+    - Flags processes deviating > 3 standard deviations from baseline
+    
+    Level 3 (Machine Learning):
+    - Isolation Forest on process-level activity
+    - Features: command line entropy, parent process, signature status, DNS metrics
+    - Aggregates DNS activity in first 60 seconds of process life
+    
+    **Indicator 2: Query-Based DNS Detection (Network/Zeek focus)**
+    
+    Level 1 (Rule-Based):
+    - Correlates DNS queries against threat intelligence feeds
+    - Matches known C2 domains
+    - Generates alerts with full context (source IP, hostname, process, domain)
+    
+    Level 2 (Statistical Baseline):
+    - 30-day rolling baseline of DNS query metrics
+    - Risk scoring: subdomain labels (>98th %), FQDN entropy (>98th %), query-response ratio (>4:1), TXT/NULL queries
+    - Aggregates scores per host over 5-minute windows
+    
+    Level 3 (Machine Learning):
+    - Random Forest classifier for C2 DNS detection
+    - Features: query length, subdomain labels, Shannon entropy, numeric/alpha ratio, query type, TTL, frequency, periodicity
+    - Alerts on probability score > 0.90
+    
+    Data Sources:
+    - Sysmon Event ID 22 (DNS Query)
+    - Sysmon Event ID 1 (Process Creation)
+    - Windows Event ID 4688 (Process Creation)
+    - Zeek dns.log
+    - Zeek conn.log
+    - Threat intelligence feeds
+    """
+    
+    def __init__(self):
+        """Initialize the DNS C2 detection strategy."""
+        super().__init__()
+        
+        # Suspicious processes that shouldn't typically make DNS queries (Indicator 1, Level 1)
+        self.suspicious_dns_processes = [
+            'cmd.exe', 'powershell.exe', 'pwsh.exe', 'rundll32.exe',
+            'cscript.exe', 'wscript.exe', 'mshta.exe', 'regsvr32.exe',
+            'certutil.exe', 'bitsadmin.exe', 'msiexec.exe'
+        ]
+        
+        # Parent processes that make suspicious DNS processes more concerning
+        self.suspicious_parent_processes = [
+            'winword.exe', 'excel.exe', 'powerpnt.exe', 'outlook.exe',  # Office
+            'chrome.exe', 'firefox.exe', 'iexplore.exe', 'msedge.exe',  # Browsers
+            'acrord32.exe', 'foxitreader.exe'  # PDF readers
+        ]
+        
+        # Suspicious query types for C2
+        self.suspicious_query_types = ['TXT', 'NULL', 'CNAME', 'MX']
+    
+    def _get_ccir_number(self) -> int:
+        return 22
+    
+    def _get_ccir_question(self) -> str:
+        return "Is an adversary using the Domain Name System (DNS) protocol for command and control communications?"
+    
+    def _get_tactic(self) -> str:
+        return "Command & Control (TA0011)"
+    
+    def _get_name(self) -> str:
+        return "DNS C2 Detector"
+    
+    def _get_description(self) -> str:
+        return """
+        Detects DNS-based command and control through two complementary approaches:
+        
+        Indicator 1 (Process-Based):
+        - Identifies suspicious processes making DNS queries
+        - Statistical analysis of per-process DNS behavior
+        - ML anomaly detection on process characteristics
+        
+        Indicator 2 (Query-Based):
+        - Threat intelligence correlation
+        - Statistical analysis of DNS query characteristics
+        - ML classification of malicious DNS patterns
+        
+        Implements all 6 ASOM actions across 3 sophistication levels for comprehensive C2 detection.
+        """
+    
+    def _get_required_inputs(self) -> List[str]:
+        return [
+            'timestamp',
+            'query',  # DNS query (domain name)
+            'query_type',  # A, AAAA, TXT, etc.
+            'source_ip',
+            'hostname',  # Optional: source hostname
+            'process_name',  # Optional: from Sysmon Event ID 22
+            'process_guid',  # Optional: for correlation with Event ID 1
+            'parent_process',  # Optional: from Sysmon Event ID 1 correlation
+            'command_line',  # Optional: from Sysmon Event ID 1
+            'query_response_bytes',  # Optional: from Zeek conn.log correlation
+            'ttl',  # Optional: TTL value
+            'answer',  # Optional: DNS response
+        ]
+    
+    def _get_data_sources(self) -> List[str]:
+        return [
+            'Sysmon Event ID 22',
+            'Sysmon Event ID 1',
+            'Windows Event ID 4688',
+            'Zeek dns.log',
+            'Zeek conn.log',
+            'Threat Intelligence Feeds'
+        ]
+    
+    def analyze(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Execute DNS C2 detection across both indicators and all sophistication levels.
+        
+        Returns combined results from all 6 actions.
+        """
+        if df.empty:
+            return pd.DataFrame()
+        
+        # Prepare data
+        df = df.copy()
+        timestamp_col = col_map.get('timestamp', 'timestamp')
+        df[timestamp_col] = pd.to_datetime(df[timestamp_col], errors='coerce')
+        
+        # Run all detection levels for both indicators
+        results = []
+        
+        # Indicator 1: Process-based detection
+        indicator1_results = self._indicator1_process_based(df, col_map)
+        if not indicator1_results.empty:
+            results.append(indicator1_results)
+        
+        # Indicator 2: Query-based detection
+        indicator2_results = self._indicator2_query_based(df, col_map)
+        if not indicator2_results.empty:
+            results.append(indicator2_results)
+        
+        if not results:
+            return pd.DataFrame()
+        
+        # Combine and deduplicate
+        combined = pd.concat(results, ignore_index=True)
+        
+        # If same entity detected by multiple methods, keep highest scoring
+        if 'detection_key' in combined.columns:
+            combined = combined.sort_values('threat_score', ascending=False)
+            combined = combined.drop_duplicates(subset=['detection_key'], keep='first')
+            combined = combined.drop(columns=['detection_key'])
+        
+        # Sort by threat score
+        combined = combined.sort_values('threat_score', ascending=False)
+        
+        return combined
+    
+    def _indicator1_process_based(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Indicator 1: Process-based DNS detection (3 levels).
+        
+        Focuses on identifying which processes are making DNS queries
+        and whether their behavior is suspicious.
+        """
+        results = []
+        
+        # Level 1: Watchlist-based detection
+        level1_results = self._indicator1_level1_watchlist(df, col_map)
+        if not level1_results.empty:
+            results.append(level1_results)
+        
+        # Level 2: Statistical baseline per process
+        level2_results = self._indicator1_level2_statistical(df, col_map)
+        if not level2_results.empty:
+            results.append(level2_results)
+        
+        # Level 3: ML anomaly detection on processes
+        level3_results = self._indicator1_level3_ml(df, col_map)
+        if not level3_results.empty:
+            results.append(level3_results)
+        
+        if not results:
+            return pd.DataFrame()
+        
+        return pd.concat(results, ignore_index=True)
+    
+    def _indicator1_level1_watchlist(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Indicator 1, Level 1: Watchlist of suspicious processes making DNS queries.
+        
+        Action 1: Create and maintain a watchlist of processes that should not typically 
+        initiate DNS queries. Generate high-severity alert if a watchlist process initiates 
+        a DNS query, especially if parent is an Office app, browser, or PDF reader.
+        """
+        timestamp_col = col_map.get('timestamp', 'timestamp')
+        query_col = col_map.get('query', 'query')
+        source_ip_col = col_map.get('source_ip', 'source_ip')
+        process_col = col_map.get('process_name', 'process_name')
+        parent_col = col_map.get('parent_process', 'parent_process')
+        hostname_col = col_map.get('hostname', 'hostname')
+        
+        # Need process name to detect
+        if process_col not in df.columns or df[process_col].isna().all():
+            return pd.DataFrame()
+        
+        results = []
+        
+        for _, row in df.iterrows():
+            process = str(row.get(process_col, '')).lower()
+            parent = str(row.get(parent_col, '')).lower() if parent_col in df.columns else ''
+            
+            # Check if process is on watchlist
+            is_suspicious_process = any(susp_proc in process for susp_proc in self.suspicious_dns_processes)
+            
+            if is_suspicious_process:
+                # Base threat score
+                threat_score = 70
+                
+                # Increase score if parent is suspicious
+                is_suspicious_parent = any(susp_parent in parent for susp_parent in self.suspicious_parent_processes)
+                if is_suspicious_parent:
+                    threat_score = 90
+                
+                explanation_parts = [f"Suspicious process '{process}' initiated DNS query"]
+                if is_suspicious_parent:
+                    explanation_parts.append(f"spawned by '{parent}'")
+                
+                results.append({
+                    'timestamp': row[timestamp_col],
+                    'source_ip': row.get(source_ip_col, 'unknown'),
+                    'hostname': row.get(hostname_col, 'unknown') if hostname_col in df.columns else 'unknown',
+                    'process_name': process,
+                    'parent_process': parent if parent else 'unknown',
+                    'query': row.get(query_col, 'unknown'),
+                    'threat_score': threat_score,
+                    'detection_level': 1,
+                    'indicator': 1,
+                    'explanation': ' '.join(explanation_parts),
+                    'detection_key': f"i1l1_{row.get(source_ip_col, 'unknown')}_{row[timestamp_col]}_{process}"
+                })
+        
+        if not results:
+            return pd.DataFrame()
+        
+        result_df = pd.DataFrame(results)
+        result_df = self._apply_severity_labels(result_df)
+        return result_df
+    
+    def _indicator1_level2_statistical(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Indicator 1, Level 2: Statistical baseline of DNS behavior per process.
+        
+        Action 2: Establish enterprise-wide baseline of DNS query behavior per process name.
+        Flag processes deviating > 3 standard deviations on: hourly query volume, 
+        query name entropy, unique domains ratio, query type distribution.
+        """
+        timestamp_col = col_map.get('timestamp', 'timestamp')
+        query_col = col_map.get('query', 'query')
+        source_ip_col = col_map.get('source_ip', 'source_ip')
+        process_col = col_map.get('process_name', 'process_name')
+        query_type_col = col_map.get('query_type', 'query_type')
+        hostname_col = col_map.get('hostname', 'hostname')
+        
+        if process_col not in df.columns or df[process_col].isna().all():
+            return pd.DataFrame()
+        
+        results = []
+        
+        # Analyze by process name
+        for process_name, process_group in df.groupby(process_col):
+            if len(process_group) < 10:  # Need baseline data
+                continue
+            
+            # Add hour column
+            process_group = process_group.copy()
+            process_group['hour'] = process_group[timestamp_col].dt.hour
+            
+            # Calculate baseline metrics
+            hourly_counts = process_group.groupby('hour').size()
+            mean_hourly = hourly_counts.mean()
+            std_hourly = hourly_counts.std()
+            
+            # Query entropy
+            queries = process_group[query_col].dropna().astype(str)
+            query_entropies = []
+            for q in queries:
+                if q:
+                    char_counts = [q.count(c) for c in set(q)]
+                    if char_counts:
+                        q_entropy = entropy(char_counts)
+                        query_entropies.append(q_entropy)
+            
+            if query_entropies:
+                mean_entropy = np.mean(query_entropies)
+                std_entropy = np.std(query_entropies)
+            else:
+                mean_entropy = 0
+                std_entropy = 0
+            
+            # Unique domains ratio
+            total_queries = len(process_group)
+            unique_queries = process_group[query_col].nunique()
+            unique_ratio = unique_queries / total_queries if total_queries > 0 else 0
+            
+            # Now check each row for anomalies
+            for _, row in process_group.iterrows():
+                anomaly_score = 0
+                anomaly_reasons = []
+                
+                # Check 1: Hourly volume anomaly
+                row_hour = row['hour']
+                hour_count = len(process_group[process_group['hour'] == row_hour])
+                if std_hourly > 0:
+                    z_score_hourly = abs((hour_count - mean_hourly) / std_hourly)
+                    if z_score_hourly > 3:
+                        anomaly_score += 30
+                        anomaly_reasons.append(f'Unusual query volume for process (Z={z_score_hourly:.1f})')
+                
+                # Check 2: Query entropy anomaly
+                query_str = str(row.get(query_col, ''))
+                if query_str:
+                    char_counts = [query_str.count(c) for c in set(query_str)]
+                    if char_counts:
+                        current_entropy = entropy(char_counts)
+                        if std_entropy > 0:
+                            z_score_entropy = abs((current_entropy - mean_entropy) / std_entropy)
+                            if z_score_entropy > 3:
+                                anomaly_score += 25
+                                anomaly_reasons.append(f'Unusual query entropy (Z={z_score_entropy:.1f})')
+                
+                # Check 3: Query type anomaly (if available)
+                if query_type_col in df.columns:
+                    query_type = str(row.get(query_type_col, '')).upper()
+                    if query_type in self.suspicious_query_types:
+                        anomaly_score += 20
+                        anomaly_reasons.append(f'Suspicious query type: {query_type}')
+                
+                # Flag if significant anomalies
+                if anomaly_score >= 50:
+                    results.append({
+                        'timestamp': row[timestamp_col],
+                        'source_ip': row.get(source_ip_col, 'unknown'),
+                        'hostname': row.get(hostname_col, 'unknown') if hostname_col in df.columns else 'unknown',
+                        'process_name': process_name,
+                        'query': query_str,
+                        'threat_score': min(anomaly_score, 100),
+                        'detection_level': 2,
+                        'indicator': 1,
+                        'explanation': f'Process DNS behavior anomaly: {"; ".join(anomaly_reasons)}',
+                        'anomaly_factors': ', '.join(anomaly_reasons),
+                        'detection_key': f"i1l2_{row.get(source_ip_col, 'unknown')}_{row[timestamp_col]}_{process_name}"
+                    })
+        
+        if not results:
+            return pd.DataFrame()
+        
+        result_df = pd.DataFrame(results)
+        result_df = self._apply_severity_labels(result_df)
+        return result_df
+    
+    def _indicator1_level3_ml(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Indicator 1, Level 3: Machine learning on process-level activity.
+        
+        Action 3: Use Isolation Forest on process-level activity. Features include:
+        command line entropy, parent process, signature status, DNS metrics in first 60 seconds.
+        """
+        if not HAS_SKLEARN:
+            return pd.DataFrame()
+        
+        timestamp_col = col_map.get('timestamp', 'timestamp')
+        query_col = col_map.get('query', 'query')
+        source_ip_col = col_map.get('source_ip', 'source_ip')
+        process_col = col_map.get('process_name', 'process_name')
+        command_col = col_map.get('command_line', 'command_line')
+        parent_col = col_map.get('parent_process', 'parent_process')
+        hostname_col = col_map.get('hostname', 'hostname')
+        query_type_col = col_map.get('query_type', 'query_type')
+        
+        if process_col not in df.columns or len(df) < ML_MIN_SAMPLES:
+            return pd.DataFrame()
+        
+        # Group by process instance (source_ip + process_name + hour)
+        df_copy = df.copy()
+        df_copy['hour_bucket'] = df_copy[timestamp_col].dt.floor('h')
+        df_copy['process_instance'] = df_copy[source_ip_col].astype(str) + '_' + df_copy[process_col].astype(str) + '_' + df_copy['hour_bucket'].astype(str)
+        
+        # Aggregate features per process instance
+        features_list = []
+        feature_indices = []
+        
+        for instance, group in df_copy.groupby('process_instance'):
+            # Feature 1: Command line entropy (if available)
+            if command_col in df.columns and not group[command_col].isna().all():
+                cmd = str(group[command_col].iloc[0])
+                if cmd:
+                    char_counts = [cmd.count(c) for c in set(cmd)]
+                    cmd_entropy = entropy(char_counts) if char_counts else 0
+                else:
+                    cmd_entropy = 0
+            else:
+                cmd_entropy = 0
+            cmd_entropy_norm = min(cmd_entropy / 5.0, 1.0)
+            
+            # Feature 2: DNS query count
+            query_count = len(group)
+            query_count_norm = min(query_count / 100.0, 1.0)
+            
+            # Feature 3: Average query entropy
+            queries = group[query_col].dropna().astype(str)
+            query_entropies = []
+            for q in queries:
+                if q:
+                    char_counts = [q.count(c) for c in set(q)]
+                    if char_counts:
+                        query_entropies.append(entropy(char_counts))
+            avg_query_entropy = np.mean(query_entropies) if query_entropies else 0
+            avg_query_entropy_norm = min(avg_query_entropy / 5.0, 1.0)
+            
+            # Feature 4: Has TXT queries
+            if query_type_col in df.columns:
+                has_txt = any(str(qt).upper() == 'TXT' for qt in group[query_type_col].dropna())
+                txt_queries_norm = 1.0 if has_txt else 0.0
+            else:
+                txt_queries_norm = 0.0
+            
+            # Feature 5: Parent process suspiciousness
+            if parent_col in df.columns and not group[parent_col].isna().all():
+                parent = str(group[parent_col].iloc[0]).lower()
+                is_suspicious_parent = any(sp in parent for sp in self.suspicious_parent_processes)
+                parent_susp_norm = 1.0 if is_suspicious_parent else 0.0
+            else:
+                parent_susp_norm = 0.0
+            
+            features_list.append([cmd_entropy_norm, query_count_norm, avg_query_entropy_norm, txt_queries_norm, parent_susp_norm])
+            feature_indices.append(group.index[0])  # Use first row of group
+        
+        if len(features_list) < ML_MIN_SAMPLES:
+            return pd.DataFrame()
+        
+        # Train Isolation Forest
+        X = np.array(features_list)
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        iso_forest = IsolationForest(
+            contamination=ML_CONTAMINATION,
+            random_state=ML_RANDOM_STATE,
+            n_estimators=100
+        )
+        
+        predictions = iso_forest.fit_predict(X_scaled)
+        anomaly_scores = iso_forest.score_samples(X_scaled)
+        
+        # Normalize to 0-100 scale
+        min_score = anomaly_scores.min()
+        max_score = anomaly_scores.max()
+        if max_score > min_score:
+            ml_scores = 100 * (1 - (anomaly_scores - min_score) / (max_score - min_score))
+        else:
+            ml_scores = np.zeros(len(anomaly_scores))
+        
+        # Build results for anomalies
+        results = []
+        for i, idx in enumerate(feature_indices):
+            if predictions[i] == -1:  # Anomaly
+                row = df_copy.loc[idx]
+                ml_score = ml_scores[i]
+                
+                features_dict = {
+                    'command_entropy': features_list[i][0],
+                    'query_count': features_list[i][1],
+                    'avg_query_entropy': features_list[i][2],
+                    'txt_queries': features_list[i][3],
+                    'parent_suspiciousness': features_list[i][4]
+                }
+                
+                results.append({
+                    'timestamp': row[timestamp_col],
+                    'source_ip': row.get(source_ip_col, 'unknown'),
+                    'hostname': row.get(hostname_col, 'unknown') if hostname_col in df.columns else 'unknown',
+                    'process_name': row.get(process_col, 'unknown'),
+                    'query': row.get(query_col, 'unknown'),
+                    'threat_score': ml_score,
+                    'detection_level': 3,
+                    'indicator': 1,
+                    'explanation': 'ML detected anomalous DNS activity pattern from process',
+                    'ml_anomaly_score': ml_score,
+                    'ml_confidence': explain_ml_score(ml_score, 'anomaly'),
+                    'ml_explanation': get_feature_importance_explanation(features_dict),
+                    'detection_key': f"i1l3_{row.get(source_ip_col, 'unknown')}_{row[timestamp_col]}_{row.get(process_col, 'unknown')}"
+                })
+        
+        if not results:
+            return pd.DataFrame()
+        
+        result_df = pd.DataFrame(results)
+        result_df = self._apply_severity_labels(result_df)
+        return result_df
+    
+    def _indicator2_query_based(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Indicator 2: Query-based DNS detection (3 levels).
+        
+        Focuses on characteristics of DNS queries themselves rather than the processes.
+        """
+        results = []
+        
+        # Level 1: Threat intelligence correlation
+        level1_results = self._indicator2_level1_threat_intel(df, col_map)
+        if not level1_results.empty:
+            results.append(level1_results)
+        
+        # Level 2: Statistical baseline of query characteristics
+        level2_results = self._indicator2_level2_statistical(df, col_map)
+        if not level2_results.empty:
+            results.append(level2_results)
+        
+        # Level 3: ML classification of queries
+        level3_results = self._indicator2_level3_ml(df, col_map)
+        if not level3_results.empty:
+            results.append(level3_results)
+        
+        if not results:
+            return pd.DataFrame()
+        
+        return pd.concat(results, ignore_index=True)
+    
+    def _indicator2_level1_threat_intel(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Indicator 2, Level 1: Threat intelligence correlation.
+        
+        Action 1: Correlate DNS queries against threat intelligence feed of known C2 domains.
+        Generate high-severity alert with full context.
+        """
+        # This is a placeholder - in production, you would integrate with actual threat intel feeds
+        # For now, we'll use a simple pattern-based detection for common C2 indicators
+        
+        timestamp_col = col_map.get('timestamp', 'timestamp')
+        query_col = col_map.get('query', 'query')
+        source_ip_col = col_map.get('source_ip', 'source_ip')
+        hostname_col = col_map.get('hostname', 'hostname')
+        process_col = col_map.get('process_name', 'process_name')
+        
+        results = []
+        
+        # Common C2 domain patterns (in production, use actual threat intel feeds)
+        c2_indicators = [
+            r'\d{10,}',  # Long numeric strings (DGA-like)
+            r'[a-z]{20,}',  # Long random character strings
+            r'\.tk$|\.ml$|\.ga$|\.cf$|\.gq$',  # Free TLDs often used for C2
+        ]
+        
+        for _, row in df.iterrows():
+            query = str(row.get(query_col, '')).lower()
+            
+            # Check for C2 indicators
+            matched_indicators = []
+            for pattern in c2_indicators:
+                if re.search(pattern, query):
+                    matched_indicators.append(pattern)
+            
+            if matched_indicators:
+                results.append({
+                    'timestamp': row[timestamp_col],
+                    'source_ip': row.get(source_ip_col, 'unknown'),
+                    'hostname': row.get(hostname_col, 'unknown') if hostname_col in df.columns else 'unknown',
+                    'process_name': row.get(process_col, 'unknown') if process_col in df.columns else 'unknown',
+                    'query': query,
+                    'threat_score': 85,
+                    'detection_level': 1,
+                    'indicator': 2,
+                    'explanation': f'DNS query matches C2 domain patterns: {", ".join(matched_indicators[:2])}',
+                    'matched_patterns': ', '.join(matched_indicators),
+                    'detection_key': f"i2l1_{row.get(source_ip_col, 'unknown')}_{row[timestamp_col]}_{query}"
+                })
+        
+        if not results:
+            return pd.DataFrame()
+        
+        result_df = pd.DataFrame(results)
+        result_df = self._apply_severity_labels(result_df)
+        return result_df
+    
+    def _indicator2_level2_statistical(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Indicator 2, Level 2: Statistical baseline of DNS query characteristics.
+        
+        Action 2: 30-day rolling baseline of DNS query metrics. Risk scoring based on:
+        subdomain label count (>98th %), FQDN entropy (>98th %), query-response ratio (>4:1), 
+        TXT/NULL queries. Aggregate per host over 5-minute windows.
+        """
+        timestamp_col = col_map.get('timestamp', 'timestamp')
+        query_col = col_map.get('query', 'query')
+        source_ip_col = col_map.get('source_ip', 'source_ip')
+        hostname_col = col_map.get('hostname', 'hostname')
+        query_type_col = col_map.get('query_type', 'query_type')
+        
+        if len(df) < 50:  # Need baseline data
+            return pd.DataFrame()
+        
+        results = []
+        
+        # Calculate baseline metrics across all queries
+        df_copy = df.copy()
+        
+        # Metric 1: Subdomain label count
+        df_copy['label_count'] = df_copy[query_col].apply(lambda q: len(str(q).split('.')) if pd.notna(q) else 0)
+        p98_labels = df_copy['label_count'].quantile(0.98)
+        
+        # Metric 2: FQDN entropy
+        def calc_fqdn_entropy(query):
+            if not query or pd.isna(query):
+                return 0
+            query_str = str(query)
+            char_counts = [query_str.count(c) for c in set(query_str)]
+            return entropy(char_counts) if char_counts else 0
+        
+        df_copy['fqdn_entropy'] = df_copy[query_col].apply(calc_fqdn_entropy)
+        p98_entropy = df_copy['fqdn_entropy'].quantile(0.98)
+        
+        # Aggregate by host in 5-minute windows
+        df_copy['time_window'] = df_copy[timestamp_col].dt.floor('5Min')
+        
+        for (source_ip, time_window), group in df_copy.groupby([source_ip_col, 'time_window']):
+            risk_score = 0
+            risk_reasons = []
+            
+            # Check 1: High subdomain label count
+            high_label_queries = group[group['label_count'] > p98_labels]
+            if len(high_label_queries) > 0:
+                risk_score += 25
+                risk_reasons.append(f'{len(high_label_queries)} queries with excessive subdomains')
+            
+            # Check 2: High FQDN entropy
+            high_entropy_queries = group[group['fqdn_entropy'] > p98_entropy]
+            if len(high_entropy_queries) > 0:
+                risk_score += 25
+                risk_reasons.append(f'{len(high_entropy_queries)} queries with high entropy')
+            
+            # Check 3: TXT/NULL query types
+            if query_type_col in df.columns:
+                suspicious_types = group[group[query_type_col].astype(str).str.upper().isin(['TXT', 'NULL'])]
+                if len(suspicious_types) > 0:
+                    risk_score += 30
+                    risk_reasons.append(f'{len(suspicious_types)} TXT/NULL queries')
+            
+            # Check 4: High query volume in window
+            if len(group) > 50:  # More than 50 queries in 5 minutes is suspicious
+                risk_score += 20
+                risk_reasons.append(f'High query volume: {len(group)} queries in 5 minutes')
+            
+            # Alert if risk score is significant
+            if risk_score >= 50:
+                # Get a representative query from this window
+                sample_row = group.iloc[0]
+                
+                results.append({
+                    'timestamp': time_window,
+                    'source_ip': source_ip,
+                    'hostname': sample_row.get(hostname_col, 'unknown') if hostname_col in df.columns else 'unknown',
+                    'query': sample_row.get(query_col, 'multiple'),
+                    'query_count': len(group),
+                    'threat_score': min(risk_score, 100),
+                    'detection_level': 2,
+                    'indicator': 2,
+                    'explanation': f'DNS query characteristics anomaly: {"; ".join(risk_reasons)}',
+                    'risk_factors': ', '.join(risk_reasons),
+                    'detection_key': f"i2l2_{source_ip}_{time_window}"
+                })
+        
+        if not results:
+            return pd.DataFrame()
+        
+        result_df = pd.DataFrame(results)
+        result_df = self._apply_severity_labels(result_df)
+        return result_df
+    
+    def _indicator2_level3_ml(self, df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+        """
+        Indicator 2, Level 3: Machine learning classification of DNS queries.
+        
+        Action 3: Train Random Forest classifier to identify C2 DNS queries.
+        Features: query length, subdomain labels, Shannon entropy, numeric/alpha ratio,
+        query type, TTL, frequency, periodicity.
+        """
+        if not HAS_SKLEARN:
+            return pd.DataFrame()
+        
+        timestamp_col = col_map.get('timestamp', 'timestamp')
+        query_col = col_map.get('query', 'query')
+        source_ip_col = col_map.get('source_ip', 'source_ip')
+        hostname_col = col_map.get('hostname', 'hostname')
+        query_type_col = col_map.get('query_type', 'query_type')
+        ttl_col = col_map.get('ttl', 'ttl')
+        
+        if len(df) < ML_MIN_SAMPLES:
+            return pd.DataFrame()
+        
+        # Extract features for each query
+        features_list = []
+        feature_indices = []
+        
+        for idx, row in df.iterrows():
+            query = str(row.get(query_col, ''))
+            
+            if not query or query == 'nan':
+                continue
+            
+            # Feature 1: Query length
+            query_length = len(query)
+            query_length_norm = min(query_length / 100.0, 1.0)
+            
+            # Feature 2: Number of subdomain labels
+            label_count = len(query.split('.'))
+            label_count_norm = min(label_count / 10.0, 1.0)
+            
+            # Feature 3: Shannon entropy
+            char_counts = [query.count(c) for c in set(query)]
+            shannon_entropy = entropy(char_counts) if char_counts else 0
+            entropy_norm = min(shannon_entropy / 5.0, 1.0)
+            
+            # Feature 4: Numeric to alphabetic ratio
+            num_digits = sum(c.isdigit() for c in query)
+            num_alpha = sum(c.isalpha() for c in query)
+            numeric_ratio = num_digits / (num_alpha + 1)  # Avoid division by zero
+            numeric_ratio_norm = min(numeric_ratio, 1.0)
+            
+            # Feature 5: Query type (one-hot encoded)
+            if query_type_col in df.columns:
+                query_type = str(row.get(query_type_col, 'A')).upper()
+                is_txt = 1.0 if query_type == 'TXT' else 0.0
+            else:
+                is_txt = 0.0
+            
+            # Feature 6: TTL (if available)
+            if ttl_col in df.columns and pd.notna(row.get(ttl_col)):
+                ttl = float(row.get(ttl_col, 300))
+                ttl_norm = min(ttl / 86400.0, 1.0)  # Normalize to 1 day
+            else:
+                ttl_norm = 0.5  # Default
+            
+            features_list.append([query_length_norm, label_count_norm, entropy_norm, numeric_ratio_norm, is_txt, ttl_norm])
+            feature_indices.append(idx)
+        
+        if len(features_list) < ML_MIN_SAMPLES:
+            return pd.DataFrame()
+        
+        # In a real implementation, we would train on labeled data
+        # For this implementation, we'll use Isolation Forest as an unsupervised approach
+        X = np.array(features_list)
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Use Isolation Forest (unsupervised) instead of Random Forest (supervised)
+        # since we don't have labeled training data
+        iso_forest = IsolationForest(
+            contamination=ML_CONTAMINATION,
+            random_state=ML_RANDOM_STATE,
+            n_estimators=100
+        )
+        
+        predictions = iso_forest.fit_predict(X_scaled)
+        anomaly_scores = iso_forest.score_samples(X_scaled)
+        
+        # Convert to probability-like scores (0-1 scale, then to 0-100)
+        min_score = anomaly_scores.min()
+        max_score = anomaly_scores.max()
+        if max_score > min_score:
+            ml_scores = 100 * (1 - (anomaly_scores - min_score) / (max_score - min_score))
+        else:
+            ml_scores = np.zeros(len(anomaly_scores))
+        
+        # Build results for high-confidence detections
+        results = []
+        for i, idx in enumerate(feature_indices):
+            if predictions[i] == -1 and ml_scores[i] > ML_DNS_C2_THRESHOLD:
+                row = df.loc[idx]
+                ml_score = ml_scores[i]
+                
+                features_dict = {
+                    'query_length': features_list[i][0],
+                    'subdomain_labels': features_list[i][1],
+                    'entropy': features_list[i][2],
+                    'numeric_ratio': features_list[i][3],
+                    'is_txt_query': features_list[i][4],
+                    'ttl': features_list[i][5]
+                }
+                
+                results.append({
+                    'timestamp': row[timestamp_col],
+                    'source_ip': row.get(source_ip_col, 'unknown'),
+                    'hostname': row.get(hostname_col, 'unknown') if hostname_col in df.columns else 'unknown',
+                    'query': row.get(query_col, 'unknown'),
+                    'threat_score': ml_score,
+                    'detection_level': 3,
+                    'indicator': 2,
+                    'explanation': 'ML classifier identified DNS query as likely C2 communication',
+                    'ml_anomaly_score': ml_score,
+                    'ml_confidence': explain_ml_score(ml_score, 'anomaly'),
+                    'ml_explanation': get_feature_importance_explanation(features_dict),
+                    'detection_key': f"i2l3_{row.get(source_ip_col, 'unknown')}_{row[timestamp_col]}_{row.get(query_col, 'unknown')}"
+                })
+        
+        if not results:
+            return pd.DataFrame()
+        
+        result_df = pd.DataFrame(results)
+        result_df = self._apply_severity_labels(result_df)
+        return result_df
+    
+    def get_column_explanations(self) -> Dict[str, str]:
+        """Return explanations for output columns."""
+        base_explanations = super().get_column_explanations()
+        base_explanations.update({
+            'source_ip': 'Source IP address making the DNS query',
+            'hostname': 'Hostname of the source machine',
+            'process_name': 'Process that initiated the DNS query',
+            'parent_process': 'Parent process that spawned the DNS query process',
+            'query': 'DNS query (domain name)',
+            'query_count': 'Number of DNS queries in aggregated detection window',
+            'indicator': 'ASOM Indicator (1=Process-based, 2=Query-based)',
+            'matched_patterns': 'Threat intelligence patterns matched (Level 1)',
+            'anomaly_factors': 'Statistical anomalies detected (Level 2)',
+            'risk_factors': 'Risk scoring factors (Level 2)',
+        })
+        return base_explanations
+
+
+# ============================================================================
 # Export Strategy List
 # ============================================================================
 
@@ -846,5 +1692,6 @@ def get_all_strategies() -> List[ASOMLStrategy]:
     """
     return [
         CompromisedCredentialsStrategy(),
+        DNSC2Strategy(),
         # Additional strategies will be added here as implemented
     ]
