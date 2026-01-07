@@ -45,6 +45,51 @@ Detection Level: 1
 Explanation: Successful login after 25 failed attempts in 2.2 minutes - Potential credential stuffing
 ```
 
+### CCIR 22: DNS C2 Detector
+
+**Question**: Is an adversary using the Domain Name System (DNS) protocol for command and control communications?
+
+**Implementation**: 2 Indicators with 3 Sophistication Levels Each (6 Actions Total)
+
+#### Indicator 1: Process-Based Detection
+- **Level 1**: Watchlist of suspicious processes (cmd.exe, powershell.exe, etc.) making DNS queries
+  - Alerts when suspicious processes spawn from Office apps, browsers, or PDF readers
+  - High threat scores (90+) for Office document spawning PowerShell DNS queries
+- **Level 2**: Statistical baseline of DNS behavior per process
+  - Tracks hourly query volume, query entropy, unique domains ratio, query types
+  - Flags processes deviating > 3 standard deviations from baseline
+- **Level 3**: Isolation Forest ML on process activity
+  - Features: command line entropy, parent process, DNS metrics in first 60 seconds
+  - Identifies anomalous process-DNS behavior patterns
+
+#### Indicator 2: Query-Based Detection
+- **Level 1**: Threat intelligence correlation
+  - Pattern matching for DGA domains, free TLDs (.tk, .ml, .ga, .cf, .gq)
+  - Long numeric strings and high-entropy domain names
+- **Level 2**: Statistical baseline of query characteristics
+  - Risk scoring: excessive subdomains (>98th %), high FQDN entropy (>98th %), TXT/NULL queries
+  - Aggregates per host over 5-minute windows
+  - Flags high-volume query bursts (>50 queries/5min)
+- **Level 3**: Machine learning classification
+  - Features: query length, subdomain labels, Shannon entropy, numeric/alpha ratio, query type, TTL
+  - Isolation Forest for unsupervised anomaly detection
+  - Plain English explanations of detection factors
+
+**Data Sources**: Sysmon Event IDs 22/1, Windows Event ID 4688, Zeek dns.log, Zeek conn.log, Threat Intelligence Feeds
+
+**Example Detections**:
+```
+Indicator 1, Level 1:
+Threat Score: 90
+Severity: HIGH
+Explanation: Suspicious process 'powershell.exe' initiated DNS query spawned by 'winword.exe'
+
+Indicator 2, Level 2:
+Threat Score: 75
+Severity: HIGH
+Explanation: DNS query characteristics anomaly: 15 queries with excessive subdomains; 12 TXT/NULL queries; High query volume: 60 queries in 5 minutes
+```
+
 ## Architecture
 
 ### Multi-Table Correlation Framework
@@ -144,7 +189,7 @@ All strategies return consistent output:
 
 ## Testing
 
-Comprehensive test suite with 11 tests covering all sophistication levels:
+Comprehensive test suite with 22 tests covering all sophistication levels:
 
 ```bash
 python -m unittest test_asom_strategies -v
@@ -158,12 +203,23 @@ python -m unittest test_asom_strategies -v
 - Empty data handling
 - Severity labeling
 - Multi-table correlation
+- Both indicators (process-based and query-based)
+
+**Test Results**:
+```
+Ran 22 tests in 1.022s
+OK
+```
 
 **All tests pass** ✅
 
 ## Development Roadmap
 
-Current implementation: **1 of 23 strategies** (CCIR 1 complete)
+Current implementation: **2 of 23 strategies** (CCIRs 1 and 22 complete)
+
+### Completed Strategies ✅
+1. **CCIR 1**: Compromised Credentials Detection
+2. **CCIR 22**: DNS C2 Detection
 
 ### Next Strategies to Implement
 
@@ -171,9 +227,8 @@ Current implementation: **1 of 23 strategies** (CCIR 1 complete)
 2. **CCIR 7**: PowerShell Execution Detection
 3. **CCIR 16**: Web Shell Persistence Detection
 4. **CCIR 21**: HTTP/HTTPS C2 Detection
-5. **CCIR 22**: DNS C2 Detection
 
-Each new strategy follows the template established by CompromisedCredentialsStrategy.
+Each new strategy follows the template established by CompromisedCredentialsStrategy and DNSC2Strategy.
 
 ## Project Structure
 
@@ -252,19 +307,22 @@ Each new strategy follows the template established by CompromisedCredentialsStra
 
 When implementing new ASOM strategies:
 
-1. Follow CompromisedCredentialsStrategy template
+1. Follow CompromisedCredentialsStrategy or DNSC2Strategy templates
 2. Implement all 3 sophistication levels where applicable
-3. Add comprehensive tests (minimum 9 test cases)
-4. Update ASOM_STRATEGY_PLAN.md with implementation status
-5. Document column explanations
-6. Ensure ML triggers with proper sample sizes (50+)
+3. Support multiple indicators if specified in ASOM
+4. Add comprehensive tests (minimum 9-11 test cases per strategy)
+5. Update ASOM_STRATEGY_PLAN.md with implementation status
+6. Document column explanations
+7. Ensure ML triggers with proper sample sizes (50+)
+8. Update README.md with strategy details
 
 ## Performance Statistics
 
-- **Strategies**: 1 of 23 implemented (4.3%)
-- **Test Coverage**: 11 tests, 100% pass rate
-- **Lines of Code**: ~900 (strategies.py)
-- **ML Support**: Isolation Forest, One-Class SVM ready
+- **Strategies**: 2 of 23 implemented (8.7%)
+- **ASOM Actions**: 9 total (3 for CCIR 1, 6 for CCIR 22)
+- **Test Coverage**: 22 tests, 100% pass rate
+- **Lines of Code**: ~1,700 (strategies.py)
+- **ML Support**: Isolation Forest, Random Forest, One-Class SVM ready
 - **Multiprocessing**: Automatic parallelization
 
 ## Acknowledgments
