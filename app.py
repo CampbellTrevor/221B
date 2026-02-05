@@ -12,6 +12,7 @@ import pandas as pd
 import re
 import json
 import os
+import sys
 import time
 import datetime
 from datetime import date
@@ -397,10 +398,20 @@ class WatsonDashboard:
         # Delete old cache if it exists
         if os.path.exists(self.tables_cache_file):
             os.remove(self.tables_cache_file)
+            print("   Deleted old cache file")
+        else:
+            print("   No existing cache file to delete")
         
         # Force re-query
         tables = self._get_available_tables()
-        print("✅ Cache refreshed successfully!")
+        
+        # Verify cache was created
+        if os.path.exists(self.tables_cache_file):
+            print(f"✅ Cache refreshed successfully! New cache file created.")
+        else:
+            print(f"⚠️ Cache refresh completed but cache file was not created")
+            print(f"   This indicates the database query returned no results or failed")
+        
         return tables
     
     def _get_available_tables(self) -> list:
@@ -446,25 +457,79 @@ class WatsonDashboard:
             WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
             ORDER BY table_name
             """
+            
+            # Execute query with feedback
+            print("   Executing query via IONIC Scripting Framework...")
+            import sys
+            sys.stdout.flush()  # Ensure output is visible
+            
             df = isf.run_query(query)
             
-            if df is not None and not df.empty:
-                tables = df['table_name'].tolist()
+            # Safely get the type information
+            try:
+                df_type = type(df).__name__
+                df_module = type(df).__module__
+                print(f"   Query completed. Result type: {df_module}.{df_type}")
+                sys.stdout.flush()
+            except Exception as type_error:
+                print(f"   Query completed. Result: <error getting type: {type_error}>")
+                sys.stdout.flush()
+            
+            # Check the result and process accordingly
+            try:
+                # First check if df is None
+                if df is None:
+                    print("⚠️ Query returned None (database connection may have failed)")
+                    sys.stdout.flush()
+                    print("   Check IONIC configuration and database credentials")
+                    sys.stdout.flush()
+                    return ['Error loading tables - check database connection']
                 
-                # Save to cache
-                cache_data = {
-                    'timestamp': datetime.datetime.now().isoformat(),
-                    'tables': tables
-                }
-                with open(self.tables_cache_file, 'w') as f:
-                    json.dump(cache_data, f, indent=2)
-                
-                print(f"✅ Cached {len(tables)} tables")
-                return tables
-            else:
-                return ['No tables available']
+                # Check if it's a DataFrame and if it has data
+                if hasattr(df, 'empty'):
+                    if df.empty:
+                        print("⚠️ Query returned empty DataFrame (no tables found in database)")
+                        sys.stdout.flush()
+                        print("   This may indicate:")
+                        print("   - Database has no user tables")
+                        print("   - Connection permissions issue")
+                        print("   - Schema filter is too restrictive")
+                        sys.stdout.flush()
+                        return ['No tables available']
+                    else:
+                        # DataFrame has data, extract tables
+                        tables = df['table_name'].tolist()
+                        
+                        # Save to cache
+                        cache_data = {
+                            'timestamp': datetime.datetime.now().isoformat(),
+                            'tables': tables
+                        }
+                        with open(self.tables_cache_file, 'w') as f:
+                            json.dump(cache_data, f, indent=2)
+                        
+                        print(f"✅ Cached {len(tables)} tables")
+                        sys.stdout.flush()
+                        return tables
+                else:
+                    # Not a DataFrame-like object
+                    print(f"⚠️ Query returned unexpected type (not a DataFrame)")
+                    sys.stdout.flush()
+                    print(f"   Returned object does not have 'empty' attribute")
+                    sys.stdout.flush()
+                    return ['Error loading tables - unexpected return type']
+                    
+            except Exception as check_error:
+                print(f"❌ Error processing query result: {check_error}")
+                sys.stdout.flush()
+                import traceback
+                traceback.print_exc()
+                sys.stdout.flush()
+                return ['Error loading tables']
         except Exception as e:
-            print(f"Error fetching tables: {e}")
+            print(f"❌ Error fetching tables: {e}")
+            import traceback
+            traceback.print_exc()
             return ['Error loading tables']
     
     def _get_input_descriptions(self, strategy: ASOMLStrategy) -> dict:
@@ -562,6 +627,13 @@ class WatsonDashboard:
                     button_style='info',
                     icon='database',
                     layout=widgets.Layout(width='140px')
+                ),
+                'refresh_tables_button': widgets.Button(
+                    description='🔄 Refresh Tables',
+                    button_style='warning',
+                    icon='refresh',
+                    tooltip='Refresh the list of available tables from database',
+                    layout=widgets.Layout(width='150px')
                 ),
                 # Multi-table support
                 'enable_multi_table': widgets.Checkbox(
@@ -685,8 +757,12 @@ class WatsonDashboard:
             def make_load_secondary_handler(tab_idx):
                 return lambda btn: self._on_load_secondary_table(btn, tab_idx)
             
+            def make_refresh_tables_handler(tab_idx):
+                return lambda btn: self._on_refresh_tables_click(btn, tab_idx)
+            
             tab_data['table_search'].observe(make_table_search_handler(i), names='value')
             tab_data['load_table_button'].on_click(make_load_table_handler(i))
+            tab_data['refresh_tables_button'].on_click(make_refresh_tables_handler(i))
             tab_data['run_button'].on_click(make_run_analysis_handler(i))
             tab_data['enable_date_filter'].observe(make_date_filter_handler(i), names='value')
             tab_data['save_config_button'].on_click(make_save_config_handler(i))
@@ -763,7 +839,10 @@ class WatsonDashboard:
                 widgets.HTML("<div style='margin: 4px 0 3px 0; font-size: 0.9em; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.5px;'>1️⃣ Select Data Source</div>"),
                 tab_data['table_search'],
                 tab_data['table_dropdown'],
-                tab_data['load_table_button'],
+                widgets.HBox([
+                    tab_data['load_table_button'],
+                    tab_data['refresh_tables_button']
+                ], layout=widgets.Layout(margin='0 0 0 0')),
                 widgets.HTML("<div style='margin: 8px 0 4px 0;'></div>"),
                 tab_data['enable_multi_table'],
                 multi_table_section
@@ -855,6 +934,53 @@ class WatsonDashboard:
         # Enable/disable date picker widgets
         tab_data['start_date'].disabled = not enabled
         tab_data['end_date'].disabled = not enabled
+    
+    def _on_refresh_tables_click(self, button, tab_index: int):
+        """
+        Handle refresh tables button click.
+        Refreshes the cache and updates all table dropdowns.
+        
+        Args:
+            button: Button widget that triggered this callback
+            tab_index: Index of the tab where button was clicked
+        """
+        # Show progress indicator in the tab that triggered the refresh
+        tab_data = self.strategy_tab_contents[tab_index]
+        
+        # Create output widget for feedback
+        with tab_data['output_widget']:
+            clear_output(wait=True)
+            print("🔄 Refreshing table list from database...")
+            
+            try:
+                # Force refresh the cache
+                refreshed_tables = self._refresh_cache()
+                
+                # Update the class variable
+                self.all_tables = refreshed_tables
+                
+                # Update all table dropdowns in all tabs
+                for tab_idx, tab_content in self.strategy_tab_contents.items():
+                    # Update primary table dropdown
+                    current_primary = tab_content['table_dropdown'].value
+                    tab_content['table_dropdown'].options = self.all_tables
+                    # Try to preserve selection if it still exists
+                    if current_primary in self.all_tables:
+                        tab_content['table_dropdown'].value = current_primary
+                    
+                    # Update secondary table dropdown
+                    current_secondary = tab_content['secondary_table_dropdown'].value
+                    tab_content['secondary_table_dropdown'].options = self.all_tables
+                    # Try to preserve selection if it still exists
+                    if current_secondary in self.all_tables:
+                        tab_content['secondary_table_dropdown'].value = current_secondary
+                
+                print(f"✅ Successfully refreshed {len(self.all_tables)} tables across all tabs!")
+                
+            except Exception as e:
+                print(f"❌ Error refreshing tables: {e}")
+                import traceback
+                traceback.print_exc()
     
     def _calculate_severity_metrics(self):
         """
